@@ -136,11 +136,14 @@
   function compileH3Prompt(shot) {
     const subjects = orderedSubjects(shot);
 
+    // <Picture N> is the official H3-IR marker for "the Nth attached
+    // reference image" (see docs/deep-research-report-h3-prompting.md,
+    // lines ~551-559) - it's a different level from the `Image N` numbering
+    // used in the provider-level hosted prompt when attaching the images
+    // themselves. Subject N and Picture N align 1:1 here since v1 casts
+    // exactly one reference image per subject role.
     const subjectDefinitions = subjects
-      .map((s) => {
-        const fileName = s.asset ? s.asset.fileName : s.assetId;
-        return `<${s.label}> is ${ROLE_DESCRIPTION[s.role]} (reference: ${fileName}). Preserve ${ROLE_PRESERVE[s.role]} throughout.`;
-      })
+      .map((s, i) => `<${s.label}> is ${ROLE_DESCRIPTION[s.role]}, referenced by <Picture ${i + 1}>. Preserve ${ROLE_PRESERVE[s.role]} throughout.`)
       .join('\n');
 
     const retentionAnalysis = subjects
