@@ -172,6 +172,68 @@
     });
     card.appendChild(tagInput);
 
+    if (asset.type === 'image') {
+      const descLabel = document.createElement('div');
+      descLabel.className = 'asset-description-label';
+      descLabel.textContent = 'Description';
+      card.appendChild(descLabel);
+
+      const descArea = document.createElement('textarea');
+      descArea.className = 'asset-description';
+      descArea.rows = 3;
+      descArea.placeholder = 'Description...';
+      descArea.value = asset.description || '';
+      descArea.addEventListener('change', () => {
+        MSE.assets.setAssetDescription(asset.id, descArea.value);
+      });
+      card.appendChild(descArea);
+
+      const describeRow = document.createElement('div');
+      describeRow.className = 'asset-describe-row';
+
+      const modelInput = document.createElement('input');
+      modelInput.type = 'text';
+      modelInput.className = 'asset-describe-model';
+      modelInput.placeholder = 'model (optional)';
+      describeRow.appendChild(modelInput);
+
+      const describeBtn = document.createElement('button');
+      describeBtn.type = 'button';
+      describeBtn.className = 'asset-describe-btn';
+      describeBtn.textContent = 'Describe image';
+      describeRow.appendChild(describeBtn);
+
+      card.appendChild(describeRow);
+
+      // Streams deltas straight into this card's own textarea without going
+      // through setAssetDescription (and its assets-changed event) on every
+      // token - that would rebuild the whole asset grid, and this card with
+      // it, on every streamed word. The state is mutated directly instead,
+      // then persisted with one real event once streaming finishes.
+      describeBtn.addEventListener('click', async () => {
+        const projectId = MSE.project.getProjectId();
+        if (!projectId) return;
+        describeBtn.disabled = true;
+        descArea.value = '';
+        const assetRef = MSE.assets.findAsset(asset.id);
+        try {
+          const { jobId } = await MSE.api.describeAsset(projectId, asset.id, modelInput.value.trim());
+          await MSE.api.watchJob(jobId, (event) => {
+            if (event.delta) {
+              descArea.value += event.delta;
+              if (assetRef) assetRef.description = descArea.value;
+            }
+          });
+          MSE.assets.setAssetDescription(asset.id, descArea.value);
+        } catch (err) {
+          console.error(err);
+          descArea.value = `Describe failed: ${err.message}`;
+        } finally {
+          describeBtn.disabled = false;
+        }
+      });
+    }
+
     const assignBtn = document.createElement('button');
     assignBtn.type = 'button';
     assignBtn.className = 'asset-assign-btn';

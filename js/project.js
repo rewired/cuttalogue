@@ -54,7 +54,7 @@
     // assets/export fields - default them in rather than leaving things undefined.
     parsed.name = parsed.name || '';
     parsed.shots = (parsed.shots || []).map((s) => ({ prompt: '', notes: '', assetIds: [], ...s }));
-    parsed.assets = (parsed.assets || []).map((a) => ({ tags: [], ...a }));
+    parsed.assets = (parsed.assets || []).map((a) => ({ tags: [], description: '', ...a }));
     parsed.export = { includeMixSnippet: false, ...(parsed.export || {}) };
     resetState(parsed);
     emit('tempo-changed');

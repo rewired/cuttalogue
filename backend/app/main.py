@@ -9,10 +9,12 @@ from fastapi.staticfiles import StaticFiles
 
 from .assets import router as assets_router
 from .audio import router as audio_router
+from .describe import router as describe_router
 from .export import router as export_router
 from .jobs import router as jobs_router
 from .projects import DATA_DIR
 from .projects import router as projects_router
+from .settings import router as settings_router
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -23,6 +25,8 @@ app.include_router(jobs_router)
 app.include_router(assets_router)
 app.include_router(audio_router)
 app.include_router(export_router)
+app.include_router(settings_router)
+app.include_router(describe_router)
 
 for static_dir in ("js", "css", "vendor"):
     path = REPO_ROOT / static_dir

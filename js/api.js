@@ -109,6 +109,45 @@
     return watchJob(jobId);
   }
 
+  async function getSettings() {
+    const res = await fetch('/api/settings');
+    if (!res.ok) throw new Error(`get settings failed: ${res.status}`);
+    return res.json(); // { aiProvider: { baseUrl, defaultModel, hasApiKey } }
+  }
+
+  async function saveSettings(aiProvider) {
+    const res = await fetch('/api/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aiProvider }),
+    });
+    if (!res.ok) throw new Error(`save settings failed: ${res.status}`);
+    return res.json();
+  }
+
+  async function testSettings(aiProvider) {
+    const res = await fetch('/api/settings/test', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ aiProvider }),
+    });
+    if (!res.ok) throw new Error(`connection test failed: ${res.status}`);
+    return res.json(); // { ok, message }
+  }
+
+  async function describeAsset(projectId, assetId, model) {
+    const res = await fetch(`/api/projects/${projectId}/assets/${assetId}/describe`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: model || undefined }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `describe failed: ${res.status}`);
+    }
+    return res.json(); // { jobId }
+  }
+
   MSE.api = {
     createProject,
     getProject,
@@ -121,5 +160,9 @@
     cancelJob,
     watchJob,
     waitForJob,
+    getSettings,
+    saveSettings,
+    testSettings,
+    describeAsset,
   };
 })(window.MSE = window.MSE || {});

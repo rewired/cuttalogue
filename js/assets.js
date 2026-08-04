@@ -22,6 +22,13 @@
     emit('assets-changed', { reason: 'tags' });
   }
 
+  function setAssetDescription(assetId, description) {
+    const asset = findAsset(assetId);
+    if (!asset) return;
+    asset.description = description;
+    emit('assets-changed', { reason: 'description' });
+  }
+
   function assignAssetToShot(shotId, assetId) {
     const shot = state.shots.find((s) => s.id === shotId);
     if (!shot) return;
@@ -46,6 +53,7 @@
     addAssets,
     findAsset,
     setAssetTags,
+    setAssetDescription,
     assignAssetToShot,
     removeAssetFromShot,
     assetsForShot,

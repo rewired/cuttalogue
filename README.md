@@ -112,6 +112,18 @@ Both need a vocal track already loaded (see above), and the mix track too if "In
 
 ---
 
+## Setup & optional AI image descriptions
+
+The **"Setup"** button in the header (top right) opens an application-wide connection dialog - separate from any project, stored locally on the backend and never written into a project's JSON or export:
+
+- **API base URL** and **API key** for an OpenRouter-compatible chat completions API.
+- **Default model**: used whenever a per-image request doesn't override it.
+- **Test connection**: a quick round trip (`GET {base URL}/models`) to confirm the key/URL work before relying on them.
+
+With nothing configured, the rest of the app behaves exactly as before. Once configured, each **image** asset's card in the Assets tab gets a **Description** field plus a **"Describe image"** button (with an optional per-request model override). Clicking it sends that one image to the configured provider and streams the response straight into the description field as it arrives - one explicit action per image, never automatic or batched. Like export, this needs the project to have been saved at least once since the image was imported (asset import copies the file to disk right away, but it only becomes part of `project.json` - and therefore visible to the backend - once "Save project" runs).
+
+---
+
 ## Backend
 
 A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" save/load with a real project folder on disk:
@@ -123,6 +135,9 @@ A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" s
 - `POST /api/projects/{id}/audio/{track}` (`track` = `mix` or `vocal`) uploads the raw audio file itself to `audio/<track>.<ext>`.
 - `POST /api/projects/{id}/export` runs the whole-project export as a job with aggregate SSE progress; `POST /api/jobs/{jobId}/cancel` requests cancellation, checked between shots and mid-`ffmpeg`-encode.
 - `POST /api/projects/{id}/shots/{shotId}/export/lip-sync` runs `ffmpeg -progress pipe:1` as a real job (live SSE progress, not just start/done) and writes `exports/scratch/shot-<id>-lip_sync.flac`. The render duration is computed server-side (a Python port of the frontend's H3 frame math), not trusted from the client.
+- `GET /api/settings` / `PUT /api/settings` read/write the application-level AI provider connection (`backend/data/settings.json`, gitignored) - the API key is never echoed back in the `GET` response, only whether one is saved.
+- `POST /api/settings/test` makes a lightweight authenticated request to the configured provider and reports whether it succeeded.
+- `POST /api/projects/{id}/assets/{assetId}/describe` streams one image to the configured provider's chat completions endpoint (`stream: true`) and re-emits each token as a job event's `delta` field over the same SSE job shape, so the frontend can pour the response into the description field as it arrives.
 
 Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage` and switches it via the **Projects** picker in the header.
 

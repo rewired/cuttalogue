@@ -33,6 +33,9 @@
     </label>
     <span class="filename" id="vocal-filename">no vocal loaded</span>
   </div>
+  <div class="header-actions">
+    <button type="button" id="setup-btn">Setup</button>
+  </div>
 </header>
 
 <section class="transport">
@@ -204,6 +207,40 @@
   <button id="export-project-btn">Export project</button>
 </footer>
 
+<div id="settings-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Setup</h2>
+      <button type="button" id="settings-close-btn" class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">
+        Connects to an OpenRouter-compatible API for the optional "Describe image" action.
+        Application-wide, not part of any project - stored locally on this machine and never
+        written into project files or exports.
+      </p>
+      <label class="modal-field">API base URL
+        <input type="text" id="settings-base-url" placeholder="https://openrouter.ai/api/v1">
+      </label>
+      <label class="modal-field">API key
+        <input type="password" id="settings-api-key" autocomplete="off">
+      </label>
+      <p class="placeholder-hint" id="settings-key-status"></p>
+      <label class="modal-field">Default model
+        <input type="text" id="settings-default-model" placeholder="e.g. openai/gpt-4o-mini">
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="settings-test-btn">Test connection</button>
+        <span id="settings-test-result" class="placeholder-hint"></span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="settings-save-btn">Save</button>
+      <span id="settings-save-status" class="placeholder-hint"></span>
+    </div>
+  </div>
+</div>
+
 <div id="task-panel" class="task-panel" hidden>
   <div class="task-panel-header">
     <strong id="task-panel-title">Exporting project</strong>
@@ -230,6 +267,7 @@
 <script src="js/api.js"></script>
 <script src="js/project.js"></script>
 <script src="js/projectPicker.js"></script>
+<script src="js/settings.js"></script>
 <script src="js/contextPanel.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>
