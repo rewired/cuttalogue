@@ -126,7 +126,7 @@ A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" s
 
 Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage` and switches it via the **Projects** picker in the header.
 
-Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export. On Windows, the app pins the asyncio event loop to `WindowsProactorEventLoopPolicy` at startup - the default `Selector` loop that some `uvicorn --reload` setups end up on doesn't support subprocesses at all, which broke `ffmpeg`-based export (though not FFprobe/thumbnails, which run synchronously). **If you're upgrading an already-running server, fully stop and restart it (not just let `--reload` pick up the change) - the policy has to be set before the event loop is created.**
+Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export. `ffmpeg` calls all run via a plain synchronous `subprocess.Popen` in a background thread rather than `asyncio.create_subprocess_exec` - the latter needs the Proactor event loop on Windows and raises `NotImplementedError` on Selector, which some `uvicorn --reload` worker processes end up on regardless of the policy set at startup.
 
 ---
 
