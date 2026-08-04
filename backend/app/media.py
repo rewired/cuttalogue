@@ -105,15 +105,22 @@ class FFmpegError(RuntimeError):
     pass
 
 
+class FFmpegCancelled(Exception):
+    pass
+
+
 async def run_ffmpeg_with_progress(
     cmd: list[str],
     expected_duration_seconds: float,
     on_progress: Callable[[float], Awaitable[None]],
+    should_cancel: Callable[[], bool] | None = None,
 ) -> None:
     # -progress pipe:1 makes ffmpeg emit machine-readable key=value lines
     # (out_time_ms=..., progress=continue|end) on stdout as it works, instead
     # of only human-readable stats on stderr - that's what turns this into a
-    # real progress fraction rather than a spinner.
+    # real progress fraction rather than a spinner. should_cancel is polled
+    # between lines so a cancelled batch export can kill an in-flight encode
+    # instead of waiting for it to finish first.
     full_cmd = [*cmd, "-progress", "pipe:1", "-nostats"]
     proc = await asyncio.create_subprocess_exec(
         *full_cmd,
@@ -131,7 +138,12 @@ async def run_ffmpeg_with_progress(
     stderr_task = asyncio.create_task(drain_stderr())
 
     assert proc.stdout is not None
+    cancelled = False
     async for raw_line in proc.stdout:
+        if should_cancel and should_cancel():
+            cancelled = True
+            proc.terminate()
+            break
         line = raw_line.decode(errors="ignore").strip()
         if line.startswith("out_time_ms="):
             try:
@@ -145,6 +157,21 @@ async def run_ffmpeg_with_progress(
             break
 
     await proc.wait()
+
+    if cancelled:
+        # A forcefully terminated process's stderr pipe doesn't reliably signal
+        # EOF promptly on Windows (ProactorEventLoop) even though the process
+        # has already exited - awaiting drain_stderr() here has been observed
+        # to stall for the remainder of what would have been the full encode
+        # time. Cancelling it instead is safe: stderr's only consumer is the
+        # error message below, which a cancellation never needs.
+        stderr_task.cancel()
+        try:
+            await stderr_task
+        except asyncio.CancelledError:
+            pass
+        raise FFmpegCancelled()
+
     await stderr_task
 
     if proc.returncode != 0:

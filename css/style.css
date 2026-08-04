@@ -435,4 +435,36 @@ tr.status-valid .status-cell { color: #4caf50; }
 
 .hint { color: var(--text-dim); font-size: 12px; margin: 8px 0 0; }
 
-.project-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.project-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.footer-spacer { flex: 1 1 auto; }
+.checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+
+.task-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 320px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 30;
+}
+.task-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  font-size: 13px;
+}
+.task-panel-header button {
+  padding: 3px 8px;
+  font-size: 12px;
+}
+.task-panel-shot-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+#task-panel-message { margin: 6px 0 0; }

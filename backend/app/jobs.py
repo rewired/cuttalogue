@@ -18,9 +18,10 @@ router = APIRouter()
 @dataclass
 class Job:
     id: str
-    status: str = "queued"  # queued | running | done | error
+    status: str = "queued"  # queued | running | done | error | cancelled
     result: Any = None
     error: str | None = None
+    cancel_requested: bool = False
     queue: "asyncio.Queue[dict | None]" = field(default_factory=asyncio.Queue)
 
 
@@ -35,6 +36,14 @@ def create_job() -> Job:
 
 def get_job(job_id: str) -> Job | None:
     return _jobs.get(job_id)
+
+
+def request_cancel(job: Job) -> None:
+    job.cancel_requested = True
+
+
+class JobCancelled(Exception):
+    pass
 
 
 async def emit(job: Job, event: dict) -> None:
@@ -65,6 +74,15 @@ async def job_status(job_id: str):
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return {"id": job.id, "status": job.status, "result": job.result, "error": job.error}
+
+
+@router.post("/api/jobs/{job_id}/cancel")
+async def cancel_job(job_id: str):
+    job = get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    request_cancel(job)
+    return {"id": job.id, "cancelRequested": True}
 
 
 @router.get("/api/jobs/{job_id}/events")

@@ -54,15 +54,35 @@
     return res.json(); // { jobId, expectedDurationSeconds }
   }
 
-  // Resolves once the job reaches 'done', rejects on 'error' or a broken
-  // stream. onProgress (optional) is called for every intermediate event,
-  // e.g. { status: 'running', progressFraction: 0.42 } while an ffmpeg job runs.
+  async function exportProject(id, options) {
+    const res = await fetch(`/api/projects/${id}/export`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(options || {}),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `export failed: ${res.status}`);
+    }
+    return res.json(); // { jobId, shotCount }
+  }
+
+  async function cancelJob(jobId) {
+    const res = await fetch(`/api/jobs/${jobId}/cancel`, { method: 'POST' });
+    if (!res.ok) throw new Error(`cancel failed: ${res.status}`);
+    return res.json();
+  }
+
+  // Resolves once the job reaches a terminal state ('done' or 'cancelled'),
+  // rejects on 'error' or a broken stream. onProgress (optional) is called
+  // for every intermediate event, e.g. { status: 'running', progressFraction:
+  // 0.42, shot: 3, shotCount: 12 } while an ffmpeg job runs.
   function watchJob(jobId, onProgress) {
     return new Promise((resolve, reject) => {
       const source = new EventSource(`/api/jobs/${jobId}/events`);
       source.onmessage = (e) => {
         const event = JSON.parse(e.data);
-        if (event.status === 'done') {
+        if (event.status === 'done' || event.status === 'cancelled') {
           source.close();
           resolve(event);
         } else if (event.status === 'error') {
@@ -90,6 +110,8 @@
     uploadAssets,
     uploadAudioTrack,
     exportLipSync,
+    exportProject,
+    cancelJob,
     watchJob,
     waitForJob,
   };

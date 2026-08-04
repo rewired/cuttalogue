@@ -104,9 +104,10 @@ The **Assets** tab (next to **Shot**, in the panel right of the shot list) holds
 
 ## Export
 
-The **Shot** tab has an **"Export lip-sync"** button once a shot is selected. It renders `lip_sync.flac` for that one shot - FLAC, 32 kHz, mono, covering the H3 **render** duration (cut duration plus frame-rule overhang, not the raw cut length) - with a live progress bar driven by ffmpeg's own `-progress` output, and a link to the result once it's done. This needs a vocal track already loaded (see above) and the project saved at least once since.
+- **Single shot** - the **Shot** tab has an **"Export lip-sync"** button once a shot is selected. It renders `lip_sync.flac` for that one shot - FLAC, 32 kHz, mono, covering the H3 **render** duration (cut duration plus frame-rule overhang, not the raw cut length) - with a live progress bar driven by ffmpeg's own `-progress` output, and a link to the result once it's done. Output goes to a scratch folder, mainly useful for spot-checking one shot.
+- **Whole project** - the footer has an **"Export project"** button (plus an **"Include mix snippet"** checkbox). It builds the full per-shot export package from the product doc: `export/shot-XXX/` folders, each with `lip_sync.flac`, `shot.json` (the render manifest - frame counts, frame rule, assigned asset paths), `prompt.txt`, `notes.md`, copied assigned assets, and optionally `mix.flac`. A floating task panel (bottom-right) tracks aggregate progress ("Shot 12 of 37") with a **Cancel** button; cancelling stops between shots (and mid-encode on the current one) without leaving a corrupted or partially-written shot folder behind.
 
-This exports one shot at a time for now; a whole-project export with per-shot folders, manifests, and copied assets is a planned follow-up, not built yet.
+Both need a vocal track already loaded (see above), and the mix track too if "Include mix snippet" is checked; the project must have been saved at least once since.
 
 ---
 
@@ -119,11 +120,12 @@ A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" s
 - `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape export and AI description reuse.
 - `POST /api/projects/{id}/assets` imports one or more files into that project's `assets/` folder and returns their metadata/thumbnail descriptors (no project.json write - that's still "Save project").
 - `POST /api/projects/{id}/audio/{track}` (`track` = `mix` or `vocal`) uploads the raw audio file itself to `audio/<track>.<ext>`.
+- `POST /api/projects/{id}/export` runs the whole-project export as a job with aggregate SSE progress; `POST /api/jobs/{jobId}/cancel` requests cancellation, checked between shots and mid-`ffmpeg`-encode.
 - `POST /api/projects/{id}/shots/{shotId}/export/lip-sync` runs `ffmpeg -progress pipe:1` as a real job (live SSE progress, not just start/done) and writes `exports/scratch/shot-<id>-lip_sync.flac`. The render duration is computed server-side (a Python port of the frontend's H3 frame math), not trusted from the client.
 
-Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, and `exports/scratch/`. Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
+Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
 
-Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata and thumbnails.
+Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export.
 
 ---
 

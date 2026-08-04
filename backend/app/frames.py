@@ -32,3 +32,11 @@ def frame_calc(duration_seconds: float, video: dict) -> dict:
         "overhangFrames": overhang_frames,
         "overhangSeconds": overhang_seconds,
     }
+
+
+def frame_rule_label(stride: int | None) -> str:
+    if stride == 4:
+        return "4n+1"
+    if stride == 8:
+        return "8n+1"
+    return "free"

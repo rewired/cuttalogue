@@ -43,6 +43,9 @@
       },
       shots: [], // { id, startSeconds, endSeconds, prompt, notes, assetIds }
       assets: [], // { id, type, fileName, relativePath, thumbnailPath, tags, metadata }
+      export: {
+        includeMixSnippet: false,
+      },
     };
   }
 

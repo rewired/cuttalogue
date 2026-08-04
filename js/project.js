@@ -44,14 +44,16 @@
         assetIds: s.assetIds || [],
       })),
       assets: state.assets,
+      export: state.export,
     };
   }
 
   function applyLoadedProject(parsed) {
-    // Older/foreign project data predates the prompt/notes/assetIds/assets
-    // fields - default them in rather than leaving things undefined.
+    // Older/foreign project data predates the prompt/notes/assetIds/assets/
+    // export fields - default them in rather than leaving things undefined.
     parsed.shots = (parsed.shots || []).map((s) => ({ prompt: '', notes: '', assetIds: [], ...s }));
     parsed.assets = (parsed.assets || []).map((a) => ({ tags: [], ...a }));
+    parsed.export = { includeMixSnippet: false, ...(parsed.export || {}) };
     resetState(parsed);
     emit('tempo-changed');
     emit('video-changed');

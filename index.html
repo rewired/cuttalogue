@@ -186,7 +186,20 @@
   <span class="filename" id="project-status"></span>
   <button id="export-json-btn">Export shots (JSON)</button>
   <button id="export-csv-btn">Export shots (CSV)</button>
+  <span class="footer-spacer"></span>
+  <label class="checkbox-label"><input type="checkbox" id="export-include-mix"> Include mix snippet</label>
+  <button id="export-project-btn">Export project</button>
 </footer>
+
+<div id="task-panel" class="task-panel" hidden>
+  <div class="task-panel-header">
+    <strong id="task-panel-title">Exporting project</strong>
+    <button type="button" id="task-panel-cancel">Cancel</button>
+  </div>
+  <div id="task-panel-shot-label" class="task-panel-shot-label"></div>
+  <div class="export-progress-bar"><div class="export-progress-fill" id="task-panel-progress-fill"></div></div>
+  <div id="task-panel-message" class="placeholder-hint"></div>
+</div>
 
 <script src="vendor/wavesurfer/wavesurfer.min.js"></script>
 <script src="vendor/wavesurfer/timeline.min.js"></script>
@@ -204,6 +217,7 @@
 <script src="js/api.js"></script>
 <script src="js/project.js"></script>
 <script src="js/contextPanel.js"></script>
+<script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>
