@@ -145,26 +145,23 @@
     <div class="tab-content" id="tab-shot">
       <p class="placeholder-hint" id="shot-detail-empty">Select a shot to see its details.</p>
       <div id="shot-detail" class="shot-detail" style="display:none;">
-        <dl class="shot-detail-grid">
-          <dt>Shot</dt><dd id="shot-detail-id"></dd>
-          <dt>Start</dt><dd id="shot-detail-start"></dd>
-          <dt>End</dt><dd id="shot-detail-end"></dd>
-          <dt>Duration</dt><dd id="shot-detail-duration"></dd>
-          <dt>Status</dt><dd id="shot-detail-status"></dd>
-          <dt>Cut frames</dt><dd id="shot-detail-cut-frames"></dd>
-          <dt>H3 render frames</dt><dd id="shot-detail-render-frames"></dd>
-          <dt>Overhang</dt><dd id="shot-detail-overhang"></dd>
-        </dl>
+        <div class="shot-detail-field">
+          <span>Assigned assets</span>
+          <div id="shot-detail-assets" class="assigned-assets"></div>
+        </div>
+        <div class="shot-detail-field">
+          <span>Direction</span>
+          <div class="direction-field-row">
+            <span class="placeholder-hint" id="direction-summary"></span>
+            <button type="button" id="open-direction-btn">Edit direction</button>
+          </div>
+        </div>
         <label class="shot-detail-field">Prompt
           <textarea id="shot-detail-prompt" rows="4" placeholder="Prompt for this shot..."></textarea>
         </label>
         <label class="shot-detail-field">Notes
           <textarea id="shot-detail-notes" rows="4" placeholder="Notes..."></textarea>
         </label>
-        <div class="shot-detail-field">
-          <span>Assigned assets</span>
-          <div id="shot-detail-assets" class="assigned-assets"></div>
-        </div>
         <div class="shot-detail-field export-field">
           <span>Export</span>
           <div class="export-controls">
@@ -227,7 +224,8 @@
       </label>
       <p class="placeholder-hint" id="settings-key-status"></p>
       <label class="modal-field">Default model
-        <input type="text" id="settings-default-model" placeholder="e.g. openai/gpt-4o-mini">
+        <input type="text" id="settings-default-model" placeholder="e.g. openai/gpt-4o-mini" list="settings-model-list">
+        <datalist id="settings-model-list"></datalist>
       </label>
       <div class="modal-actions">
         <button type="button" id="settings-test-btn">Test connection</button>
@@ -237,6 +235,36 @@
     <div class="modal-footer">
       <button type="button" id="settings-save-btn">Save</button>
       <span id="settings-save-status" class="placeholder-hint"></span>
+    </div>
+  </div>
+</div>
+
+<div id="direction-modal" class="modal-overlay" hidden>
+  <div class="modal direction-modal">
+    <div class="modal-header">
+      <h2 id="direction-modal-title">Direction</h2>
+      <button type="button" id="direction-close-btn" class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">
+        Feeds MiniMax H3's structured reference-generation prompt (see docs/h3-shot-direction-roadmap.md).
+        Keep segments coarse - a handful of large beats compiles far more reliably than many tiny ones.
+      </p>
+      <section class="direction-section">
+        <h3>Cast</h3>
+        <p class="placeholder-hint" id="direction-cast-empty">No assets assigned to this shot yet - assign some in the Assets tab first.</p>
+        <div id="direction-cast-list" class="direction-list"></div>
+      </section>
+      <section class="direction-section">
+        <h3>Camera</h3>
+        <div id="direction-camera-list" class="direction-list"></div>
+        <button type="button" id="direction-add-camera-btn">+ Add camera segment</button>
+      </section>
+      <section class="direction-section" id="direction-subjects-container"></section>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="direction-compile-btn">Compile prompt</button>
+      <span id="direction-compile-status" class="placeholder-hint"></span>
     </div>
   </div>
 </div>
@@ -268,6 +296,8 @@
 <script src="js/project.js"></script>
 <script src="js/projectPicker.js"></script>
 <script src="js/settings.js"></script>
+<script src="js/h3Compiler.js"></script>
+<script src="js/direction.js"></script>
 <script src="js/contextPanel.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>

@@ -79,19 +79,46 @@ async def test_settings(body: dict = Body(default={})):
     current = load_settings()["aiProvider"]
     base_url = (incoming.get("baseUrl") or current["baseUrl"] or "").rstrip("/")
     api_key = incoming.get("apiKey") or current["apiKey"]
+    model = (incoming.get("defaultModel") or current["defaultModel"] or "").strip()
 
     if not base_url:
         return {"ok": False, "message": "No API base URL provided."}
     if not api_key:
         return {"ok": False, "message": "No API key provided."}
 
+    headers = {"Authorization": f"Bearer {api_key}"}
     try:
         async with httpx.AsyncClient(timeout=10) as client:
-            res = await client.get(f"{base_url}/models", headers={"Authorization": f"Bearer {api_key}"})
-        if res.status_code == 200:
-            count = len((res.json() or {}).get("data") or [])
-            message = f"Connected - {count} model(s) available." if count else "Connected."
-            return {"ok": True, "message": message}
-        return {"ok": False, "message": f"Provider returned HTTP {res.status_code}."}
+            res = await client.get(f"{base_url}/models", headers=headers)
+        if res.status_code != 200:
+            return {"ok": False, "message": f"Provider returned HTTP {res.status_code} listing models."}
+        models = sorted(m["id"] for m in (res.json() or {}).get("data") or [] if m.get("id"))
     except Exception as exc:  # noqa: BLE001 - reported to the client, not raised
         return {"ok": False, "message": str(exc) or repr(exc)}
+
+    catalog_note = f"{len(models)} model(s) in catalog." if models else "Catalog empty."
+    if not model:
+        return {"ok": True, "message": f"Connected - {catalog_note} Set a default model to also verify it can generate.", "models": models}
+
+    # Listing /models only proves the key is well-formed enough to browse the
+    # public catalog - OpenRouter accepts that call for keys that then get
+    # rejected on real chat/completions requests. Run an actual (tiny, cheap)
+    # completion against the configured model so a bad key or bad model slug
+    # shows up here instead of surprising the user later in [Describe image].
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            gen_res = await client.post(
+                f"{base_url}/chat/completions",
+                headers={**headers, "Content-Type": "application/json"},
+                json={"model": model, "messages": [{"role": "user", "content": "Reply with just: OK"}], "max_tokens": 5},
+            )
+        if gen_res.status_code == 200:
+            return {"ok": True, "message": f"Connected - {catalog_note} Generation check with \"{model}\" succeeded.", "models": models}
+        detail = gen_res.text[:300]
+        return {
+            "ok": False,
+            "message": f"Catalog lists {len(models)} models, but a real generation request with \"{model}\" failed: HTTP {gen_res.status_code} {detail}",
+            "models": models,
+        }
+    except Exception as exc:  # noqa: BLE001 - reported to the client, not raised
+        return {"ok": False, "message": f"Generation check with \"{model}\" failed: {exc}", "models": models}

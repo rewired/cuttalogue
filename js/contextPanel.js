@@ -6,8 +6,6 @@
   'use strict';
 
   const { state, on, emit } = MSE.state;
-  const { formatTime } = MSE.format;
-  const { frameCalc } = MSE.frames;
   const shotsApi = MSE.shots;
 
   let selectedShotId = null;
@@ -21,14 +19,6 @@
     el.tabAssets = document.getElementById('tab-assets');
     el.empty = document.getElementById('shot-detail-empty');
     el.detail = document.getElementById('shot-detail');
-    el.id = document.getElementById('shot-detail-id');
-    el.start = document.getElementById('shot-detail-start');
-    el.end = document.getElementById('shot-detail-end');
-    el.duration = document.getElementById('shot-detail-duration');
-    el.status = document.getElementById('shot-detail-status');
-    el.cutFrames = document.getElementById('shot-detail-cut-frames');
-    el.renderFrames = document.getElementById('shot-detail-render-frames');
-    el.overhang = document.getElementById('shot-detail-overhang');
     el.prompt = document.getElementById('shot-detail-prompt');
     el.notes = document.getElementById('shot-detail-notes');
     el.assignedAssets = document.getElementById('shot-detail-assets');
@@ -50,12 +40,6 @@
     return state.shots.find((s) => s.id === selectedShotId) || null;
   }
 
-  function statusLabel(status) {
-    if (status === 'short') return 'too short';
-    if (status === 'long') return 'too long';
-    return 'valid';
-  }
-
   function renderShotTab() {
     const shot = findSelectedShot();
     if (!shot) {
@@ -65,19 +49,6 @@
     }
     el.empty.style.display = 'none';
     el.detail.style.display = '';
-
-    const status = shotsApi.shotStatus(shot);
-    const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
-
-    el.id.textContent = shot.id;
-    el.start.textContent = formatTime(shot.startSeconds);
-    el.end.textContent = formatTime(shot.endSeconds);
-    el.duration.textContent = `${shotsApi.shotDuration(shot).toFixed(3)} s`;
-    el.status.textContent = statusLabel(status);
-    el.status.className = `status-cell status-${status}`;
-    el.cutFrames.textContent = calc.cutFrames;
-    el.renderFrames.textContent = calc.renderFrames;
-    el.overhang.textContent = `${calc.overhangFrames} f / ${calc.overhangSeconds.toFixed(3)} s`;
 
     // Skip the field currently being typed in, so a re-render triggered by
     // e.g. dragging the shot's edge in the timeline can't clobber live input.
@@ -188,22 +159,11 @@
       });
       card.appendChild(descArea);
 
-      const describeRow = document.createElement('div');
-      describeRow.className = 'asset-describe-row';
-
-      const modelInput = document.createElement('input');
-      modelInput.type = 'text';
-      modelInput.className = 'asset-describe-model';
-      modelInput.placeholder = 'model (optional)';
-      describeRow.appendChild(modelInput);
-
       const describeBtn = document.createElement('button');
       describeBtn.type = 'button';
       describeBtn.className = 'asset-describe-btn';
       describeBtn.textContent = 'Describe image';
-      describeRow.appendChild(describeBtn);
-
-      card.appendChild(describeRow);
+      card.appendChild(describeBtn);
 
       // Streams deltas straight into this card's own textarea without going
       // through setAssetDescription (and its assets-changed event) on every
@@ -217,7 +177,7 @@
         descArea.value = '';
         const assetRef = MSE.assets.findAsset(asset.id);
         try {
-          const { jobId } = await MSE.api.describeAsset(projectId, asset.id, modelInput.value.trim());
+          const { jobId } = await MSE.api.describeAsset(projectId, asset.id);
           await MSE.api.watchJob(jobId, (event) => {
             if (event.delta) {
               descArea.value += event.delta;

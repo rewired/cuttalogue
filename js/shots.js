@@ -13,6 +13,28 @@
 
   const MIN_GAP_SECONDS = 0.05;
 
+  // H3 shot direction (see docs/h3-shot-direction-roadmap.md): which assigned
+  // assets play which role in the compiled prompt, plus camera/subject action
+  // tracks the deterministic compiler turns into semantic beats. Camera
+  // movement is restricted to H3's own official vocabulary; framing/speed and
+  // subject actions stay free text.
+  const ASSET_ROLES = ['primary_character', 'supporting_character', 'environment'];
+  const CAMERA_MOVEMENTS = [
+    'zoom_in',
+    'zoom_out',
+    'push_in',
+    'pull_out',
+    'pan',
+    'truck',
+    'tracking_shot',
+    'arc_shot',
+    'static_shot',
+  ];
+
+  function defaultDirection() {
+    return { camera: [], subjects: {} };
+  }
+
   function renumber() {
     state.shots.sort((a, b) => a.startSeconds - b.startSeconds);
     state.shots.forEach((shot, index) => {
@@ -73,6 +95,11 @@
     );
     if (index === -1) return false;
     const shot = state.shots[index];
+    // Casting (assetRoles) isn't time-based, so it carries over to the left
+    // half same as assetIds - but direction beats are shot-relative seconds
+    // that were authored against the ORIGINAL duration, which no longer
+    // matches either half after a split, so both halves start with a blank
+    // direction rather than carrying over now-meaningless timings.
     const left = {
       id: 0,
       startSeconds: shot.startSeconds,
@@ -81,6 +108,8 @@
       prompt: shot.prompt || '',
       notes: shot.notes || '',
       assetIds: (shot.assetIds || []).slice(),
+      assetRoles: { ...(shot.assetRoles || {}) },
+      direction: defaultDirection(),
     };
     const right = {
       id: 0,
@@ -90,6 +119,8 @@
       prompt: '',
       notes: '',
       assetIds: [],
+      assetRoles: {},
+      direction: defaultDirection(),
     };
     state.shots.splice(index, 1, left, right);
     renumber();
@@ -108,7 +139,17 @@
     const start = Math.max(gap.start, lo);
     const end = Math.min(gap.end, hi);
     if (end - start < MIN_GAP_SECONDS) return false;
-    state.shots.push({ id: 0, startSeconds: start, endSeconds: end, name: '', prompt: '', notes: '', assetIds: [] });
+    state.shots.push({
+      id: 0,
+      startSeconds: start,
+      endSeconds: end,
+      name: '',
+      prompt: '',
+      notes: '',
+      assetIds: [],
+      assetRoles: {},
+      direction: defaultDirection(),
+    });
     renumber();
     emit('shots-changed', { reason: 'create' });
     return true;
@@ -203,7 +244,106 @@
     emit('shots-changed', { reason: 'name' });
   }
 
+  // Used by the H3 compiler's explicit "Compile prompt" action (see
+  // h3Compiler.js) to write its result into the same prompt field the user
+  // can otherwise type into directly - emits 'shots-changed' so the Shot
+  // tab's own re-render (which already guards against clobbering an
+  // in-progress edit via document.activeElement) picks up the new text.
+  function setShotPrompt(shotId, prompt) {
+    const shot = state.shots.find((s) => s.id === shotId);
+    if (!shot) return;
+    shot.prompt = prompt;
+    emit('shots-changed', { reason: 'prompt' });
+  }
+
+  function findShot(shotId) {
+    return state.shots.find((s) => s.id === shotId) || null;
+  }
+
+  // A role is optional - an asset can stay assigned to a shot without being a
+  // "Subject" in the compiled H3 prompt (e.g. a mood reference). Passing a
+  // falsy role clears it rather than storing an empty-string role.
+  function setAssetRole(shotId, assetId, role) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    if (!shot.assetRoles) shot.assetRoles = {};
+    if (role) shot.assetRoles[assetId] = role;
+    else delete shot.assetRoles[assetId];
+    emit('shots-changed', { reason: 'asset-role' });
+  }
+
+  function ensureDirection(shot) {
+    if (!shot.direction) shot.direction = defaultDirection();
+    if (!shot.direction.camera) shot.direction.camera = [];
+    if (!shot.direction.subjects) shot.direction.subjects = {};
+    return shot.direction;
+  }
+
+  function sortSegments(list) {
+    list.sort((a, b) => a.startSeconds - b.startSeconds);
+  }
+
+  function addCameraSegment(shotId, segment) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    const direction = ensureDirection(shot);
+    direction.camera.push({
+      startSeconds: 0,
+      endSeconds: 0,
+      movement: CAMERA_MOVEMENTS[0],
+      framing: '',
+      speed: '',
+      ...segment,
+    });
+    sortSegments(direction.camera);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function updateCameraSegment(shotId, index, patch) {
+    const shot = findShot(shotId);
+    if (!shot || !shot.direction || !shot.direction.camera[index]) return;
+    Object.assign(shot.direction.camera[index], patch);
+    sortSegments(shot.direction.camera);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function removeCameraSegment(shotId, index) {
+    const shot = findShot(shotId);
+    if (!shot || !shot.direction || !shot.direction.camera[index]) return;
+    shot.direction.camera.splice(index, 1);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function addSubjectSegment(shotId, assetId, segment) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    const direction = ensureDirection(shot);
+    if (!direction.subjects[assetId]) direction.subjects[assetId] = [];
+    direction.subjects[assetId].push({ startSeconds: 0, endSeconds: 0, action: '', ...segment });
+    sortSegments(direction.subjects[assetId]);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function updateSubjectSegment(shotId, assetId, index, patch) {
+    const shot = findShot(shotId);
+    const track = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!track || !track[index]) return;
+    Object.assign(track[index], patch);
+    sortSegments(track);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function removeSubjectSegment(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const track = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!track || !track[index]) return;
+    track.splice(index, 1);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
   MSE.shots = {
+    ASSET_ROLES,
+    CAMERA_MOVEMENTS,
     shotDuration,
     shotStatus,
     snapSeconds,
@@ -216,5 +356,13 @@
     moveShot,
     notifyBoundaryMoved,
     setShotName,
+    setShotPrompt,
+    setAssetRole,
+    addCameraSegment,
+    updateCameraSegment,
+    removeCameraSegment,
+    addSubjectSegment,
+    updateSubjectSegment,
+    removeSubjectSegment,
   };
 })(window.MSE = window.MSE || {});

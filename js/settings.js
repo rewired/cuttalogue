@@ -17,6 +17,7 @@
     el.apiKey = document.getElementById('settings-api-key');
     el.keyStatus = document.getElementById('settings-key-status');
     el.defaultModel = document.getElementById('settings-default-model');
+    el.modelList = document.getElementById('settings-model-list');
     el.testBtn = document.getElementById('settings-test-btn');
     el.testResult = document.getElementById('settings-test-result');
     el.saveBtn = document.getElementById('settings-save-btn');
@@ -75,6 +76,14 @@
       el.testResult.style.color = '';
       try {
         const result = await MSE.api.testSettings(currentFormValues());
+        if (Array.isArray(result.models)) {
+          el.modelList.innerHTML = '';
+          result.models.forEach((id) => {
+            const option = document.createElement('option');
+            option.value = id;
+            el.modelList.appendChild(option);
+          });
+        }
         el.testResult.textContent = result.message || (result.ok ? 'OK' : 'Failed');
         el.testResult.style.color = result.ok ? '#4caf50' : '#f44336';
       } catch (err) {

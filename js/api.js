@@ -135,11 +135,11 @@
     return res.json(); // { ok, message }
   }
 
-  async function describeAsset(projectId, assetId, model) {
+  async function describeAsset(projectId, assetId) {
     const res = await fetch(`/api/projects/${projectId}/assets/${assetId}/describe`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: model || undefined }),
+      body: JSON.stringify({}),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
