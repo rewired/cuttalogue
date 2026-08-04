@@ -614,7 +614,11 @@
     // that a project can be loaded from the backend before any mix is picked
     // (renderShots() no-ops with no regionsPlugin yet) - draw them now that
     // one exists, instead of waiting for the next unrelated shots-changed.
-    renderShots();
+    // Deferred one frame: the shots track container has width 0 until the
+    // browser's next layout pass, and the Regions plugin sizes each region
+    // from the container's current pixel width at the moment it's added -
+    // add them synchronously here and every region freezes at 0 width.
+    requestAnimationFrame(() => renderShots());
 
     emit('timeline-ready');
   }

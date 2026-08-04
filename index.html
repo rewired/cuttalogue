@@ -145,11 +145,23 @@
         <label class="shot-detail-field">Notes
           <textarea id="shot-detail-notes" rows="4" placeholder="Notes..."></textarea>
         </label>
+        <div class="shot-detail-field">
+          <span>Assigned assets</span>
+          <div id="shot-detail-assets" class="assigned-assets"></div>
+        </div>
       </div>
     </div>
 
     <div class="tab-content" id="tab-assets" hidden>
-      <p class="placeholder-hint">No assets yet</p>
+      <div class="asset-toolbar">
+        <label class="file-button">Add files
+          <input type="file" id="asset-file-input" multiple accept="image/*,video/*,audio/*">
+        </label>
+        <input type="text" id="asset-tag-filter" placeholder="Filter by tag...">
+      </div>
+      <p class="placeholder-hint" id="asset-status"></p>
+      <p class="placeholder-hint" id="asset-empty">No assets yet</p>
+      <div class="asset-grid" id="asset-grid"></div>
     </div>
   </div>
 </section>
@@ -175,6 +187,7 @@
 <script src="js/frameMath.js"></script>
 <script src="js/state.js"></script>
 <script src="js/shots.js"></script>
+<script src="js/assets.js"></script>
 <script src="js/silence.js"></script>
 <script src="js/waveformSync.js"></script>
 <script src="js/api.js"></script>

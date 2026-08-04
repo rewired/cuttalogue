@@ -73,8 +73,15 @@
     );
     if (index === -1) return false;
     const shot = state.shots[index];
-    const left = { id: 0, startSeconds: shot.startSeconds, endSeconds: snapped, prompt: shot.prompt || '', notes: shot.notes || '' };
-    const right = { id: 0, startSeconds: snapped, endSeconds: shot.endSeconds, prompt: '', notes: '' };
+    const left = {
+      id: 0,
+      startSeconds: shot.startSeconds,
+      endSeconds: snapped,
+      prompt: shot.prompt || '',
+      notes: shot.notes || '',
+      assetIds: (shot.assetIds || []).slice(),
+    };
+    const right = { id: 0, startSeconds: snapped, endSeconds: shot.endSeconds, prompt: '', notes: '', assetIds: [] };
     state.shots.splice(index, 1, left, right);
     renumber();
     emit('shots-changed', { reason: 'split' });
@@ -92,7 +99,7 @@
     const start = Math.max(gap.start, lo);
     const end = Math.min(gap.end, hi);
     if (end - start < MIN_GAP_SECONDS) return false;
-    state.shots.push({ id: 0, startSeconds: start, endSeconds: end, prompt: '', notes: '' });
+    state.shots.push({ id: 0, startSeconds: start, endSeconds: end, prompt: '', notes: '', assetIds: [] });
     renumber();
     emit('shots-changed', { reason: 'create' });
     return true;

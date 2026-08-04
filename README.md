@@ -91,6 +91,17 @@ Each shot's row in the table below shows: start, end, duration, status (too shor
 
 ---
 
+## Assets
+
+The **Assets** tab (next to **Shot**, in the panel right of the shot list) holds the project's asset pool:
+
+- **"Add files"** imports images, videos, or audio - each gets copied into the project folder, probed with FFprobe (duration, dimensions, fps, codec, sample rate, channels), and given a thumbnail (images/video only).
+- Tag each asset with a comma-separated list; the filter box above the grid matches on tags.
+- Select a shot first, then use each card's **Assign / Remove** button to attach or detach it from that shot (click-based - no drag-and-drop). Assigned assets also show up as removable chips in the **Shot** tab.
+- Tags and assignments live in the same project state as prompt/notes, so they only become durable once you hit **"Save project"**; imported files themselves land on disk immediately.
+
+---
+
 ## Backend
 
 A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" save/load with a real project folder on disk:
@@ -98,8 +109,11 @@ A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" s
 - `POST /api/projects` creates a new project folder + `project.json`.
 - `GET /api/projects/{id}` / `PUT /api/projects/{id}` read/write it.
 - `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape later phases (FFmpeg export, AI description) will reuse.
+- `POST /api/projects/{id}/assets` imports one or more files into that project's `assets/` folder and returns their metadata/thumbnail descriptors (no project.json write - that's still "Save project").
 
-Projects are stored under `backend/data/projects/<id>/project.json` (gitignored). The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
+Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json` plus an `assets/<assetId>/` folder per imported file. Asset previews are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
+
+Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata and thumbnails.
 
 ---
 

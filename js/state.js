@@ -41,7 +41,8 @@
         minimumSeconds: 8,
         maximumSeconds: 12,
       },
-      shots: [], // { id, startSeconds, endSeconds, prompt, notes }
+      shots: [], // { id, startSeconds, endSeconds, prompt, notes, assetIds }
+      assets: [], // { id, type, fileName, relativePath, thumbnailPath, tags, metadata }
     };
   }
 

@@ -19,6 +19,14 @@
     return res.json();
   }
 
+  async function uploadAssets(id, fileList) {
+    const form = new FormData();
+    Array.from(fileList).forEach((file) => form.append('files', file));
+    const res = await fetch(`/api/projects/${id}/assets`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`asset import failed: ${res.status}`);
+    return res.json(); // { assets: [...] }
+  }
+
   async function putProject(id, data) {
     const res = await fetch(`/api/projects/${id}`, {
       method: 'PUT',
@@ -50,5 +58,5 @@
     });
   }
 
-  MSE.api = { createProject, getProject, putProject, waitForJob };
+  MSE.api = { createProject, getProject, putProject, uploadAssets, waitForJob };
 })(window.MSE = window.MSE || {});

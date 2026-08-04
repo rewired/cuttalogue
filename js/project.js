@@ -41,19 +41,23 @@
         endSeconds: s.endSeconds,
         prompt: s.prompt || '',
         notes: s.notes || '',
+        assetIds: s.assetIds || [],
       })),
+      assets: state.assets,
     };
   }
 
   function applyLoadedProject(parsed) {
-    // Older/foreign project data predates the prompt/notes fields - default
-    // them in rather than leaving shots with undefined values.
-    parsed.shots = (parsed.shots || []).map((s) => ({ prompt: '', notes: '', ...s }));
+    // Older/foreign project data predates the prompt/notes/assetIds/assets
+    // fields - default them in rather than leaving things undefined.
+    parsed.shots = (parsed.shots || []).map((s) => ({ prompt: '', notes: '', assetIds: [], ...s }));
+    parsed.assets = (parsed.assets || []).map((a) => ({ tags: [], ...a }));
     resetState(parsed);
     emit('tempo-changed');
     emit('video-changed');
     emit('limits-changed');
     emit('shots-changed');
+    emit('assets-changed', { reason: 'load' });
   }
 
   // Loads the project last saved to the backend (by id, kept in localStorage
@@ -85,6 +89,10 @@
     if (!id) throw new Error('no project id - backend was unavailable at startup');
     const { jobId } = await api.putProject(id, serializeProject());
     await api.waitForJob(jobId);
+  }
+
+  function getProjectId() {
+    return localStorage.getItem(PROJECT_ID_STORAGE_KEY);
   }
 
   function buildShotExportList() {
@@ -130,5 +138,5 @@
     triggerDownload('shots.csv', rows.join('\n'), 'text/csv');
   }
 
-  MSE.project = { initBackendProject, saveProjectToBackend, exportShotsJson, exportShotsCsv };
+  MSE.project = { initBackendProject, saveProjectToBackend, getProjectId, exportShotsJson, exportShotsCsv };
 })(window.MSE = window.MSE || {});
