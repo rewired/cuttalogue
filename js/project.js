@@ -31,6 +31,7 @@
   function serializeProject() {
     return {
       version: state.version,
+      name: state.name || '',
       audio: state.audio,
       tempo: state.tempo,
       video: state.video,
@@ -49,8 +50,9 @@
   }
 
   function applyLoadedProject(parsed) {
-    // Older/foreign project data predates the prompt/notes/assetIds/assets/
-    // export fields - default them in rather than leaving things undefined.
+    // Older/foreign project data predates the name/prompt/notes/assetIds/
+    // assets/export fields - default them in rather than leaving things undefined.
+    parsed.name = parsed.name || '';
     parsed.shots = (parsed.shots || []).map((s) => ({ prompt: '', notes: '', assetIds: [], ...s }));
     parsed.assets = (parsed.assets || []).map((a) => ({ tags: [], ...a }));
     parsed.export = { includeMixSnippet: false, ...(parsed.export || {}) };
@@ -97,6 +99,28 @@
     return localStorage.getItem(PROJECT_ID_STORAGE_KEY);
   }
 
+  // Creates a brand-new, blank project on the backend and switches to it.
+  // Does not touch any audio currently loaded in the browser - like project
+  // load, the mix/vocal still need to be reselected for the new project.
+  async function createNewProject() {
+    const fresh = MSE.state.createDefaultState();
+    const created = await api.createProject(fresh);
+    localStorage.setItem(PROJECT_ID_STORAGE_KEY, created.id);
+    applyLoadedProject(created.project);
+    return created.id;
+  }
+
+  async function openProject(id) {
+    const project = await api.getProject(id);
+    localStorage.setItem(PROJECT_ID_STORAGE_KEY, id);
+    applyLoadedProject(project);
+  }
+
+  async function listProjects() {
+    const { projects } = await api.listProjects();
+    return projects;
+  }
+
   function buildShotExportList() {
     return state.shots.map((shot) => {
       const duration = shotsApi.shotDuration(shot);
@@ -140,5 +164,14 @@
     triggerDownload('shots.csv', rows.join('\n'), 'text/csv');
   }
 
-  MSE.project = { initBackendProject, saveProjectToBackend, getProjectId, exportShotsJson, exportShotsCsv };
+  MSE.project = {
+    initBackendProject,
+    saveProjectToBackend,
+    getProjectId,
+    createNewProject,
+    openProject,
+    listProjects,
+    exportShotsJson,
+    exportShotsCsv,
+  };
 })(window.MSE = window.MSE || {});

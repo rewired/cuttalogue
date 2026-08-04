@@ -9,7 +9,20 @@
 <body>
 
 <header class="app-header">
-  <h1>Musical Shot Editor</h1>
+  <div class="header-left">
+    <h1>Musical Shot Editor</h1>
+    <input type="text" id="project-name-input" class="project-name-input" placeholder="Untitled project">
+    <div class="project-picker">
+      <button type="button" id="projects-btn">Projects &#9662;</button>
+      <div id="projects-menu" class="projects-menu" hidden>
+        <button type="button" id="new-project-btn">+ New project</button>
+        <div class="projects-menu-divider"></div>
+        <div id="projects-list" class="projects-list">
+          <p class="placeholder-hint" id="projects-list-empty">No projects yet.</p>
+        </div>
+      </div>
+    </div>
+  </div>
   <div class="file-controls">
     <label class="file-button">Load mix
       <input type="file" id="mix-file" accept="audio/*">
@@ -216,6 +229,7 @@
 <script src="js/waveformSync.js"></script>
 <script src="js/api.js"></script>
 <script src="js/project.js"></script>
+<script src="js/projectPicker.js"></script>
 <script src="js/contextPanel.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>

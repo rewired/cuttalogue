@@ -19,6 +19,12 @@
     return res.json();
   }
 
+  async function listProjects() {
+    const res = await fetch('/api/projects');
+    if (!res.ok) throw new Error(`list projects failed: ${res.status}`);
+    return res.json(); // { projects: [{ id, name, shotCount, updatedAt }] }
+  }
+
   async function uploadAssets(id, fileList) {
     const form = new FormData();
     Array.from(fileList).forEach((file) => form.append('files', file));
@@ -106,6 +112,7 @@
   MSE.api = {
     createProject,
     getProject,
+    listProjects,
     putProject,
     uploadAssets,
     uploadAudioTrack,

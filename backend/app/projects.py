@@ -34,6 +34,33 @@ async def create_project(payload: dict):
     return {"id": project_id, "project": payload}
 
 
+@router.get("/api/projects")
+async def list_projects():
+    if not DATA_DIR.exists():
+        return {"projects": []}
+    results = []
+    for entry in DATA_DIR.iterdir():
+        if not entry.is_dir():
+            continue
+        file = entry / "project.json"
+        if not file.exists():
+            continue
+        try:
+            data = json.loads(file.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        results.append(
+            {
+                "id": entry.name,
+                "name": data.get("name") or "",
+                "shotCount": len(data.get("shots") or []),
+                "updatedAt": file.stat().st_mtime,
+            }
+        )
+    results.sort(key=lambda p: p["updatedAt"], reverse=True)
+    return {"projects": results}
+
+
 @router.get("/api/projects/{project_id}")
 async def read_project(project_id: str):
     file = project_file(project_id)

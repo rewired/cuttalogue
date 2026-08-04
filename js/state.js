@@ -20,6 +20,7 @@
   function createDefaultState() {
     return {
       version: 1,
+      name: '',
       audio: {
         mix: { fileName: null, durationSeconds: 0, relativePath: null },
         vocal: { fileName: null, durationSeconds: 0, relativePath: null },

@@ -4,7 +4,9 @@
 # building blocks in a per-shot batch loop with folders/manifests/assets.
 import asyncio
 import json
+import logging
 import shutil
+import traceback
 from pathlib import Path
 
 from fastapi import APIRouter, Body, HTTPException
@@ -12,6 +14,8 @@ from fastapi.responses import JSONResponse
 
 from . import frames, jobs, media
 from .projects import project_dir
+
+logger = logging.getLogger("cuttalogue.export")
 
 router = APIRouter()
 
@@ -46,6 +50,13 @@ def _snippet_cmd(source_path: Path, start_seconds: float, duration_seconds: floa
         "flac",
         str(output_path),
     ]
+
+
+def _error_message(exc: Exception) -> str:
+    # str(exc) is empty for some exceptions (bare AssertionError, etc.) - repr()
+    # always includes the exception type, so the client never sees a blank
+    # "job failed" with no clue what happened.
+    return str(exc) or repr(exc)
 
 
 def _require_track(data: dict, directory: Path, track: str) -> Path:
@@ -110,8 +121,9 @@ async def export_lip_sync(project_id: str, shot_id: int):
                 {"status": "done", "phase": "complete", "message": "Saved", "progressFraction": 1.0, "result": job.result},
             )
         except Exception as exc:  # noqa: BLE001 - reported to the client as a job error, not raised
-            job.error = str(exc)
-            await jobs.emit(job, {"status": "error", "message": str(exc)})
+            logger.error("lip-sync export failed for shot %s: %s", shot_id, traceback.format_exc())
+            job.error = _error_message(exc)
+            await jobs.emit(job, {"status": "error", "message": job.error})
         finally:
             await jobs.close(job)
 
@@ -285,10 +297,11 @@ async def export_project(project_id: str, options: dict = Body(default={})):
                 shutil.rmtree(current_shot_dir, ignore_errors=True)
             await jobs.emit(job, {"status": "cancelled", "message": "Cancelled"})
         except Exception as exc:  # noqa: BLE001 - reported to the client as a job error, not raised
+            logger.error("project export failed: %s", traceback.format_exc())
             if current_shot_dir is not None and current_shot_dir.exists():
                 shutil.rmtree(current_shot_dir, ignore_errors=True)
-            job.error = str(exc)
-            await jobs.emit(job, {"status": "error", "message": str(exc)})
+            job.error = _error_message(exc)
+            await jobs.emit(job, {"status": "error", "message": job.error})
         finally:
             await jobs.close(job)
 

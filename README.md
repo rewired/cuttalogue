@@ -83,10 +83,11 @@ Each shot's row in the table below shows: start, end, duration, status (too shor
 
 ---
 
-## Saving & exporting a project
+## Saving, naming & switching projects
 
+- The text field in the header is the project's **name** - type into it and hit **"Save project"** to persist it (same as tempo/shots, not saved until you click Save).
 - **"Save project"**: writes tempo, video and shot settings plus all shot boundaries to the project folder on disk via the backend. The audio files themselves are **not** saved - when reloading the project, the mix and vocal may need to be reselected.
-- Loading happens automatically: the browser remembers which project it last opened and reloads it from the backend on the next page visit.
+- **"Projects ▾"** opens a list of every project on the backend (name, shot count, last saved) - click one to switch to it, or **"+ New project"** to start a blank one. The browser remembers whichever project it last opened and reloads it automatically on the next page visit.
 - **"Export shots (JSON / CSV)"**: exports just the shot list with calculated frame counts, e.g. for further use in H3 or an editing tool. Still a plain client-side download, unrelated to the project save above.
 
 ---
@@ -115,7 +116,7 @@ Both need a vocal track already loaded (see above), and the mix track too if "In
 
 A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" save/load with a real project folder on disk:
 
-- `POST /api/projects` creates a new project folder + `project.json`.
+- `POST /api/projects` creates a new project folder + `project.json`. `GET /api/projects` lists every project (id, name, shot count, last-saved time) for the **Projects** picker.
 - `GET /api/projects/{id}` / `PUT /api/projects/{id}` read/write it.
 - `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape export and AI description reuse.
 - `POST /api/projects/{id}/assets` imports one or more files into that project's `assets/` folder and returns their metadata/thumbnail descriptors (no project.json write - that's still "Save project").
@@ -123,9 +124,9 @@ A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" s
 - `POST /api/projects/{id}/export` runs the whole-project export as a job with aggregate SSE progress; `POST /api/jobs/{jobId}/cancel` requests cancellation, checked between shots and mid-`ffmpeg`-encode.
 - `POST /api/projects/{id}/shots/{shotId}/export/lip-sync` runs `ffmpeg -progress pipe:1` as a real job (live SSE progress, not just start/done) and writes `exports/scratch/shot-<id>-lip_sync.flac`. The render duration is computed server-side (a Python port of the frontend's H3 frame math), not trusted from the client.
 
-Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
+Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage` and switches it via the **Projects** picker in the header.
 
-Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export.
+Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export. On Windows, the app pins the asyncio event loop to `WindowsProactorEventLoopPolicy` at startup - the default `Selector` loop that some `uvicorn --reload` setups end up on doesn't support subprocesses at all, which broke `ffmpeg`-based export (though not FFprobe/thumbnails, which run synchronously). **If you're upgrading an already-running server, fully stop and restart it (not just let `--reload` pick up the change) - the policy has to be set before the event loop is created.**
 
 ---
 
