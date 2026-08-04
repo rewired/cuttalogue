@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Musical Shot Editor</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>Musical Shot Editor</h1>
+  <div class="file-controls">
+    <label class="file-button">Load mix
+      <input type="file" id="mix-file" accept="audio/*">
+    </label>
+    <span class="filename" id="mix-filename">no mix loaded</span>
+    <label class="file-button">Load vocal
+      <input type="file" id="vocal-file" accept="audio/*">
+    </label>
+    <span class="filename" id="vocal-filename">no vocal loaded</span>
+  </div>
+</header>
+
+<section class="transport">
+  <div class="playback-track-toggle">
+    <label><input type="radio" name="playback-track" value="mix" id="track-mix-radio" checked> A: Mix</label>
+    <label><input type="radio" name="playback-track" value="vocal" id="track-vocal-radio"> B: Vocal</label>
+  </div>
+  <button id="play-pause-btn" disabled>&#9654; Play</button>
+  <div class="readout" id="current-time-readout">00:00.000</div>
+  <div class="zoom-control">
+    <label for="zoom-slider">Zoom</label>
+    <input type="range" id="zoom-slider" min="20" max="500" value="80">
+  </div>
+</section>
+
+<section class="settings-panel">
+  <fieldset>
+    <legend>Tempo</legend>
+    <label>BPM <input type="number" id="bpm-input" min="20" max="400" step="0.01" value="120"></label>
+    <label>Time signature
+      <input type="number" id="time-sig-num" min="1" max="32" value="4" class="small"> /
+      <input type="number" id="time-sig-den" min="1" max="32" value="4" class="small">
+    </label>
+    <label>Grid offset (s) <input type="number" id="grid-offset-input" step="0.001" value="0"></label>
+    <button type="button" id="set-offset-to-playhead-btn">Offset = Playhead</button>
+    <label>Grid
+      <select id="grid-division-select">
+        <option value="off">Off</option>
+        <option value="beat">1 beat</option>
+        <option value="half-bar">1/2 bar</option>
+        <option value="bar" selected>1 bar</option>
+        <option value="two-bar">2 bars</option>
+        <option value="second">1 second</option>
+        <option value="frame">1 frame</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Video</legend>
+    <label>FPS <input type="number" id="fps-input" min="1" max="240" step="0.001" value="25"></label>
+    <label>Frame rule
+      <select id="frame-rule-select">
+        <option value="free">free</option>
+        <option value="4">4n+1</option>
+        <option value="8" selected>8n+1</option>
+      </select>
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Shot length</legend>
+    <label>Minimum (s) <input type="number" id="min-length-input" min="0" step="0.1" value="8"></label>
+    <label>Maximum (s) <input type="number" id="max-length-input" min="0" step="0.1" value="12"></label>
+  </fieldset>
+</section>
+
+<section class="timeline-area">
+  <p class="placeholder-hint" id="timeline-placeholder">Load a mix file to start the timeline.</p>
+
+  <div class="track-row">
+    <div class="track-label">Grid</div>
+    <div class="track-content" id="track-grid"></div>
+  </div>
+  <div class="track-row">
+    <div class="track-label">Shots</div>
+    <div class="track-content" id="track-shots"></div>
+  </div>
+  <div class="track-row">
+    <div class="track-label">Mix</div>
+    <div class="track-content" id="track-mix"></div>
+  </div>
+  <div class="track-row">
+    <div class="track-label">Vocal</div>
+    <div class="track-content vocal-wrapper">
+      <div id="track-vocal"></div>
+      <div class="silence-overlay" id="silence-layer"></div>
+    </div>
+  </div>
+</section>
+
+<section class="shot-panel">
+  <h2>Shots</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Start</th><th>End</th><th>Duration</th><th>Status</th>
+        <th>Cut frames</th><th>H3 render frames</th><th>Overhang</th>
+      </tr>
+    </thead>
+    <tbody id="shot-list"></tbody>
+  </table>
+  <p class="hint">
+    Click inside a shot to split it &middot; drag on empty space to create a new shot
+    (hold Alt = no grid snap) &middot; double-click a shared boundary to merge
+    &middot; right-click a shot to delete it.
+  </p>
+</section>
+
+<div id="shot-context-menu" class="context-menu">
+  <button type="button" id="shot-context-delete">Delete shot</button>
+</div>
+
+<footer class="project-actions">
+  <button id="save-project-btn">Save project (JSON)</button>
+  <label class="file-button">Load project (JSON)
+    <input type="file" id="load-project-file" accept="application/json">
+  </label>
+  <button id="export-json-btn">Export shots (JSON)</button>
+  <button id="export-csv-btn">Export shots (CSV)</button>
+</footer>
+
+<script src="vendor/wavesurfer/wavesurfer.min.js"></script>
+<script src="vendor/wavesurfer/timeline.min.js"></script>
+<script src="vendor/wavesurfer/regions.min.js"></script>
+<script src="vendor/wavesurfer/hover.min.js"></script>
+
+<script src="js/format.js"></script>
+<script src="js/musicalGrid.js"></script>
+<script src="js/frameMath.js"></script>
+<script src="js/state.js"></script>
+<script src="js/shots.js"></script>
+<script src="js/silence.js"></script>
+<script src="js/waveformSync.js"></script>
+<script src="js/project.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
