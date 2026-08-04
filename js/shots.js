@@ -73,8 +73,8 @@
     );
     if (index === -1) return false;
     const shot = state.shots[index];
-    const left = { id: 0, startSeconds: shot.startSeconds, endSeconds: snapped };
-    const right = { id: 0, startSeconds: snapped, endSeconds: shot.endSeconds };
+    const left = { id: 0, startSeconds: shot.startSeconds, endSeconds: snapped, prompt: shot.prompt || '', notes: shot.notes || '' };
+    const right = { id: 0, startSeconds: snapped, endSeconds: shot.endSeconds, prompt: '', notes: '' };
     state.shots.splice(index, 1, left, right);
     renumber();
     emit('shots-changed', { reason: 'split' });
@@ -92,7 +92,7 @@
     const start = Math.max(gap.start, lo);
     const end = Math.min(gap.end, hi);
     if (end - start < MIN_GAP_SECONDS) return false;
-    state.shots.push({ id: 0, startSeconds: start, endSeconds: end });
+    state.shots.push({ id: 0, startSeconds: start, endSeconds: end, prompt: '', notes: '' });
     renumber();
     emit('shots-changed', { reason: 'create' });
     return true;

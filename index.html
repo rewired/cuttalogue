@@ -101,22 +101,57 @@
   </div>
 </section>
 
-<section class="shot-panel">
-  <h2>Shots</h2>
-  <table>
-    <thead>
-      <tr>
-        <th>#</th><th>Start</th><th>End</th><th>Duration</th><th>Status</th>
-        <th>Cut frames</th><th>H3 render frames</th><th>Overhang</th>
-      </tr>
-    </thead>
-    <tbody id="shot-list"></tbody>
-  </table>
-  <p class="hint">
-    Click inside a shot to split it &middot; drag on empty space to create a new shot
-    (hold Alt = no grid snap) &middot; double-click a shared boundary to merge
-    &middot; right-click a shot to delete it.
-  </p>
+<section class="work-area">
+  <div class="shot-list-panel">
+    <h2>Shots</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>#</th><th>Start</th><th>End</th><th>Duration</th><th>Status</th>
+          <th>Cut frames</th><th>H3 render frames</th><th>Overhang</th>
+        </tr>
+      </thead>
+      <tbody id="shot-list"></tbody>
+    </table>
+    <p class="hint">
+      Click a row to select the shot &middot; click inside a shot to split it &middot;
+      drag on empty space to create a new shot (hold Alt = no grid snap) &middot;
+      double-click a shared boundary to merge &middot; right-click a shot to delete it.
+    </p>
+  </div>
+
+  <div class="context-panel">
+    <div class="context-tabs">
+      <button type="button" id="tab-btn-shot" class="tab-btn active">Shot</button>
+      <button type="button" id="tab-btn-assets" class="tab-btn">Assets</button>
+    </div>
+
+    <div class="tab-content" id="tab-shot">
+      <p class="placeholder-hint" id="shot-detail-empty">Select a shot to see its details.</p>
+      <div id="shot-detail" class="shot-detail" style="display:none;">
+        <dl class="shot-detail-grid">
+          <dt>Shot</dt><dd id="shot-detail-id"></dd>
+          <dt>Start</dt><dd id="shot-detail-start"></dd>
+          <dt>End</dt><dd id="shot-detail-end"></dd>
+          <dt>Duration</dt><dd id="shot-detail-duration"></dd>
+          <dt>Status</dt><dd id="shot-detail-status"></dd>
+          <dt>Cut frames</dt><dd id="shot-detail-cut-frames"></dd>
+          <dt>H3 render frames</dt><dd id="shot-detail-render-frames"></dd>
+          <dt>Overhang</dt><dd id="shot-detail-overhang"></dd>
+        </dl>
+        <label class="shot-detail-field">Prompt
+          <textarea id="shot-detail-prompt" rows="4" placeholder="Prompt for this shot..."></textarea>
+        </label>
+        <label class="shot-detail-field">Notes
+          <textarea id="shot-detail-notes" rows="4" placeholder="Notes..."></textarea>
+        </label>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-assets" hidden>
+      <p class="placeholder-hint">No assets yet</p>
+    </div>
+  </div>
 </section>
 
 <div id="shot-context-menu" class="context-menu">
@@ -124,10 +159,8 @@
 </div>
 
 <footer class="project-actions">
-  <button id="save-project-btn">Save project (JSON)</button>
-  <label class="file-button">Load project (JSON)
-    <input type="file" id="load-project-file" accept="application/json">
-  </label>
+  <button id="save-project-btn">Save project</button>
+  <span class="filename" id="project-status"></span>
   <button id="export-json-btn">Export shots (JSON)</button>
   <button id="export-csv-btn">Export shots (CSV)</button>
 </footer>
@@ -144,7 +177,9 @@
 <script src="js/shots.js"></script>
 <script src="js/silence.js"></script>
 <script src="js/waveformSync.js"></script>
+<script src="js/api.js"></script>
 <script src="js/project.js"></script>
+<script src="js/contextPanel.js"></script>
 <script src="js/main.js"></script>
 </body>
 </html>

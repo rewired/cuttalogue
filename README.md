@@ -1,22 +1,33 @@
 # Musical Shot Editor
 
-A lean, local browser editor for planning video shots against a song: listen to the mix and vocal stem in sync, lock shot boundaries to the musical grid, and see the matching H3 render length (`4n+1` / `8n+1`) right away.
+A lean, local editor for planning video shots against a song: listen to the mix and vocal stem in sync, lock shot boundaries to the musical grid, and see the matching H3 render length (`4n+1` / `8n+1`) right away.
 
-No server, no install, no cloud - everything runs locally in the browser.
+Local first - everything runs on your machine, no cloud.
 
-For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md).
+For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md) and the [implementation roadmap](docs/cuttalogue-roadmap.md).
 
 ---
 
 ## Getting started
 
-1. Open `index.html` in your browser (Chrome, Edge, or Firefox recommended - double-clicking it works).
-2. Use **"Load mix"** to pick your music mix.
-3. Optionally use **"Load vocal"** to add the vocal stem.
+A small Python/FastAPI backend now serves the app and persists projects to disk (see [Backend](#backend) below):
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate        # Windows; use `source .venv/bin/activate` on macOS/Linux
+pip install -r requirements.txt
+uvicorn app.main:app --reload
+```
+
+Then open `http://localhost:8000` in your browser.
+
+1. Use **"Load mix"** to pick your music mix.
+2. Optionally use **"Load vocal"** to add the vocal stem.
 
 Once the mix is loaded, the timeline appears with four synchronized tracks: **Grid**, **Shots**, **Mix**, **Vocal**.
 
-> If your browser blocks loading files by double-clicking (`file://` restrictions), open the project folder through a simple local server instead, e.g. `npx serve .` and then visit `http://localhost:3000`.
+Audio files themselves aren't uploaded to the backend yet - after a page refresh, reselect the mix/vocal files as before; tempo, video, shot-limit settings, and all shots persist automatically.
 
 ---
 
@@ -74,9 +85,21 @@ Each shot's row in the table below shows: start, end, duration, status (too shor
 
 ## Saving & exporting a project
 
-- **"Save project (JSON)"**: saves tempo, video and shot settings plus all shot boundaries. The audio files themselves are **not** saved - when reloading the project, the mix and vocal may need to be reselected.
-- **"Load project (JSON)"**: restores a previously saved state.
-- **"Export shots (JSON / CSV)"**: exports just the shot list with calculated frame counts, e.g. for further use in H3 or an editing tool.
+- **"Save project"**: writes tempo, video and shot settings plus all shot boundaries to the project folder on disk via the backend. The audio files themselves are **not** saved - when reloading the project, the mix and vocal may need to be reselected.
+- Loading happens automatically: the browser remembers which project it last opened and reloads it from the backend on the next page visit.
+- **"Export shots (JSON / CSV)"**: exports just the shot list with calculated frame counts, e.g. for further use in H3 or an editing tool. Still a plain client-side download, unrelated to the project save above.
+
+---
+
+## Backend
+
+A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" save/load with a real project folder on disk:
+
+- `POST /api/projects` creates a new project folder + `project.json`.
+- `GET /api/projects/{id}` / `PUT /api/projects/{id}` read/write it.
+- `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape later phases (FFmpeg export, AI description) will reuse.
+
+Projects are stored under `backend/data/projects/<id>/project.json` (gitignored). The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
 
 ---
 

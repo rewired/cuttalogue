@@ -36,6 +36,9 @@ env/
 .ruff_cache/
 .tox/
 
+# CUTTAlogue backend project data
+backend/data/
+
 # Environment / secrets
 .env
 .env.*

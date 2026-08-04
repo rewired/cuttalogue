@@ -29,7 +29,7 @@
     maxLength: document.getElementById('max-length-input'),
 
     saveProjectBtn: document.getElementById('save-project-btn'),
-    loadProjectFile: document.getElementById('load-project-file'),
+    projectStatus: document.getElementById('project-status'),
     exportJsonBtn: document.getElementById('export-json-btn'),
     exportCsvBtn: document.getElementById('export-csv-btn'),
   };
@@ -137,15 +137,23 @@
     [el.minLength, el.maxLength].forEach((input) => input.addEventListener('change', applyLimits));
   }
 
-  function wireProjectActions() {
-    el.saveProjectBtn.addEventListener('click', () => MSE.project.saveProject());
+  function setProjectStatus(text) {
+    if (el.projectStatus) el.projectStatus.textContent = text;
+  }
 
-    el.loadProjectFile.addEventListener('change', async () => {
-      const file = el.loadProjectFile.files[0];
-      if (!file) return;
-      const text = await file.text();
-      MSE.project.loadProjectFromText(text);
-      el.loadProjectFile.value = '';
+  function wireProjectActions() {
+    el.saveProjectBtn.addEventListener('click', async () => {
+      el.saveProjectBtn.disabled = true;
+      setProjectStatus('Saving...');
+      try {
+        await MSE.project.saveProjectToBackend();
+        setProjectStatus('Saved');
+      } catch (err) {
+        console.error(err);
+        setProjectStatus('Save failed - is the backend running?');
+      } finally {
+        el.saveProjectBtn.disabled = false;
+      }
     });
 
     el.exportJsonBtn.addEventListener('click', () => MSE.project.exportShotsJson());
@@ -154,7 +162,7 @@
     on('project-loaded', syncSettingsPanelFromState);
   }
 
-  function init() {
+  async function init() {
     syncSettingsPanelFromState();
     wireFileInputs();
     wireTransport();
@@ -162,6 +170,8 @@
     wireVideoSettings();
     wireShotLimits();
     wireProjectActions();
+    await MSE.project.initBackendProject();
+    syncSettingsPanelFromState();
   }
 
   document.addEventListener('DOMContentLoaded', init);

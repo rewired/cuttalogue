@@ -1,10 +1,14 @@
-// Project save/load (JSON) and shot list export (JSON/CSV).
+// Project save/load, backed by the Phase 2 backend (project folder on disk),
+// plus shot list export (JSON/CSV), which stays a client-side download.
 (function (MSE) {
   'use strict';
 
   const { state, resetState, emit } = MSE.state;
   const { frameCalc } = MSE.frames;
   const shotsApi = MSE.shots;
+  const api = MSE.api;
+
+  const PROJECT_ID_STORAGE_KEY = 'cuttalogue.projectId';
 
   function frameRuleLabel(stride) {
     if (stride === 4) return '4n+1';
@@ -31,22 +35,56 @@
       tempo: state.tempo,
       video: state.video,
       shotLimits: state.shotLimits,
-      shots: state.shots.map((s) => ({ id: s.id, startSeconds: s.startSeconds, endSeconds: s.endSeconds })),
+      shots: state.shots.map((s) => ({
+        id: s.id,
+        startSeconds: s.startSeconds,
+        endSeconds: s.endSeconds,
+        prompt: s.prompt || '',
+        notes: s.notes || '',
+      })),
     };
   }
 
-  function saveProject() {
-    const json = JSON.stringify(serializeProject(), null, 2);
-    triggerDownload('project.json', json, 'application/json');
-  }
-
-  function loadProjectFromText(text) {
-    const parsed = JSON.parse(text);
+  function applyLoadedProject(parsed) {
+    // Older/foreign project data predates the prompt/notes fields - default
+    // them in rather than leaving shots with undefined values.
+    parsed.shots = (parsed.shots || []).map((s) => ({ prompt: '', notes: '', ...s }));
     resetState(parsed);
     emit('tempo-changed');
     emit('video-changed');
     emit('limits-changed');
     emit('shots-changed');
+  }
+
+  // Loads the project last saved to the backend (by id, kept in localStorage
+  // so a full page refresh reopens the same project), or creates a fresh one
+  // on the backend if there's no stored id yet, or the stored id no longer
+  // resolves there. If the backend itself is unreachable, falls back to the
+  // in-memory default state so the rest of the editor still works.
+  async function initBackendProject() {
+    const storedId = localStorage.getItem(PROJECT_ID_STORAGE_KEY);
+    try {
+      if (storedId) {
+        const project = await api.getProject(storedId);
+        applyLoadedProject(project);
+        return;
+      }
+    } catch (err) {
+      console.warn('Stored project not found on backend, creating a new one.', err);
+    }
+    try {
+      const created = await api.createProject(serializeProject());
+      localStorage.setItem(PROJECT_ID_STORAGE_KEY, created.id);
+    } catch (err) {
+      console.warn('Backend unavailable - project will not persist across reloads.', err);
+    }
+  }
+
+  async function saveProjectToBackend() {
+    const id = localStorage.getItem(PROJECT_ID_STORAGE_KEY);
+    if (!id) throw new Error('no project id - backend was unavailable at startup');
+    const { jobId } = await api.putProject(id, serializeProject());
+    await api.waitForJob(jobId);
   }
 
   function buildShotExportList() {
@@ -92,5 +130,5 @@
     triggerDownload('shots.csv', rows.join('\n'), 'text/csv');
   }
 
-  MSE.project = { saveProject, loadProjectFromText, exportShotsJson, exportShotsCsv };
+  MSE.project = { initBackendProject, saveProjectToBackend, exportShotsJson, exportShotsCsv };
 })(window.MSE = window.MSE || {});

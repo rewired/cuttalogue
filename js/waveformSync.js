@@ -388,11 +388,12 @@
     const list = document.getElementById('shot-list');
     if (!list) return;
     list.innerHTML = '';
+    const selectedId = MSE.context ? MSE.context.getSelectedShotId() : null;
     state.shots.forEach((shot) => {
       const status = shotsApi.shotStatus(shot);
       const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
       const row = document.createElement('tr');
-      row.className = `status-${status}`;
+      row.className = `status-${status}${shot.id === selectedId ? ' selected' : ''}`;
       row.innerHTML = `
         <td>${shot.id}</td>
         <td>${formatTime(shot.startSeconds)}</td>
@@ -403,7 +404,10 @@
         <td>${calc.renderFrames}</td>
         <td>${calc.overhangFrames} f / ${calc.overhangSeconds.toFixed(3)} s</td>
       `;
-      row.addEventListener('click', () => scrollToShot(shot));
+      row.addEventListener('click', () => {
+        scrollToShot(shot);
+        if (MSE.context) MSE.context.selectShot(shot.id);
+      });
       list.appendChild(row);
     });
   }
@@ -605,6 +609,12 @@
       wireScrollSync(ws);
       wireTimeSync(ws);
     });
+
+    // Shots may already be in state by the time the timeline is created now
+    // that a project can be loaded from the backend before any mix is picked
+    // (renderShots() no-ops with no regionsPlugin yet) - draw them now that
+    // one exists, instead of waiting for the next unrelated shots-changed.
+    renderShots();
 
     emit('timeline-ready');
   }
