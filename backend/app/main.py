@@ -1,8 +1,6 @@
 # Serves the existing static frontend (index.html/js/css/vendor) from the
 # same process as the API, per the roadmap's "decide once" note for Phase 2 -
 # one process, one command, no CORS to configure.
-import asyncio
-import sys
 from pathlib import Path
 
 from fastapi import FastAPI
@@ -15,14 +13,6 @@ from .export import router as export_router
 from .jobs import router as jobs_router
 from .projects import DATA_DIR
 from .projects import router as projects_router
-
-# asyncio.create_subprocess_exec (media.py's ffmpeg calls) raises
-# NotImplementedError on Windows unless the loop is Proactor - some
-# environments (observed with uvicorn --reload) otherwise end up on
-# Selector, which supports everything else here except subprocesses. Set
-# explicitly rather than relying on whatever the process happened to pick.
-if sys.platform == "win32":
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

@@ -4,9 +4,14 @@
 # a single ffprobe/ffmpeg call is over before a progress bar would matter.
 #
 # run_ffmpeg_with_progress, below, is the one genuinely long-running ffmpeg
-# call (export encoding) - it runs as a real asyncio subprocess so its
-# -progress pipe:1 output can be parsed and forwarded as job progress while
-# it's still running, rather than shelling out and blocking.
+# call (export encoding). It deliberately uses the same synchronous
+# subprocess.Popen-in-a-thread approach as the rest of this file rather than
+# asyncio.create_subprocess_exec: the latter requires the Proactor event loop
+# on Windows and raises NotImplementedError on Selector - and in testing,
+# some uvicorn --reload worker processes ended up on Selector regardless of
+# an explicit WindowsProactorEventLoopPolicy set at startup. Plain
+# subprocess.Popen has no such dependency, matching why FFprobe/thumbnails
+# above were never affected by this in the first place.
 import asyncio
 import json
 import subprocess
@@ -109,6 +114,52 @@ class FFmpegCancelled(Exception):
     pass
 
 
+def _run_ffmpeg_sync(
+    full_cmd: list[str],
+    expected_duration_seconds: float,
+    report_progress: Callable[[float], None],
+    should_cancel: Callable[[], bool] | None,
+) -> tuple[bool, int, bytes]:
+    proc = subprocess.Popen(full_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    assert proc.stdout is not None
+    cancelled = False
+    try:
+        for raw_line in proc.stdout:
+            if should_cancel and should_cancel():
+                cancelled = True
+                proc.terminate()
+                break
+            line = raw_line.decode(errors="ignore").strip()
+            if line.startswith("out_time_ms="):
+                try:
+                    out_time_ms = int(line.split("=", 1)[1])
+                except ValueError:
+                    continue
+                if expected_duration_seconds > 0:
+                    fraction = (out_time_ms / 1_000_000) / expected_duration_seconds
+                    report_progress(min(1.0, max(0.0, fraction)))
+            elif line == "progress=end":
+                break
+    finally:
+        proc.stdout.close()
+
+    proc.wait()
+
+    # A forcefully terminated process's stderr pipe has been observed, on
+    # Windows, to not signal EOF for a long time (roughly the remainder of
+    # what would have been the full run) even though proc.wait() above
+    # already confirms the process is gone - reading it here would stall a
+    # cancellation for no reason, since stderr's only consumer is the error
+    # message below, which a cancellation never needs.
+    if cancelled:
+        proc.stderr.close()
+        return True, proc.returncode, b""
+
+    stderr_bytes = proc.stderr.read()
+    proc.stderr.close()
+    return False, proc.returncode, stderr_bytes
+
+
 async def run_ffmpeg_with_progress(
     cmd: list[str],
     expected_duration_seconds: float,
@@ -122,58 +173,20 @@ async def run_ffmpeg_with_progress(
     # between lines so a cancelled batch export can kill an in-flight encode
     # instead of waiting for it to finish first.
     full_cmd = [*cmd, "-progress", "pipe:1", "-nostats"]
-    proc = await asyncio.create_subprocess_exec(
-        *full_cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+    loop = asyncio.get_running_loop()
+
+    def report_progress(fraction: float) -> None:
+        # Called from the worker thread - hop back onto the event loop thread
+        # before touching any asyncio object (Queue, Task, etc. aren't
+        # thread-safe to use directly from here).
+        loop.call_soon_threadsafe(asyncio.ensure_future, on_progress(fraction))
+
+    cancelled, returncode, stderr_bytes = await run_in_threadpool(
+        _run_ffmpeg_sync, full_cmd, expected_duration_seconds, report_progress, should_cancel
     )
 
-    stderr_chunks: list[bytes] = []
-
-    async def drain_stderr():
-        assert proc.stderr is not None
-        async for chunk in proc.stderr:
-            stderr_chunks.append(chunk)
-
-    stderr_task = asyncio.create_task(drain_stderr())
-
-    assert proc.stdout is not None
-    cancelled = False
-    async for raw_line in proc.stdout:
-        if should_cancel and should_cancel():
-            cancelled = True
-            proc.terminate()
-            break
-        line = raw_line.decode(errors="ignore").strip()
-        if line.startswith("out_time_ms="):
-            try:
-                out_time_ms = int(line.split("=", 1)[1])
-            except ValueError:
-                continue
-            if expected_duration_seconds > 0:
-                fraction = (out_time_ms / 1_000_000) / expected_duration_seconds
-                await on_progress(min(1.0, max(0.0, fraction)))
-        elif line == "progress=end":
-            break
-
-    await proc.wait()
-
     if cancelled:
-        # A forcefully terminated process's stderr pipe doesn't reliably signal
-        # EOF promptly on Windows (ProactorEventLoop) even though the process
-        # has already exited - awaiting drain_stderr() here has been observed
-        # to stall for the remainder of what would have been the full encode
-        # time. Cancelling it instead is safe: stderr's only consumer is the
-        # error message below, which a cancellation never needs.
-        stderr_task.cancel()
-        try:
-            await stderr_task
-        except asyncio.CancelledError:
-            pass
         raise FFmpegCancelled()
 
-    await stderr_task
-
-    if proc.returncode != 0:
-        stderr_text = b"".join(stderr_chunks).decode(errors="ignore")
-        raise FFmpegError(stderr_text[-2000:])
+    if returncode != 0:
+        raise FFmpegError(stderr_bytes.decode(errors="ignore")[-2000:])
