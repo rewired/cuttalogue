@@ -21,8 +21,8 @@
     return {
       version: 1,
       audio: {
-        mix: { fileName: null, durationSeconds: 0 },
-        vocal: { fileName: null, durationSeconds: 0 },
+        mix: { fileName: null, durationSeconds: 0, relativePath: null },
+        vocal: { fileName: null, durationSeconds: 0, relativePath: null },
         playbackTrack: 'mix', // 'mix' | 'vocal'
       },
       tempo: {

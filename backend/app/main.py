@@ -8,6 +8,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .assets import router as assets_router
+from .audio import router as audio_router
+from .export import router as export_router
 from .jobs import router as jobs_router
 from .projects import DATA_DIR
 from .projects import router as projects_router
@@ -19,6 +21,8 @@ app = FastAPI(title="CUTTAlogue")
 app.include_router(projects_router)
 app.include_router(jobs_router)
 app.include_router(assets_router)
+app.include_router(audio_router)
+app.include_router(export_router)
 
 for static_dir in ("js", "css", "vendor"):
     path = REPO_ROOT / static_dir

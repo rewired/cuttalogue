@@ -38,6 +38,12 @@
     el.assetStatus = document.getElementById('asset-status');
     el.assetEmpty = document.getElementById('asset-empty');
     el.assetGrid = document.getElementById('asset-grid');
+
+    el.exportBtn = document.getElementById('export-lip-sync-btn');
+    el.exportProgress = document.getElementById('export-progress');
+    el.exportProgressFill = document.getElementById('export-progress-fill');
+    el.exportProgressLabel = document.getElementById('export-progress-label');
+    el.exportStatus = document.getElementById('export-status');
   }
 
   function findSelectedShot() {
@@ -79,6 +85,14 @@
     if (document.activeElement !== el.notes) el.notes.value = shot.notes || '';
 
     renderAssignedAssets(shot);
+  }
+
+  function resetExportUI() {
+    el.exportBtn.disabled = false;
+    el.exportProgress.hidden = true;
+    el.exportProgressFill.style.width = '0%';
+    el.exportProgressLabel.textContent = '';
+    el.exportStatus.textContent = '';
   }
 
   function renderAssignedAssets(shot) {
@@ -194,6 +208,7 @@
     selectedShotId = shotId;
     renderShotTab();
     renderAssetsTab();
+    resetExportUI();
     emit('shot-selected', { shotId });
   }
 
@@ -238,6 +253,43 @@
     el.assetTagFilter.addEventListener('input', renderAssetsTab);
   }
 
+  function wireExportControls() {
+    el.exportBtn.addEventListener('click', async () => {
+      const shot = findSelectedShot();
+      if (!shot) return;
+      const projectId = MSE.project.getProjectId();
+      if (!projectId) {
+        el.exportStatus.textContent = 'Backend unavailable.';
+        return;
+      }
+
+      el.exportBtn.disabled = true;
+      el.exportStatus.textContent = '';
+      el.exportProgress.hidden = false;
+      el.exportProgressFill.style.width = '0%';
+      el.exportProgressLabel.textContent = 'Starting...';
+
+      try {
+        const { jobId } = await MSE.api.exportLipSync(projectId, shot.id);
+        const done = await MSE.api.watchJob(jobId, (event) => {
+          const pct = Math.round((event.progressFraction || 0) * 100);
+          el.exportProgressFill.style.width = `${pct}%`;
+          el.exportProgressLabel.textContent = `${pct}%`;
+        });
+        el.exportProgressFill.style.width = '100%';
+        el.exportProgressLabel.textContent = '100%';
+        const url = `/project-files/${projectId}/${done.result.relativePath}`;
+        el.exportStatus.innerHTML = `Done - <a href="${url}" target="_blank" rel="noopener">lip_sync.flac</a> (${done.result.renderDurationSeconds.toFixed(3)}s, ${done.result.renderFrames} frames)`;
+      } catch (err) {
+        console.error(err);
+        el.exportProgress.hidden = true;
+        el.exportStatus.textContent = `Export failed: ${err.message}`;
+      } finally {
+        el.exportBtn.disabled = false;
+      }
+    });
+  }
+
   function wireTabs() {
     function activate(tab) {
       const isShot = tab === 'shot';
@@ -255,6 +307,7 @@
     wireTabs();
     wireTextInputs();
     wireAssetControls();
+    wireExportControls();
     renderShotTab();
     renderAssetsTab();
   }

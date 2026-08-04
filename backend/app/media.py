@@ -2,9 +2,16 @@
 # assets. Both shell out synchronously and get offloaded to a thread so they
 # don't block the event loop - there's no need for the job/SSE machinery here,
 # a single ffprobe/ffmpeg call is over before a progress bar would matter.
+#
+# run_ffmpeg_with_progress, below, is the one genuinely long-running ffmpeg
+# call (export encoding) - it runs as a real asyncio subprocess so its
+# -progress pipe:1 output can be parsed and forwarded as job progress while
+# it's still running, rather than shelling out and blocking.
+import asyncio
 import json
 import subprocess
 from pathlib import Path
+from typing import Awaitable, Callable
 
 from fastapi.concurrency import run_in_threadpool
 
@@ -92,3 +99,54 @@ def _thumbnail_sync(src: Path, dest: Path, asset_type: str, duration: float | No
 
 async def generate_thumbnail(src: Path, dest: Path, asset_type: str, duration: float | None) -> bool:
     return await run_in_threadpool(_thumbnail_sync, src, dest, asset_type, duration)
+
+
+class FFmpegError(RuntimeError):
+    pass
+
+
+async def run_ffmpeg_with_progress(
+    cmd: list[str],
+    expected_duration_seconds: float,
+    on_progress: Callable[[float], Awaitable[None]],
+) -> None:
+    # -progress pipe:1 makes ffmpeg emit machine-readable key=value lines
+    # (out_time_ms=..., progress=continue|end) on stdout as it works, instead
+    # of only human-readable stats on stderr - that's what turns this into a
+    # real progress fraction rather than a spinner.
+    full_cmd = [*cmd, "-progress", "pipe:1", "-nostats"]
+    proc = await asyncio.create_subprocess_exec(
+        *full_cmd,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    stderr_chunks: list[bytes] = []
+
+    async def drain_stderr():
+        assert proc.stderr is not None
+        async for chunk in proc.stderr:
+            stderr_chunks.append(chunk)
+
+    stderr_task = asyncio.create_task(drain_stderr())
+
+    assert proc.stdout is not None
+    async for raw_line in proc.stdout:
+        line = raw_line.decode(errors="ignore").strip()
+        if line.startswith("out_time_ms="):
+            try:
+                out_time_ms = int(line.split("=", 1)[1])
+            except ValueError:
+                continue
+            if expected_duration_seconds > 0:
+                fraction = (out_time_ms / 1_000_000) / expected_duration_seconds
+                await on_progress(min(1.0, max(0.0, fraction)))
+        elif line == "progress=end":
+            break
+
+    await proc.wait()
+    await stderr_task
+
+    if proc.returncode != 0:
+        stderr_text = b"".join(stderr_chunks).decode(errors="ignore")
+        raise FFmpegError(stderr_text[-2000:])

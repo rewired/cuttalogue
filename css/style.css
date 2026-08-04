@@ -298,6 +298,34 @@ input.small { width: 44px; }
   resize: vertical;
 }
 
+.export-field { margin-top: 4px; }
+.export-controls { margin-top: 4px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+
+.export-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-size: 12px;
+  color: var(--text-dim);
+}
+.export-progress-bar {
+  flex: 1 1 auto;
+  height: 8px;
+  background: #0f1114;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.export-progress-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  transition: width 0.15s ease-out;
+}
+
+#export-status a { color: var(--accent); }
+
 .assigned-assets {
   display: flex;
   flex-wrap: wrap;

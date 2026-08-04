@@ -37,22 +37,26 @@ def get_job(job_id: str) -> Job | None:
     return _jobs.get(job_id)
 
 
-async def _emit(job: Job, event: dict) -> None:
+async def emit(job: Job, event: dict) -> None:
     job.status = event.get("status", job.status)
     await job.queue.put(event)
 
 
+async def close(job: Job) -> None:
+    await job.queue.put(None)  # sentinel: closes the SSE stream
+
+
 async def run_save_job(job: Job, path: Path, payload: dict) -> None:
     try:
-        await _emit(job, {"status": "running", "phase": "writing", "message": f"Writing {path.name}"})
+        await emit(job, {"status": "running", "phase": "writing", "message": f"Writing {path.name}"})
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
         job.result = {"path": str(path)}
-        await _emit(job, {"status": "done", "phase": "complete", "message": "Saved"})
+        await emit(job, {"status": "done", "phase": "complete", "message": "Saved"})
     except Exception as exc:  # noqa: BLE001 - reported to the client as a job error, not raised
         job.error = str(exc)
-        await _emit(job, {"status": "error", "message": str(exc)})
+        await emit(job, {"status": "error", "message": str(exc)})
     finally:
-        await job.queue.put(None)  # sentinel: closes the SSE stream
+        await close(job)
 
 
 @router.get("/api/jobs/{job_id}")

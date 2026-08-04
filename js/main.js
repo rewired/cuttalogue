@@ -51,6 +51,21 @@
     el.trackVocalRadio.checked = state.audio.playbackTrack === 'vocal';
   }
 
+  // Copies the picked file to the backend project folder alongside local
+  // playback, since export needs the real audio bytes on disk to run ffmpeg
+  // against - not just the in-browser object URL used for the waveform.
+  // Fire-and-forget: a missing/unreachable backend shouldn't block playback.
+  function uploadAudioTrackInBackground(track, file) {
+    const projectId = MSE.project.getProjectId();
+    if (!projectId) return;
+    MSE.api
+      .uploadAudioTrack(projectId, track, file)
+      .then((result) => {
+        state.audio[track].relativePath = result.relativePath;
+      })
+      .catch((err) => console.warn(`Audio upload (${track}) failed - export won't work until it succeeds.`, err));
+  }
+
   function wireFileInputs() {
     el.mixFile.addEventListener('change', async () => {
       const file = el.mixFile.files[0];
@@ -60,6 +75,7 @@
       el.mixFilename.textContent = file.name;
       el.placeholder.style.display = 'none';
       el.playPauseBtn.disabled = false;
+      uploadAudioTrackInBackground('mix', file);
     });
 
     el.vocalFile.addEventListener('change', async () => {
@@ -68,6 +84,7 @@
       const url = URL.createObjectURL(file);
       await MSE.sync.loadVocal(url, file.name);
       el.vocalFilename.textContent = file.name;
+      uploadAudioTrackInBackground('vocal', file);
     });
   }
 

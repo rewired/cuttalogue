@@ -27,7 +27,7 @@ Then open `http://localhost:8000` in your browser.
 
 Once the mix is loaded, the timeline appears with four synchronized tracks: **Grid**, **Shots**, **Mix**, **Vocal**.
 
-Audio files themselves aren't uploaded to the backend yet - after a page refresh, reselect the mix/vocal files as before; tempo, video, shot-limit settings, and all shots persist automatically.
+Loading a mix/vocal file also copies it to the backend project folder in the background (needed for lip-sync export, see below) - but playback itself still needs the local file, so after a page refresh, reselect the mix/vocal files as before; tempo, video, shot-limit settings, and all shots persist automatically.
 
 ---
 
@@ -102,16 +102,26 @@ The **Assets** tab (next to **Shot**, in the panel right of the shot list) holds
 
 ---
 
+## Export
+
+The **Shot** tab has an **"Export lip-sync"** button once a shot is selected. It renders `lip_sync.flac` for that one shot - FLAC, 32 kHz, mono, covering the H3 **render** duration (cut duration plus frame-rule overhang, not the raw cut length) - with a live progress bar driven by ffmpeg's own `-progress` output, and a link to the result once it's done. This needs a vocal track already loaded (see above) and the project saved at least once since.
+
+This exports one shot at a time for now; a whole-project export with per-shot folders, manifests, and copied assets is a planned follow-up, not built yet.
+
+---
+
 ## Backend
 
 A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" save/load with a real project folder on disk:
 
 - `POST /api/projects` creates a new project folder + `project.json`.
 - `GET /api/projects/{id}` / `PUT /api/projects/{id}` read/write it.
-- `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape later phases (FFmpeg export, AI description) will reuse.
+- `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape export and AI description reuse.
 - `POST /api/projects/{id}/assets` imports one or more files into that project's `assets/` folder and returns their metadata/thumbnail descriptors (no project.json write - that's still "Save project").
+- `POST /api/projects/{id}/audio/{track}` (`track` = `mix` or `vocal`) uploads the raw audio file itself to `audio/<track>.<ext>`.
+- `POST /api/projects/{id}/shots/{shotId}/export/lip-sync` runs `ffmpeg -progress pipe:1` as a real job (live SSE progress, not just start/done) and writes `exports/scratch/shot-<id>-lip_sync.flac`. The render duration is computed server-side (a Python port of the frontend's H3 frame math), not trusted from the client.
 
-Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json` plus an `assets/<assetId>/` folder per imported file. Asset previews are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
+Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, and `exports/scratch/`. Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage`; there's no project picker UI yet, just the one project a browser last opened.
 
 Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata and thumbnails.
 

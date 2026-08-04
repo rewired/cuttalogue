@@ -37,8 +37,27 @@
     return res.json(); // { jobId }
   }
 
-  // Resolves once the job reaches 'done', rejects on 'error' or a broken stream.
-  function waitForJob(jobId) {
+  async function uploadAudioTrack(id, track, file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`/api/projects/${id}/audio/${track}`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`audio upload failed: ${res.status}`);
+    return res.json(); // { relativePath, fileName }
+  }
+
+  async function exportLipSync(id, shotId) {
+    const res = await fetch(`/api/projects/${id}/shots/${shotId}/export/lip-sync`, { method: 'POST' });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `export failed: ${res.status}`);
+    }
+    return res.json(); // { jobId, expectedDurationSeconds }
+  }
+
+  // Resolves once the job reaches 'done', rejects on 'error' or a broken
+  // stream. onProgress (optional) is called for every intermediate event,
+  // e.g. { status: 'running', progressFraction: 0.42 } while an ffmpeg job runs.
+  function watchJob(jobId, onProgress) {
     return new Promise((resolve, reject) => {
       const source = new EventSource(`/api/jobs/${jobId}/events`);
       source.onmessage = (e) => {
@@ -49,6 +68,8 @@
         } else if (event.status === 'error') {
           source.close();
           reject(new Error(event.message || 'job failed'));
+        } else if (onProgress) {
+          onProgress(event);
         }
       };
       source.onerror = () => {
@@ -58,5 +79,18 @@
     });
   }
 
-  MSE.api = { createProject, getProject, putProject, uploadAssets, waitForJob };
+  function waitForJob(jobId) {
+    return watchJob(jobId);
+  }
+
+  MSE.api = {
+    createProject,
+    getProject,
+    putProject,
+    uploadAssets,
+    uploadAudioTrack,
+    exportLipSync,
+    watchJob,
+    waitForJob,
+  };
 })(window.MSE = window.MSE || {});
