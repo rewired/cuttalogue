@@ -72,9 +72,6 @@
       if (!file) return;
       const url = URL.createObjectURL(file);
       await MSE.sync.loadMix(url, file.name);
-      el.mixFilename.textContent = file.name;
-      el.placeholder.style.display = 'none';
-      el.playPauseBtn.disabled = false;
       uploadAudioTrackInBackground('mix', file);
     });
 
@@ -83,8 +80,19 @@
       if (!file) return;
       const url = URL.createObjectURL(file);
       await MSE.sync.loadVocal(url, file.name);
-      el.vocalFilename.textContent = file.name;
       uploadAudioTrackInBackground('vocal', file);
+    });
+
+    // Fires from both a manual file pick above and an automatic restore from
+    // the backend (project.js, when a loaded/switched project already has an
+    // uploaded audio copy) - either way, the UI updates the same way.
+    on('mix-ready', () => {
+      el.mixFilename.textContent = state.audio.mix.fileName;
+      el.placeholder.style.display = 'none';
+      el.playPauseBtn.disabled = false;
+    });
+    on('vocal-ready', () => {
+      el.vocalFilename.textContent = state.audio.vocal.fileName;
     });
   }
 

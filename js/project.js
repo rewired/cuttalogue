@@ -62,6 +62,32 @@
     emit('limits-changed');
     emit('shots-changed');
     emit('assets-changed', { reason: 'load' });
+    autoLoadAudioFromBackend();
+  }
+
+  // The backend already has a copy of the mix/vocal from whenever they were
+  // last picked (see uploadAudioTrackInBackground in main.js), so a loaded
+  // or switched-to project can restore playback/the timeline without asking
+  // the user to reselect the same file again - without this, the shot list
+  // has nothing to render into until a mix is picked, since the timeline
+  // only exists once one is loaded (see waveformSync.js). Fire-and-forget:
+  // large files take a moment to fetch/decode and shouldn't block anything
+  // else project-load-related.
+  function autoLoadAudioFromBackend() {
+    const projectId = getProjectId();
+    if (!projectId) return;
+    const mix = state.audio.mix;
+    const vocal = state.audio.vocal;
+    if (mix.relativePath) {
+      MSE.sync
+        .loadMix(`/project-files/${projectId}/${mix.relativePath}`, mix.fileName)
+        .catch((err) => console.warn('Could not auto-load the mix track from the backend.', err));
+    }
+    if (vocal.relativePath) {
+      MSE.sync
+        .loadVocal(`/project-files/${projectId}/${vocal.relativePath}`, vocal.fileName)
+        .catch((err) => console.warn('Could not auto-load the vocal track from the backend.', err));
+    }
   }
 
   // Loads the project last saved to the backend (by id, kept in localStorage
