@@ -129,69 +129,11 @@
     name.textContent = asset.fileName;
     card.appendChild(name);
 
-    const tagInput = document.createElement('input');
-    tagInput.type = 'text';
-    tagInput.className = 'asset-tag-input';
-    tagInput.placeholder = 'tags, comma, separated';
-    tagInput.value = (asset.tags || []).join(', ');
-    tagInput.addEventListener('change', () => {
-      const tags = tagInput.value
-        .split(',')
-        .map((t) => t.trim())
-        .filter(Boolean);
-      MSE.assets.setAssetTags(asset.id, tags);
-    });
-    card.appendChild(tagInput);
-
-    if (asset.type === 'image') {
-      const descLabel = document.createElement('div');
-      descLabel.className = 'asset-description-label';
-      descLabel.textContent = 'Description';
-      card.appendChild(descLabel);
-
-      const descArea = document.createElement('textarea');
-      descArea.className = 'asset-description';
-      descArea.rows = 3;
-      descArea.placeholder = 'Description...';
-      descArea.value = asset.description || '';
-      descArea.addEventListener('change', () => {
-        MSE.assets.setAssetDescription(asset.id, descArea.value);
-      });
-      card.appendChild(descArea);
-
-      const describeBtn = document.createElement('button');
-      describeBtn.type = 'button';
-      describeBtn.className = 'asset-describe-btn';
-      describeBtn.textContent = 'Describe image';
-      card.appendChild(describeBtn);
-
-      // Streams deltas straight into this card's own textarea without going
-      // through setAssetDescription (and its assets-changed event) on every
-      // token - that would rebuild the whole asset grid, and this card with
-      // it, on every streamed word. The state is mutated directly instead,
-      // then persisted with one real event once streaming finishes.
-      describeBtn.addEventListener('click', async () => {
-        const projectId = MSE.project.getProjectId();
-        if (!projectId) return;
-        describeBtn.disabled = true;
-        descArea.value = '';
-        const assetRef = MSE.assets.findAsset(asset.id);
-        try {
-          const { jobId } = await MSE.api.describeAsset(projectId, asset.id);
-          await MSE.api.watchJob(jobId, (event) => {
-            if (event.delta) {
-              descArea.value += event.delta;
-              if (assetRef) assetRef.description = descArea.value;
-            }
-          });
-          MSE.assets.setAssetDescription(asset.id, descArea.value);
-        } catch (err) {
-          console.error(err);
-          descArea.value = `Describe failed: ${err.message}`;
-        } finally {
-          describeBtn.disabled = false;
-        }
-      });
+    if ((asset.tags || []).length > 0) {
+      const tags = document.createElement('div');
+      tags.className = 'asset-tags-readout';
+      tags.textContent = asset.tags.join(', ');
+      card.appendChild(tags);
     }
 
     const assignBtn = document.createElement('button');

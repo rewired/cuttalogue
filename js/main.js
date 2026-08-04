@@ -9,8 +9,8 @@
     vocalFile: document.getElementById('vocal-file'),
     mixFilename: document.getElementById('mix-filename'),
     vocalFilename: document.getElementById('vocal-filename'),
-    trackMixRadio: document.getElementById('track-mix-radio'),
-    trackVocalRadio: document.getElementById('track-vocal-radio'),
+    trackLabelMix: document.getElementById('track-label-mix'),
+    trackLabelVocal: document.getElementById('track-label-vocal'),
     playPauseBtn: document.getElementById('play-pause-btn'),
     zoomSlider: document.getElementById('zoom-slider'),
     placeholder: document.getElementById('timeline-placeholder'),
@@ -47,8 +47,8 @@
     el.minLength.value = state.shotLimits.minimumSeconds;
     el.maxLength.value = state.shotLimits.maximumSeconds;
 
-    el.trackMixRadio.checked = state.audio.playbackTrack === 'mix';
-    el.trackVocalRadio.checked = state.audio.playbackTrack === 'vocal';
+    el.trackLabelMix.classList.toggle('active', state.audio.playbackTrack === 'mix');
+    el.trackLabelVocal.classList.toggle('active', state.audio.playbackTrack === 'vocal');
   }
 
   // Copies the picked file to the backend project folder alongside local
@@ -99,12 +99,11 @@
   function wireTransport() {
     el.playPauseBtn.addEventListener('click', () => MSE.sync.togglePlayback());
 
-    el.trackMixRadio.addEventListener('change', () => {
-      if (el.trackMixRadio.checked) MSE.sync.setPlaybackTrack('mix');
-    });
-    el.trackVocalRadio.addEventListener('change', () => {
-      if (el.trackVocalRadio.checked) MSE.sync.setPlaybackTrack('vocal');
-    });
+    el.trackLabelMix.addEventListener('click', () => MSE.sync.setPlaybackTrack('mix'));
+    el.trackLabelVocal.addEventListener('click', () => MSE.sync.setPlaybackTrack('vocal'));
+    // Buttons, not native radios - nothing updates the active-track highlight
+    // on its own, so re-sync it explicitly on every switch.
+    on('playback-track-changed', syncSettingsPanelFromState);
 
     el.zoomSlider.addEventListener('input', () => {
       MSE.sync.zoomTo(Number(el.zoomSlider.value));

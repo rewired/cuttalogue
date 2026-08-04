@@ -49,6 +49,20 @@
     return ids.map((id) => findAsset(id)).filter(Boolean);
   }
 
+  // Deleting an asset from the library also has to unwind every place its id
+  // is referenced, or a shot would keep pointing at a cast role/action track
+  // for an asset that no longer exists.
+  function removeAsset(assetId) {
+    state.assets = state.assets.filter((a) => a.id !== assetId);
+    state.shots.forEach((shot) => {
+      if (shot.assetIds) shot.assetIds = shot.assetIds.filter((id) => id !== assetId);
+      if (shot.assetRoles) delete shot.assetRoles[assetId];
+      if (shot.direction && shot.direction.subjects) delete shot.direction.subjects[assetId];
+    });
+    emit('assets-changed', { reason: 'delete' });
+    emit('shots-changed', { reason: 'delete-asset' });
+  }
+
   MSE.assets = {
     addAssets,
     findAsset,
@@ -57,5 +71,6 @@
     assignAssetToShot,
     removeAssetFromShot,
     assetsForShot,
+    removeAsset,
   };
 })(window.MSE = window.MSE || {});

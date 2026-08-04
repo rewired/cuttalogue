@@ -31,6 +31,22 @@
   let isSyncingTime = false;
   let vocalSilenceGaps = [];
 
+  const AUDIO_TRACK_HEIGHT_KEY = 'mse.audioTrackHeight';
+  const AUDIO_TRACK_HEIGHT_MIN = 40;
+  const AUDIO_TRACK_HEIGHT_MAX = 200;
+  const AUDIO_TRACK_HEIGHT_DEFAULT = 90;
+
+  function loadAudioTrackHeight() {
+    const stored = Number(localStorage.getItem(AUDIO_TRACK_HEIGHT_KEY));
+    if (!stored || stored < AUDIO_TRACK_HEIGHT_MIN || stored > AUDIO_TRACK_HEIGHT_MAX) return AUDIO_TRACK_HEIGHT_DEFAULT;
+    return stored;
+  }
+
+  // Machine-local display preference (like pxPerSecond/zoom), not project
+  // data - drag-resizing the Mix/Vocal tracks shouldn't round-trip through
+  // project.json or affect what a collaborator opening the same project sees.
+  let audioTrackHeight = loadAudioTrackHeight();
+
   // Holding Alt during a shot create/resize drag bypasses the selected grid
   // snap for that one drag. The Regions plugin's update-end event doesn't carry
   // modifier-key state, so it's tracked independently here.
@@ -163,7 +179,7 @@
   function createAudioInstance(container, url) {
     return WS.create({
       container,
-      height: 90,
+      height: audioTrackHeight,
       url,
       waveColor: '#5b7ea3',
       progressColor: '#8fb8e0',
@@ -272,6 +288,13 @@
     pxPerSecond = Math.max(10, px);
     forEachInstance((ws) => ws.zoom(pxPerSecond));
     layoutSilenceOverlay();
+  }
+
+  function setAudioTrackHeight(px) {
+    audioTrackHeight = Math.min(AUDIO_TRACK_HEIGHT_MAX, Math.max(AUDIO_TRACK_HEIGHT_MIN, Math.round(px)));
+    localStorage.setItem(AUDIO_TRACK_HEIGHT_KEY, String(audioTrackHeight));
+    if (mixWs) mixWs.setOptions({ height: audioTrackHeight });
+    if (vocalWs) vocalWs.setOptions({ height: audioTrackHeight });
   }
 
   function layoutSilenceOverlay() {
@@ -788,5 +811,7 @@
     getCurrentTime,
     getPxPerSecond: () => pxPerSecond,
     isTimelineReady: () => !!gridWs,
+    setAudioTrackHeight,
+    getAudioTrackHeight: () => audioTrackHeight,
   };
 })(window.MSE = window.MSE || {});

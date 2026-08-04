@@ -12,85 +12,99 @@
   <div class="header-left">
     <h1>Musical Shot Editor</h1>
     <input type="text" id="project-name-input" class="project-name-input" placeholder="Untitled project">
-    <div class="project-picker">
-      <button type="button" id="projects-btn">Projects &#9662;</button>
-      <div id="projects-menu" class="projects-menu" hidden>
-        <button type="button" id="new-project-btn">+ New project</button>
-        <div class="projects-menu-divider"></div>
-        <div id="projects-list" class="projects-list">
-          <p class="placeholder-hint" id="projects-list-empty">No projects yet.</p>
+  </div>
+  <div class="app-menu">
+    <button type="button" id="app-menu-btn">Menu &#9662;</button>
+    <div id="app-menu-panel" class="app-menu-panel" hidden>
+      <div class="project-picker">
+        <button type="button" id="projects-btn">Projects &#9662;</button>
+        <div id="projects-menu" class="projects-menu" hidden>
+          <button type="button" id="new-project-btn">+ New project</button>
+          <div class="projects-menu-divider"></div>
+          <div id="projects-list" class="projects-list">
+            <p class="placeholder-hint" id="projects-list-empty">No projects yet.</p>
+          </div>
         </div>
       </div>
+      <div class="app-menu-divider"></div>
+      <div class="app-menu-row">
+        <label class="file-button">Load mix
+          <input type="file" id="mix-file" accept="audio/*">
+        </label>
+        <span class="filename" id="mix-filename">no mix loaded</span>
+      </div>
+      <div class="app-menu-row">
+        <label class="file-button">Load vocal
+          <input type="file" id="vocal-file" accept="audio/*">
+        </label>
+        <span class="filename" id="vocal-filename">no vocal loaded</span>
+      </div>
+      <div class="app-menu-divider"></div>
+      <button type="button" id="setup-btn">Setup</button>
+      <div class="app-menu-divider"></div>
+      <div class="app-menu-row">
+        <button id="save-project-btn">Save project</button>
+        <span class="filename" id="project-status"></span>
+      </div>
+      <button id="export-json-btn">Export shots (JSON)</button>
+      <button id="export-csv-btn">Export shots (CSV)</button>
+      <label class="checkbox-label"><input type="checkbox" id="export-include-mix"> Include mix snippet</label>
+      <button id="export-project-btn">Export project</button>
     </div>
-  </div>
-  <div class="file-controls">
-    <label class="file-button">Load mix
-      <input type="file" id="mix-file" accept="audio/*">
-    </label>
-    <span class="filename" id="mix-filename">no mix loaded</span>
-    <label class="file-button">Load vocal
-      <input type="file" id="vocal-file" accept="audio/*">
-    </label>
-    <span class="filename" id="vocal-filename">no vocal loaded</span>
-  </div>
-  <div class="header-actions">
-    <button type="button" id="setup-btn">Setup</button>
   </div>
 </header>
 
 <section class="transport">
-  <div class="playback-track-toggle">
-    <label><input type="radio" name="playback-track" value="mix" id="track-mix-radio" checked> A: Mix</label>
-    <label><input type="radio" name="playback-track" value="vocal" id="track-vocal-radio"> B: Vocal</label>
-  </div>
   <button id="play-pause-btn" disabled>&#9654; Play</button>
   <div class="readout" id="current-time-readout">00:00.000</div>
+  <div class="grid-tempo-flyout">
+    <button type="button" id="grid-tempo-btn">Grid &amp; Tempo &#9662;</button>
+    <div id="grid-tempo-panel" class="grid-tempo-panel settings-panel" hidden>
+      <fieldset>
+        <legend>Tempo</legend>
+        <label>BPM <input type="number" id="bpm-input" min="20" max="400" step="0.01" value="120"></label>
+        <label>Time signature
+          <input type="number" id="time-sig-num" min="1" max="32" value="4" class="small"> /
+          <input type="number" id="time-sig-den" min="1" max="32" value="4" class="small">
+        </label>
+        <label>Grid offset (s) <input type="number" id="grid-offset-input" step="0.001" value="0"></label>
+        <button type="button" id="set-offset-to-playhead-btn">Offset = Playhead</button>
+        <label>Grid
+          <select id="grid-division-select">
+            <option value="off">Off</option>
+            <option value="beat">1 beat</option>
+            <option value="half-bar">1/2 bar</option>
+            <option value="bar" selected>1 bar</option>
+            <option value="two-bar">2 bars</option>
+            <option value="second">1 second</option>
+            <option value="frame">1 frame</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Video</legend>
+        <label>FPS <input type="number" id="fps-input" min="1" max="240" step="0.001" value="25"></label>
+        <label>Frame rule
+          <select id="frame-rule-select">
+            <option value="free">free</option>
+            <option value="4">4n+1</option>
+            <option value="8" selected>8n+1</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Shot length</legend>
+        <label>Minimum (s) <input type="number" id="min-length-input" min="0" step="0.1" value="8"></label>
+        <label>Maximum (s) <input type="number" id="max-length-input" min="0" step="0.1" value="12"></label>
+      </fieldset>
+    </div>
+  </div>
   <div class="zoom-control">
     <label for="zoom-slider">Zoom</label>
     <input type="range" id="zoom-slider" min="20" max="500" value="80">
   </div>
-</section>
-
-<section class="settings-panel">
-  <fieldset>
-    <legend>Tempo</legend>
-    <label>BPM <input type="number" id="bpm-input" min="20" max="400" step="0.01" value="120"></label>
-    <label>Time signature
-      <input type="number" id="time-sig-num" min="1" max="32" value="4" class="small"> /
-      <input type="number" id="time-sig-den" min="1" max="32" value="4" class="small">
-    </label>
-    <label>Grid offset (s) <input type="number" id="grid-offset-input" step="0.001" value="0"></label>
-    <button type="button" id="set-offset-to-playhead-btn">Offset = Playhead</button>
-    <label>Grid
-      <select id="grid-division-select">
-        <option value="off">Off</option>
-        <option value="beat">1 beat</option>
-        <option value="half-bar">1/2 bar</option>
-        <option value="bar" selected>1 bar</option>
-        <option value="two-bar">2 bars</option>
-        <option value="second">1 second</option>
-        <option value="frame">1 frame</option>
-      </select>
-    </label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Video</legend>
-    <label>FPS <input type="number" id="fps-input" min="1" max="240" step="0.001" value="25"></label>
-    <label>Frame rule
-      <select id="frame-rule-select">
-        <option value="free">free</option>
-        <option value="4">4n+1</option>
-        <option value="8" selected>8n+1</option>
-      </select>
-    </label>
-  </fieldset>
-
-  <fieldset>
-    <legend>Shot length</legend>
-    <label>Minimum (s) <input type="number" id="min-length-input" min="0" step="0.1" value="8"></label>
-    <label>Maximum (s) <input type="number" id="max-length-input" min="0" step="0.1" value="12"></label>
-  </fieldset>
 </section>
 
 <section class="timeline-area">
@@ -105,15 +119,18 @@
     <div class="track-content" id="track-shots"></div>
   </div>
   <div class="track-row">
-    <div class="track-label">Mix</div>
+    <button type="button" class="track-label track-label-playable" id="track-label-mix" title="Play this track">Mix</button>
     <div class="track-content" id="track-mix"></div>
   </div>
   <div class="track-row">
-    <div class="track-label">Vocal</div>
+    <button type="button" class="track-label track-label-playable" id="track-label-vocal" title="Play this track">Vocal</button>
     <div class="track-content vocal-wrapper">
       <div id="track-vocal"></div>
       <div class="silence-overlay" id="silence-layer"></div>
     </div>
+  </div>
+  <div id="track-height-handle" class="track-height-handle" title="Drag to resize the Mix/Vocal tracks">
+    <div class="track-height-handle-grip"></div>
   </div>
 </section>
 
@@ -182,6 +199,7 @@
           <input type="file" id="asset-file-input" multiple accept="image/*,video/*,audio/*">
         </label>
         <input type="text" id="asset-tag-filter" placeholder="Filter by tag...">
+        <button type="button" id="asset-library-open-btn">Manage assets &rarr;</button>
       </div>
       <p class="placeholder-hint" id="asset-status"></p>
       <p class="placeholder-hint" id="asset-empty">No assets yet</p>
@@ -193,16 +211,6 @@
 <div id="shot-context-menu" class="context-menu">
   <button type="button" id="shot-context-delete">Delete shot</button>
 </div>
-
-<footer class="project-actions">
-  <button id="save-project-btn">Save project</button>
-  <span class="filename" id="project-status"></span>
-  <button id="export-json-btn">Export shots (JSON)</button>
-  <button id="export-csv-btn">Export shots (CSV)</button>
-  <span class="footer-spacer"></span>
-  <label class="checkbox-label"><input type="checkbox" id="export-include-mix"> Include mix snippet</label>
-  <button id="export-project-btn">Export project</button>
-</footer>
 
 <div id="settings-modal" class="modal-overlay" hidden>
   <div class="modal">
@@ -269,6 +277,29 @@
   </div>
 </div>
 
+<div id="asset-library-screen" class="asset-library-screen" hidden>
+  <div class="asset-library-header">
+    <h2>Asset library</h2>
+    <button type="button" id="asset-library-close-btn" class="modal-close">&times;</button>
+  </div>
+  <div class="asset-library-toolbar">
+    <label class="file-button">Add files
+      <input type="file" id="asset-library-file-input" multiple accept="image/*,video/*,audio/*">
+    </label>
+    <input type="text" id="asset-library-tag-filter" placeholder="Filter by tag...">
+    <p class="placeholder-hint" id="asset-library-status"></p>
+  </div>
+  <div class="asset-library-body">
+    <div class="asset-library-detail" id="asset-library-detail">
+      <p class="placeholder-hint" id="asset-library-detail-empty">Select an asset on the right to see its details.</p>
+    </div>
+    <div class="asset-library-list-col">
+      <p class="placeholder-hint" id="asset-library-empty">No assets yet</p>
+      <div class="asset-grid asset-grid-compact" id="asset-library-grid"></div>
+    </div>
+  </div>
+</div>
+
 <div id="task-panel" class="task-panel" hidden>
   <div class="task-panel-header">
     <strong id="task-panel-title">Exporting project</strong>
@@ -292,12 +323,16 @@
 <script src="js/assets.js"></script>
 <script src="js/silence.js"></script>
 <script src="js/waveformSync.js"></script>
+<script src="js/trackHeightResize.js"></script>
 <script src="js/api.js"></script>
 <script src="js/project.js"></script>
 <script src="js/projectPicker.js"></script>
+<script src="js/appMenu.js"></script>
+<script src="js/gridTempoFlyout.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/h3Compiler.js"></script>
 <script src="js/direction.js"></script>
+<script src="js/assetLibrary.js"></script>
 <script src="js/contextPanel.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>
