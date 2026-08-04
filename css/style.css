@@ -252,7 +252,8 @@ input.small { width: 44px; }
   white-space: nowrap;
   overflow: hidden;
 }
-.shot-region-label strong { display: block; }
+.shot-region-label strong { display: block; font-weight: 700; }
+.shot-region-label span { display: block; font-size: 10px; opacity: 0.75; }
 
 .shot-draft {
   position: absolute;
@@ -262,6 +263,12 @@ input.small { width: 44px; }
   border: 1px dashed var(--accent);
   pointer-events: none;
   z-index: 4;
+}
+/* Alt-held bypasses grid snap - visually distinct from the normal (snapped)
+   draft so it's clear the shown position is the raw, unsnapped one. */
+.shot-draft.unsnapped {
+  background: rgba(255, 193, 7, 0.2);
+  border-color: #ffc107;
 }
 
 .shot-draft-label {
@@ -488,9 +495,32 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
 #shot-list tr { cursor: pointer; }
 #shot-list tr.selected { background: rgba(76, 141, 255, 0.15); }
 
-tr.status-short .status-cell { color: #ffc107; }
-tr.status-long .status-cell { color: #f44336; }
-tr.status-valid .status-cell { color: #4caf50; }
+.shot-number-cell { display: flex; flex-direction: column; gap: 2px; min-width: 90px; }
+.shot-number-label { font-weight: 700; }
+.shot-name-input {
+  width: 100%;
+  background: #0f1114;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  padding: 2px 5px;
+  font-size: 12px;
+  cursor: text;
+}
+
+.status-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+.status-swatch.status-short { background: #ffc107; }
+.status-swatch.status-long { background: #f44336; }
+.status-swatch.status-valid { background: #4caf50; }
+
+/* Still used by the Shot tab's text status readout (#shot-detail-status) -
+   the shot list table above colors its status cell via .status-swatch
+   instead, but shares the same status-cell/status-* class naming. */
 .status-cell.status-short { color: #ffc107; }
 .status-cell.status-long { color: #f44336; }
 .status-cell.status-valid { color: #4caf50; }

@@ -77,11 +77,20 @@
       id: 0,
       startSeconds: shot.startSeconds,
       endSeconds: snapped,
+      name: shot.name || '',
       prompt: shot.prompt || '',
       notes: shot.notes || '',
       assetIds: (shot.assetIds || []).slice(),
     };
-    const right = { id: 0, startSeconds: snapped, endSeconds: shot.endSeconds, prompt: '', notes: '', assetIds: [] };
+    const right = {
+      id: 0,
+      startSeconds: snapped,
+      endSeconds: shot.endSeconds,
+      name: '',
+      prompt: '',
+      notes: '',
+      assetIds: [],
+    };
     state.shots.splice(index, 1, left, right);
     renumber();
     emit('shots-changed', { reason: 'split' });
@@ -99,7 +108,7 @@
     const start = Math.max(gap.start, lo);
     const end = Math.min(gap.end, hi);
     if (end - start < MIN_GAP_SECONDS) return false;
-    state.shots.push({ id: 0, startSeconds: start, endSeconds: end, prompt: '', notes: '', assetIds: [] });
+    state.shots.push({ id: 0, startSeconds: start, endSeconds: end, name: '', prompt: '', notes: '', assetIds: [] });
     renumber();
     emit('shots-changed', { reason: 'create' });
     return true;
@@ -184,6 +193,16 @@
     emit('shots-changed', { reason: 'move' });
   }
 
+  // Editable only from the shot list table (not the timeline region itself) -
+  // an empty name displays as "unnamed" via placeholder text, never stored as
+  // a literal value.
+  function setShotName(shotId, name) {
+    const shot = state.shots.find((s) => s.id === shotId);
+    if (!shot) return;
+    shot.name = name;
+    emit('shots-changed', { reason: 'name' });
+  }
+
   MSE.shots = {
     shotDuration,
     shotStatus,
@@ -196,5 +215,6 @@
     moveEdge,
     moveShot,
     notifyBoundaryMoved,
+    setShotName,
   };
 })(window.MSE = window.MSE || {});

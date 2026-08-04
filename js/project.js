@@ -40,6 +40,7 @@
         id: s.id,
         startSeconds: s.startSeconds,
         endSeconds: s.endSeconds,
+        name: s.name || '',
         prompt: s.prompt || '',
         notes: s.notes || '',
         assetIds: s.assetIds || [],
@@ -53,7 +54,7 @@
     // Older/foreign project data predates the name/prompt/notes/assetIds/
     // assets/export fields - default them in rather than leaving things undefined.
     parsed.name = parsed.name || '';
-    parsed.shots = (parsed.shots || []).map((s) => ({ prompt: '', notes: '', assetIds: [], ...s }));
+    parsed.shots = (parsed.shots || []).map((s) => ({ name: '', prompt: '', notes: '', assetIds: [], ...s }));
     parsed.assets = (parsed.assets || []).map((a) => ({ tags: [], description: '', ...a }));
     parsed.export = { includeMixSnippet: false, ...(parsed.export || {}) };
     resetState(parsed);

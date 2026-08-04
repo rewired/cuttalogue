@@ -5,7 +5,7 @@
   'use strict';
 
   const { state, emit, on } = MSE.state;
-  const { gridStepSeconds, barDuration, barBeatAt, snapToGrid } = MSE.grid;
+  const { gridStepSeconds, barDuration, barBeatAt, snapToGrid, durationInBarsBeats } = MSE.grid;
   const { formatTime } = MSE.format;
   const { frameCalc, fps } = MSE.frames;
   const shotsApi = MSE.shots;
@@ -44,6 +44,19 @@
   window.addEventListener('blur', () => {
     altHeld = false;
   });
+
+  // Set whenever the Regions plugin reports an actual position change during
+  // a drag (handleRegionUpdate, below). setupShotsInteraction's own
+  // hand-rolled click/drag disambiguation checks this to tell a genuine
+  // click-to-split from a small nudge-drag of an existing region apart: a
+  // real region move always fires at least one 'update' event - itself
+  // triggered by pointer movement - strictly before the pointerup that ends
+  // the same gesture, so this is reliable regardless of listener
+  // registration order between this handler and the wrapper's own pointerup.
+  // Without it, a quick small drag of a shot both moved it (via the Regions
+  // plugin) and got misread as a click-to-split by the wrapper handler,
+  // leaving a stray extra shot behind.
+  let regionMoveOccurred = false;
 
   const els = {};
 
@@ -299,10 +312,34 @@
     renderShotList();
   }
 
+  // The name is user-entered free text (only editable from the shot list
+  // table, not here), so this builds real DOM nodes with textContent rather
+  // than an innerHTML template - no escaping to get wrong. Layout-critical
+  // styles are set inline rather than via the .shot-region-label CSS classes
+  // in style.css: this content renders inside WaveSurfer's own shadow DOM,
+  // which the page's stylesheet cannot reach at all (confirmed - the CSS
+  // classes are kept for documentation/color only, "display: block" from
+  // them never actually applies here, same limitation already worked around
+  // for the drag-opacity styling below).
   function buildRegionLabel(shot, status, calc) {
     const el = document.createElement('div');
     el.className = `shot-region-label status-${status}`;
-    el.innerHTML = `<strong>Shot ${shot.id}</strong><span>${shotsApi.shotDuration(shot).toFixed(2)}s</span>`;
+
+    const title = document.createElement('strong');
+    title.style.display = 'block';
+    title.style.fontWeight = '700';
+    const name = (shot.name || '').trim() || 'unnamed';
+    title.textContent = `#${shot.id} ${name}`;
+    el.appendChild(title);
+
+    const durationSeconds = shotsApi.shotDuration(shot);
+    const info = document.createElement('span');
+    info.style.display = 'block';
+    info.style.fontSize = '10px';
+    info.style.opacity = '0.75';
+    info.textContent = `${durationInBarsBeats(durationSeconds, state.tempo)} / ${durationSeconds.toFixed(2)}s / ${calc.cutFrames}f`;
+    el.appendChild(info);
+
     return el;
   }
 
@@ -319,6 +356,7 @@
   // opposite edge and its neighbor's facing edge - the neighbor itself never
   // moves, since a gap between shots is a normal, valid state now.
   function handleRegionUpdate(region, side) {
+    regionMoveOccurred = true;
     const index = shotIndexFromRegionId(region.id);
     if (index === -1) return;
     const shot = state.shots[index];
@@ -384,6 +422,35 @@
     gridWs.setScroll(target);
   }
 
+  // The shot's name is only ever editable here (the timeline region label,
+  // above, just displays it) - a plain text input inline in the # cell,
+  // committed on 'change' (blur/Enter) rather than every keystroke so typing
+  // a name never gets interrupted by an unrelated re-render mid-edit.
+  function buildNumberCell(shot) {
+    const cell = document.createElement('td');
+    cell.className = 'shot-number-cell';
+
+    const numberLabel = document.createElement('div');
+    numberLabel.className = 'shot-number-label';
+    numberLabel.textContent = `#${shot.id}`;
+    cell.appendChild(numberLabel);
+
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'shot-name-input';
+    nameInput.placeholder = 'unnamed';
+    nameInput.value = shot.name || '';
+    // Prevents the row's own click handler (which selects the shot and can
+    // trigger a re-render via 'shot-selected') from firing on the same click
+    // that focuses this field - a re-render mid-click would rebuild this
+    // input out from under the browser's pending focus.
+    nameInput.addEventListener('click', (e) => e.stopPropagation());
+    nameInput.addEventListener('change', () => shotsApi.setShotName(shot.id, nameInput.value.trim()));
+    cell.appendChild(nameInput);
+
+    return cell;
+  }
+
   function renderShotList() {
     const list = document.getElementById('shot-list');
     if (!list) return;
@@ -394,16 +461,37 @@
       const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
       const row = document.createElement('tr');
       row.className = `status-${status}${shot.id === selectedId ? ' selected' : ''}`;
-      row.innerHTML = `
-        <td>${shot.id}</td>
-        <td>${formatTime(shot.startSeconds)}</td>
-        <td>${formatTime(shot.endSeconds)}</td>
-        <td>${shotsApi.shotDuration(shot).toFixed(3)} s</td>
-        <td class="status-cell">${statusLabel(status)}</td>
-        <td>${calc.cutFrames}</td>
-        <td>${calc.renderFrames}</td>
-        <td>${calc.overhangFrames} f / ${calc.overhangSeconds.toFixed(3)} s</td>
-      `;
+
+      row.appendChild(buildNumberCell(shot));
+
+      const startCell = document.createElement('td');
+      startCell.textContent = formatTime(shot.startSeconds);
+      row.appendChild(startCell);
+
+      const endCell = document.createElement('td');
+      endCell.textContent = formatTime(shot.endSeconds);
+      row.appendChild(endCell);
+
+      const durCell = document.createElement('td');
+      durCell.textContent = `${shotsApi.shotDuration(shot).toFixed(3)} s`;
+      row.appendChild(durCell);
+
+      const statusCell = document.createElement('td');
+      statusCell.className = 'status-cell';
+      const swatch = document.createElement('span');
+      swatch.className = `status-swatch status-${status}`;
+      swatch.title = statusLabel(status);
+      statusCell.appendChild(swatch);
+      row.appendChild(statusCell);
+
+      const cutCell = document.createElement('td');
+      cutCell.textContent = `${calc.cutFrames}`;
+      row.appendChild(cutCell);
+
+      const renderCell = document.createElement('td');
+      renderCell.textContent = `${calc.renderFrames}f (${calc.overhangFrames}f/${calc.overhangSeconds.toFixed(3)}s)`;
+      row.appendChild(renderCell);
+
       row.addEventListener('click', () => {
         scrollToShot(shot);
         if (MSE.context) MSE.context.selectShot(shot.id);
@@ -445,10 +533,12 @@
       }
     }
 
-    // Shows the live (unsnapped) start/end/duration while dragging out a new
-    // shot - snapping is only applied once the drag ends, so the label tracks
-    // the same raw values the box itself is drawn from.
-    function updateDraft(startTime, endTime) {
+    // Shows the *snapped* start/end/duration while dragging out a new shot
+    // (unless Alt is held, matching the final drop behavior) - the box
+    // visibly jumping to each grid line as the pointer moves is the "future
+    // snap destination" feedback; a class toggle marks the unsnapped
+    // (Alt-held) case so it can be styled differently.
+    function updateDraft(startTime, endTime, snapped) {
       if (!draftEl) {
         draftEl = document.createElement('div');
         draftEl.className = 'shot-draft';
@@ -457,6 +547,7 @@
         draftEl.appendChild(draftLabelEl);
         wrapper.appendChild(draftEl);
       }
+      draftEl.classList.toggle('unsnapped', !snapped);
       const scroll = shotsWs.getScroll();
       const lo = Math.min(startTime, endTime);
       const hi = Math.max(startTime, endTime);
@@ -467,6 +558,22 @@
       draftLabelEl.textContent = `${formatTime(lo)} – ${formatTime(hi)} · ${(hi - lo).toFixed(2)}s`;
     }
 
+    // Shared by the live preview (onPointerMove) and the actual creation
+    // (onPointerUp) so what you see while dragging is exactly what you get on
+    // release - snapped to the active grid unless Alt is held, then re-clamped
+    // to the gap being dragged in (snapping alone can push a point past the
+    // gap boundary, e.g. onto a neighboring shot snapped to the same grid).
+    function computeDragRange(clientX) {
+      const rawTime = timeAtClientX(clientX);
+      const clamped = Math.min(down.gap.end, Math.max(down.gap.start, rawTime));
+      const snap = !altHeld;
+      let start = snap ? shotsApi.snapSeconds(Math.min(down.time, clamped)) : Math.min(down.time, clamped);
+      let end = snap ? shotsApi.snapSeconds(Math.max(down.time, clamped)) : Math.max(down.time, clamped);
+      start = Math.min(Math.max(start, down.gap.start), down.gap.end);
+      end = Math.min(Math.max(end, down.gap.start), down.gap.end);
+      return { start, end, snap };
+    }
+
     function onPointerMove(e) {
       if (!down) return;
       if (!dragging) {
@@ -475,9 +582,8 @@
         if (!movedEnough || !down.gap) return;
         dragging = true;
       }
-      const rawTime = timeAtClientX(e.clientX);
-      const clamped = Math.min(down.gap.end, Math.max(down.gap.start, rawTime));
-      updateDraft(down.time, clamped);
+      const { start, end, snap } = computeDragRange(e.clientX);
+      updateDraft(start, end, snap);
     }
 
     function onPointerUp(e) {
@@ -485,20 +591,9 @@
       document.removeEventListener('pointerup', onPointerUp);
 
       if (dragging && down.gap) {
-        const rawTime = timeAtClientX(e.clientX);
-        const clamped = Math.min(down.gap.end, Math.max(down.gap.start, rawTime));
-        const snap = !altHeld;
-        let start = snap ? shotsApi.snapSeconds(Math.min(down.time, clamped)) : Math.min(down.time, clamped);
-        let end = snap ? shotsApi.snapSeconds(Math.max(down.time, clamped)) : Math.max(down.time, clamped);
-        // Snapping can push a point past the gap boundary (e.g. onto a
-        // neighboring shot snapped to the same grid). Re-clamp to the gap
-        // that was actually dragged in, so createShot's own gap lookup can't
-        // resolve a different - possibly much later - gap from an
-        // out-of-range point.
-        start = Math.min(Math.max(start, down.gap.start), down.gap.end);
-        end = Math.min(Math.max(end, down.gap.start), down.gap.end);
+        const { start, end } = computeDragRange(e.clientX);
         shotsApi.createShot(start, end);
-      } else if (!dragging && !down.gap) {
+      } else if (!dragging && !down.gap && !regionMoveOccurred) {
         const movedEnough =
           Math.abs(e.clientX - down.x) > CLICK_MOVE_THRESHOLD_PX || Date.now() - down.t > 400;
         if (!movedEnough) shotsApi.splitShotAt(down.time);
@@ -515,6 +610,7 @@
       const time = timeAtClientX(e.clientX);
       down = { x: e.clientX, y: e.clientY, t: Date.now(), time, gap: shotsApi.gapAt(time) };
       dragging = false;
+      regionMoveOccurred = false;
       document.addEventListener('pointermove', onPointerMove);
       document.addEventListener('pointerup', onPointerUp);
     });
@@ -676,6 +772,10 @@
   on('video-changed', () => renderShots());
   on('limits-changed', () => renderShots());
   on('shots-changed', () => renderShots());
+  // Selecting a shot (from the list, or scrollToShot elsewhere) never changes
+  // region geometry, so a plain renderShotList() is enough to (re)apply the
+  // .selected row class - no need for renderShots()'s full region rebuild.
+  on('shot-selected', () => renderShotList());
 
   wireWheelScroll();
 

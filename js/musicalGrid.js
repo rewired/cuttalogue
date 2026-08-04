@@ -51,5 +51,28 @@
     return { bar, beat };
   }
 
-  MSE.grid = { beatDuration, barDuration, gridStepSeconds, snapToGrid, barBeatAt };
+  const TICKS_PER_BEAT = 960;
+
+  // Formats a *duration* (not a position - additive, zero-based) as standard
+  // DAW length notation: bars.beats.sixteenths.ticks. Unlike barBeatAt (a
+  // 1-based position lookup), a 10s shot length at 120 BPM/4:4 is "2.1.3.480",
+  // not "3.2.4.480".
+  function durationInBarsBeats(durationSeconds, tempo) {
+    const bd = beatDuration(tempo.bpm);
+    const totalTicks = Math.max(0, Math.round((durationSeconds / bd) * TICKS_PER_BEAT));
+    const ticksPerSixteenth = TICKS_PER_BEAT / 4;
+    const ticksPerBar = TICKS_PER_BEAT * tempo.numerator;
+
+    const bars = Math.floor(totalTicks / ticksPerBar);
+    let remainder = totalTicks - bars * ticksPerBar;
+    const beats = Math.floor(remainder / TICKS_PER_BEAT);
+    remainder -= beats * TICKS_PER_BEAT;
+    const sixteenths = Math.floor(remainder / ticksPerSixteenth);
+    remainder -= sixteenths * ticksPerSixteenth;
+    const ticks = Math.round(remainder);
+
+    return `${bars}.${beats}.${sixteenths}.${String(ticks).padStart(3, '0')}`;
+  }
+
+  MSE.grid = { beatDuration, barDuration, gridStepSeconds, snapToGrid, barBeatAt, durationInBarsBeats };
 })(window.MSE = window.MSE || {});
