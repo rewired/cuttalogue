@@ -64,7 +64,7 @@
     const name = document.createElement('div');
     name.className = 'asset-filename';
     name.title = asset.fileName;
-    name.textContent = asset.fileName;
+    name.textContent = MSE.format.stripFileExtension(asset.fileName);
     card.appendChild(name);
 
     const check = document.createElement('span');

@@ -112,7 +112,7 @@
     const name = document.createElement('div');
     name.className = 'asset-filename';
     name.title = asset.fileName;
-    name.textContent = asset.fileName;
+    name.textContent = MSE.format.stripFileExtension(asset.fileName);
     card.appendChild(name);
 
     card.appendChild(buildKindSelect(asset));
@@ -162,7 +162,8 @@
 
     const name = document.createElement('h3');
     name.className = 'asset-detail-filename';
-    name.textContent = asset.fileName;
+    name.title = asset.fileName;
+    name.textContent = MSE.format.stripFileExtension(asset.fileName);
     el.detail.appendChild(name);
 
     if (MSE.assets.kindOptionsFor(asset.type).length > 0) {

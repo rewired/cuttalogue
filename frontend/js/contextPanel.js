@@ -67,37 +67,98 @@
     renderAssignedAssets();
   }
 
-  // Assigned assets render as chips (unchanged), plus a trailing "+" chip
-  // that opens the asset picker modal (assetPicker.js) - the only way to
-  // add an asset from here now. Picking happens there; removing still
-  // happens right here via each chip's own x, same as before.
+  function assetPreviewUrl(asset) {
+    const projectId = MSE.project.getProjectId();
+    const path = asset.thumbnailPath || (asset.type === 'image' ? asset.relativePath : null);
+    if (!projectId || !path) return null;
+    return `/project-files/${projectId}/${path}`;
+  }
+
+  function assetTypeLabel(type) {
+    if (type === 'audio') return 'AUDIO';
+    if (type === 'video') return 'VIDEO';
+    if (type === 'other') return 'FILE';
+    return 'IMAGE';
+  }
+
+  // Assigned assets render as thumbnail cards - this is also where an
+  // asset's H3 role for THIS shot gets picked (only images have one; casting
+  // is a per-shot fact, unlike an asset's kind which is fixed everywhere -
+  // see assets.js). Adding happens via the trailing "+" tile, which opens
+  // the asset picker modal (assetPicker.js); removing stays right here via
+  // each card's own x.
   function renderAssignedAssets() {
     const shot = findSelectedShot();
     el.assignedAssets.innerHTML = '';
     if (!shot) return;
 
     MSE.assets.assetsForShot(shot).forEach((asset) => {
-      const chip = document.createElement('span');
-      chip.className = 'assigned-asset-chip';
-      const label = document.createElement('span');
-      label.textContent = asset.fileName;
-      chip.appendChild(label);
+      const card = document.createElement('div');
+      card.className = 'asset-card assigned-asset-card';
+
       const removeBtn = document.createElement('button');
       removeBtn.type = 'button';
+      removeBtn.className = 'assigned-asset-remove';
       removeBtn.textContent = '×';
       removeBtn.title = 'Remove from this shot';
       removeBtn.addEventListener('click', () => MSE.assets.removeAssetFromShot(shot.id, asset.id));
-      chip.appendChild(removeBtn);
-      el.assignedAssets.appendChild(chip);
+      card.appendChild(removeBtn);
+
+      const previewUrl = assetPreviewUrl(asset);
+      if (previewUrl) {
+        const img = document.createElement('img');
+        img.src = previewUrl;
+        img.alt = asset.fileName;
+        card.appendChild(img);
+      } else {
+        const placeholder = document.createElement('div');
+        placeholder.className = 'asset-icon';
+        placeholder.textContent = assetTypeLabel(asset.type);
+        card.appendChild(placeholder);
+      }
+
+      const name = document.createElement('div');
+      name.className = 'asset-filename';
+      name.title = asset.fileName;
+      name.textContent = MSE.format.stripFileExtension(asset.fileName);
+      card.appendChild(name);
+
+      if (asset.type === 'image') {
+        const options = MSE.assets.roleOptionsFor(asset.kind);
+        if (options) {
+          const currentRole = (shot.assetRoles || {})[asset.id] || '';
+          const select = document.createElement('select');
+          select.className = 'assigned-asset-role-select';
+          options.forEach(([value, label]) => {
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            opt.selected = value === currentRole;
+            select.appendChild(opt);
+          });
+          select.addEventListener('change', () => shotsApi.setAssetRole(shot.id, asset.id, select.value || null));
+          card.appendChild(select);
+        } else {
+          // Shouldn't normally happen - the picker blocks assigning an
+          // unclassified asset - but projects saved before classification
+          // existed can still have one here, so this stays a safe fallback.
+          const note = document.createElement('div');
+          note.className = 'asset-tags-readout asset-kind-warning';
+          note.textContent = 'Not classified';
+          card.appendChild(note);
+        }
+      }
+
+      el.assignedAssets.appendChild(card);
     });
 
-    const addBtn = document.createElement('button');
-    addBtn.type = 'button';
-    addBtn.className = 'assigned-asset-chip assigned-asset-add-btn';
-    addBtn.textContent = '+';
-    addBtn.title = 'Assign an asset to this shot';
-    addBtn.addEventListener('click', () => MSE.assetPicker.open(shot.id));
-    el.assignedAssets.appendChild(addBtn);
+    const addCard = document.createElement('button');
+    addCard.type = 'button';
+    addCard.className = 'asset-card assigned-asset-add-card';
+    addCard.title = 'Assign an asset to this shot';
+    addCard.textContent = '+';
+    addCard.addEventListener('click', () => MSE.assetPicker.open(shot.id));
+    el.assignedAssets.appendChild(addCard);
   }
 
   function selectShot(shotId) {

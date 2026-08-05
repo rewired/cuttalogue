@@ -114,7 +114,7 @@
         .forEach((s) => {
           const track = (shot.direction.subjects || {})[s.assetId] || [];
           const active = track.find((seg) => segmentActiveAt(seg, start, end));
-          if (active && active.action) sentences.push(`${s.label} ${active.action}.`);
+          if (active && active.action) sentences.push(`<${s.label}> ${active.action}.`);
         });
 
       if (sentences.length > 0) {
@@ -177,5 +177,5 @@
     return sections.join('\n\n');
   }
 
-  MSE.h3Compiler = { compileH3Prompt };
+  MSE.h3Compiler = { compileH3Prompt, collectBeatBoundaries, orderedSubjects, isActingRole };
 })(window.MSE = window.MSE || {});

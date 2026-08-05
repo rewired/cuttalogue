@@ -341,6 +341,87 @@
     emit('shots-changed', { reason: 'direction' });
   }
 
+  const MIN_SEGMENT_SECONDS = 0.1;
+
+  // Direction segments (camera/subject) live within a single shot's own
+  // duration, not the song timeline - clamped against their own neighbor in
+  // the same array and against [0, shotDuration], same shape as moveEdge/
+  // moveShot but scoped one level down. Deliberately silent (no emit) like
+  // moveEdge/moveShot: the lane widget calls these on every pointermove for
+  // live dragging and updates the dragged element's own position directly,
+  // then calls notifyDirectionChanged() once on pointerup - emitting here on
+  // every move would rebuild the lane DOM out from under the drag in
+  // progress (the exact bug already fixed once for the shot list's dblclick).
+  function clampSegmentEdge(segments, index, side, target, duration) {
+    const seg = segments[index];
+    if (side === 'start') {
+      const prev = segments[index - 1];
+      const min = prev ? prev.endSeconds : 0;
+      const max = seg.endSeconds - MIN_SEGMENT_SECONDS;
+      return Math.min(Math.max(target, min), max);
+    }
+    const next = segments[index + 1];
+    const max = next ? next.startSeconds : duration;
+    const min = seg.startSeconds + MIN_SEGMENT_SECONDS;
+    return Math.max(Math.min(target, max), min);
+  }
+
+  function clampSegmentMove(segments, index, newStart, duration) {
+    const seg = segments[index];
+    const length = seg.endSeconds - seg.startSeconds;
+    const prev = segments[index - 1];
+    const next = segments[index + 1];
+    const min = prev ? prev.endSeconds : 0;
+    const max = (next ? next.startSeconds : duration) - length;
+    return Math.min(Math.max(newStart, min), max);
+  }
+
+  function moveCameraSegmentEdge(shotId, index, side, newTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.camera;
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentEdge(segments, index, side, newTime, shotDuration(shot));
+    segments[index][side === 'start' ? 'startSeconds' : 'endSeconds'] = clamped;
+    return clamped;
+  }
+
+  function moveCameraSegment(shotId, index, newStart) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.camera;
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentMove(segments, index, newStart, shotDuration(shot));
+    const seg = segments[index];
+    const length = seg.endSeconds - seg.startSeconds;
+    seg.startSeconds = clamped;
+    seg.endSeconds = clamped + length;
+    return clamped;
+  }
+
+  function moveSubjectSegmentEdge(shotId, assetId, index, side, newTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentEdge(segments, index, side, newTime, shotDuration(shot));
+    segments[index][side === 'start' ? 'startSeconds' : 'endSeconds'] = clamped;
+    return clamped;
+  }
+
+  function moveSubjectSegment(shotId, assetId, index, newStart) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentMove(segments, index, newStart, shotDuration(shot));
+    const seg = segments[index];
+    const length = seg.endSeconds - seg.startSeconds;
+    seg.startSeconds = clamped;
+    seg.endSeconds = clamped + length;
+    return clamped;
+  }
+
+  function notifyDirectionChanged() {
+    emit('shots-changed', { reason: 'direction' });
+  }
+
   MSE.shots = {
     ASSET_ROLES,
     CAMERA_MOVEMENTS,
@@ -364,5 +445,10 @@
     addSubjectSegment,
     updateSubjectSegment,
     removeSubjectSegment,
+    moveCameraSegmentEdge,
+    moveCameraSegment,
+    moveSubjectSegmentEdge,
+    moveSubjectSegment,
+    notifyDirectionChanged,
   };
 })(window.MSE = window.MSE || {});

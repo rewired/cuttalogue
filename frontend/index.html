@@ -169,16 +169,26 @@ Right-click a shot to delete it">&#9432;</span></div>
     <div class="tab-content" id="tab-assets">
       <p class="placeholder-hint" id="assets-tab-empty">Select a shot to assign assets to it.</p>
       <div id="assets-tab-detail" style="display:none;">
-        <div id="shot-detail-assets" class="assigned-assets"></div>
+        <div id="shot-detail-assets" class="asset-grid"></div>
       </div>
     </div>
 
     <div class="tab-content" id="tab-direction" hidden>
       <p class="placeholder-hint" id="direction-tab-empty">Select a shot to see its details.</p>
-      <div class="shot-detail-field" id="direction-tab-detail" style="display:none;">
-        <div class="direction-field-row">
-          <span class="placeholder-hint" id="direction-summary"></span>
-          <button type="button" id="open-direction-btn">Edit direction</button>
+      <div id="direction-tab-detail" style="display:none;">
+        <div id="direction-lanes-root" class="direction-lanes-root">
+          <div class="direction-lanes-toolbar">
+            <button type="button" id="direction-expand-btn" class="icon-btn" title="Expand" aria-label="Expand">&#9974;</button>
+          </div>
+
+          <div id="direction-lanes" class="direction-lanes"></div>
+
+          <div id="direction-segment-detail" class="direction-segment-detail" hidden></div>
+
+          <div class="modal-footer">
+            <button type="button" id="direction-compile-btn">Compile prompt</button>
+            <span id="direction-compile-status" class="placeholder-hint"></span>
+          </div>
         </div>
       </div>
     </div>
@@ -267,27 +277,7 @@ Right-click a shot to delete it">&#9432;</span></div>
       <h2 id="direction-modal-title">Direction</h2>
       <button type="button" id="direction-close-btn" class="modal-close">&times;</button>
     </div>
-    <div class="modal-body">
-      <p class="hint">
-        Feeds MiniMax H3's structured reference-generation prompt (see docs/h3-shot-direction-roadmap.md).
-        Keep segments coarse - a handful of large beats compiles far more reliably than many tiny ones.
-      </p>
-      <section class="direction-section">
-        <h3>Cast</h3>
-        <p class="placeholder-hint" id="direction-cast-empty">No assets assigned to this shot yet - assign some in the Cast &amp; Locations tab first.</p>
-        <div id="direction-cast-list" class="direction-list"></div>
-      </section>
-      <section class="direction-section">
-        <h3>Camera</h3>
-        <div id="direction-camera-list" class="direction-list"></div>
-        <button type="button" id="direction-add-camera-btn">+ Add camera segment</button>
-      </section>
-      <section class="direction-section" id="direction-subjects-container"></section>
-    </div>
-    <div class="modal-footer">
-      <button type="button" id="direction-compile-btn">Compile prompt</button>
-      <span id="direction-compile-status" class="placeholder-hint"></span>
-    </div>
+    <div class="modal-body" id="direction-modal-body"></div>
   </div>
 </div>
 
