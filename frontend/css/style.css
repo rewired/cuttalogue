@@ -191,6 +191,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .icon-btn:hover { color: var(--text); border-color: transparent; }
 
+.direction-snap-toggle {
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+.direction-snap-toggle.active { color: var(--accent); border-color: var(--accent); }
+
 .grid-tempo-panel {
   position: absolute;
   top: calc(100% + 6px);

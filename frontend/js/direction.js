@@ -61,6 +61,40 @@
     renderAll();
   }
 
+  // Segments snap to whichever grid is currently displayed (see the Grid row
+  // toggle above) on drag release only - live dragging stays free, same as
+  // the main Shots timeline's own snap-on-release convention. Alt inverts
+  // the toggle for that one drag, also mirroring the Shots timeline.
+  const SNAP_KEY = 'cuttalogue.directionSnap';
+  let snapEnabled = localStorage.getItem(SNAP_KEY) !== 'off';
+
+  function setSnapEnabled(v) {
+    snapEnabled = v;
+    localStorage.setItem(SNAP_KEY, v ? 'on' : 'off');
+    updateSnapToggle();
+  }
+
+  function updateSnapToggle() {
+    if (!el.snapToggle) return;
+    el.snapToggle.textContent = snapEnabled ? 'Snap: on' : 'Snap: off';
+    el.snapToggle.classList.toggle('active', snapEnabled);
+    el.snapToggle.title = 'Toggle snapping segments to the grid on drag release (hold Alt while dragging to invert for one drag)';
+  }
+
+  // Shot-relative time (0 = shot start) -> nearest grid line, in the same
+  // domain the Grid row ticks are drawn in (absolute song grid or shot-local,
+  // per gridMode) - mirrors shots.js's own snapSeconds, but that one only
+  // knows the song timeline, not a shot-relative one.
+  function snapToDirectionGrid(relativeTime, shot) {
+    const tempo = state.tempo;
+    const step = MSE.grid.gridStepSeconds(tempo);
+    if (!step || step <= 0) return relativeTime;
+    const origin = gridMode === 'relative' ? shot.startSeconds : tempo.gridOffsetSeconds;
+    const absoluteTime = shot.startSeconds + relativeTime;
+    const snappedRel = Math.round((absoluteTime - origin) / step) * step;
+    return Math.max(0, origin + snappedRel - shot.startSeconds);
+  }
+
   function cacheElements() {
     el.lanesRoot = document.getElementById('direction-lanes-root');
     el.tabDetailContainer = document.getElementById('direction-tab-detail');
@@ -75,6 +109,7 @@
     el.compileStatus = document.getElementById('direction-compile-status');
     el.segmentContextMenu = document.getElementById('direction-segment-context-menu');
     el.segmentContextDelete = document.getElementById('direction-segment-context-delete');
+    el.snapToggle = document.getElementById('direction-snap-toggle');
   }
 
   function findShot(shotId) {
@@ -161,34 +196,46 @@
       const startEnd = seg.endSeconds;
       let moved = false;
 
+      function applyMove(timeValue) {
+        return opts.kind === 'camera'
+          ? (mode === 'move'
+            ? shotsApi.moveCameraSegment(shot.id, index, timeValue)
+            : shotsApi.moveCameraSegmentEdge(shot.id, index, mode, timeValue))
+          : (mode === 'move'
+            ? shotsApi.moveSubjectSegment(shot.id, opts.assetId, index, timeValue)
+            : shotsApi.moveSubjectSegmentEdge(shot.id, opts.assetId, index, mode, timeValue));
+      }
+
       function onMove(ev) {
         const dx = ev.clientX - startX;
         if (!moved && Math.abs(dx) < 3) return;
         moved = true;
         const deltaSeconds = dx / pxPerSecond;
-        let clamped;
-        if (mode === 'move') {
-          clamped = opts.kind === 'camera'
-            ? shotsApi.moveCameraSegment(shot.id, index, startStart + deltaSeconds)
-            : shotsApi.moveSubjectSegment(shot.id, opts.assetId, index, startStart + deltaSeconds);
-        } else {
-          const targetTime = (mode === 'start' ? startStart : startEnd) + deltaSeconds;
-          clamped = opts.kind === 'camera'
-            ? shotsApi.moveCameraSegmentEdge(shot.id, index, mode, targetTime)
-            : shotsApi.moveSubjectSegmentEdge(shot.id, opts.assetId, index, mode, targetTime);
-        }
-        if (clamped === null) return;
+        const timeValue = mode === 'move'
+          ? startStart + deltaSeconds
+          : (mode === 'start' ? startStart : startEnd) + deltaSeconds;
+        // Free during the drag itself - same "snap only on release" feel as
+        // the main Shots timeline - so applyMove() here always passes the
+        // raw pointer-derived time, never the snapped one.
+        if (applyMove(timeValue) === null) return;
         // seg is the live array element both move* functions mutated in
         // place, so both edges already reflect the clamped result here.
         segEl.style.left = `${(seg.startSeconds / domainDuration) * 100}%`;
         segEl.style.width = `${Math.max(0, (seg.endSeconds - seg.startSeconds) / domainDuration) * 100}%`;
       }
-      function onUp() {
+      function onUp(ev) {
         document.removeEventListener('pointermove', onMove);
         document.removeEventListener('pointerup', onUp);
         selection = { kind: opts.kind, assetId: opts.assetId, index };
-        if (moved) shotsApi.notifyDirectionChanged();
-        else renderAll();
+        if (moved) {
+          if (snapEnabled && !ev.altKey) {
+            const current = mode === 'move' ? seg.startSeconds : (mode === 'start' ? seg.startSeconds : seg.endSeconds);
+            applyMove(snapToDirectionGrid(current, shot));
+          }
+          shotsApi.notifyDirectionChanged();
+        } else {
+          renderAll();
+        }
       }
       document.addEventListener('pointermove', onMove);
       document.addEventListener('pointerup', onUp);
@@ -578,6 +625,7 @@
   }
 
   function wire() {
+    el.snapToggle.addEventListener('click', () => setSnapEnabled(!snapEnabled));
     el.expandBtn.addEventListener('click', expand);
     el.closeBtn.addEventListener('click', collapse);
     el.overlay.addEventListener('click', (e) => {
@@ -636,6 +684,7 @@
     cacheElements();
     buildSpeedDatalist();
     wire();
+    updateSnapToggle();
   }
 
   document.addEventListener('DOMContentLoaded', init);
