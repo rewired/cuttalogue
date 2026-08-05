@@ -154,11 +154,6 @@
     return btn;
   }
 
-  function nextSegmentStart(segments) {
-    if (!segments.length) return 0;
-    return Math.max(...segments.map((s) => s.endSeconds));
-  }
-
   function isSelected(opts, index) {
     return !!selection
       && selection.kind === opts.kind
@@ -171,164 +166,46 @@
     return seg.action || 'Action';
   }
 
-  // Pointerdown drives both click-to-select and drag: a `moved` flag (set
-  // once the pointer has actually traveled a few px) decides on pointerup
-  // whether this was a click (just select, no data change, no emit) or a
-  // real drag (commit via notifyDirectionChanged - a single emit at the end,
-  // never on every move, or the lane DOM would be rebuilt out from under the
-  // drag in progress, same class of bug already fixed once for the shot
-  // list's dblclick).
-  function wireSegmentDrag(target, segEl, mode, index, domainDuration, opts) {
-    target.addEventListener('pointerdown', (e) => {
-      e.stopPropagation();
-      e.preventDefault();
-      const shot = findShot(currentShotId);
-      if (!shot) return;
-      const segments = opts.kind === 'camera' ? shot.direction.camera : shot.direction.subjects[opts.assetId];
-      const seg = segments[index];
-      if (!seg) return;
-      // segEl is always the segment element itself (not the handle that may
-      // have triggered this), so its parent is reliably the lane content.
-      const content = segEl.parentElement;
-      const pxPerSecond = content.getBoundingClientRect().width / domainDuration;
-      const startX = e.clientX;
-      const startStart = seg.startSeconds;
-      const startEnd = seg.endSeconds;
-      let moved = false;
-
-      function applyMove(timeValue) {
-        return opts.kind === 'camera'
-          ? (mode === 'move'
-            ? shotsApi.moveCameraSegment(shot.id, index, timeValue)
-            : shotsApi.moveCameraSegmentEdge(shot.id, index, mode, timeValue))
-          : (mode === 'move'
-            ? shotsApi.moveSubjectSegment(shot.id, opts.assetId, index, timeValue)
-            : shotsApi.moveSubjectSegmentEdge(shot.id, opts.assetId, index, mode, timeValue));
-      }
-
-      function onMove(ev) {
-        const dx = ev.clientX - startX;
-        if (!moved && Math.abs(dx) < 3) return;
-        moved = true;
-        const deltaSeconds = dx / pxPerSecond;
-        const timeValue = mode === 'move'
-          ? startStart + deltaSeconds
-          : (mode === 'start' ? startStart : startEnd) + deltaSeconds;
-        // Free during the drag itself - same "snap only on release" feel as
-        // the main Shots timeline - so applyMove() here always passes the
-        // raw pointer-derived time, never the snapped one.
-        if (applyMove(timeValue) === null) return;
-        // seg is the live array element both move* functions mutated in
-        // place, so both edges already reflect the clamped result here.
-        segEl.style.left = `${(seg.startSeconds / domainDuration) * 100}%`;
-        segEl.style.width = `${Math.max(0, (seg.endSeconds - seg.startSeconds) / domainDuration) * 100}%`;
-      }
-      function onUp(ev) {
-        document.removeEventListener('pointermove', onMove);
-        document.removeEventListener('pointerup', onUp);
-        selection = { kind: opts.kind, assetId: opts.assetId, index };
-        if (moved) {
-          if (snapEnabled && !ev.altKey) {
-            const current = mode === 'move' ? seg.startSeconds : (mode === 'start' ? seg.startSeconds : seg.endSeconds);
-            applyMove(snapToDirectionGrid(current, shot));
-          }
-          shotsApi.notifyDirectionChanged();
-        } else {
-          renderAll();
-        }
-      }
-      document.addEventListener('pointermove', onMove);
-      document.addEventListener('pointerup', onUp);
-    });
-  }
-
-  function buildSegmentEl(seg, index, domainDuration, opts) {
-    const segEl = document.createElement('div');
-    segEl.className = 'direction-segment';
-    segEl.classList.toggle('selected', isSelected(opts, index));
-    segEl.style.left = `${(seg.startSeconds / domainDuration) * 100}%`;
-    segEl.style.width = `${Math.max(0, (seg.endSeconds - seg.startSeconds) / domainDuration) * 100}%`;
-    segEl.textContent = segmentLabelText(seg, opts);
-    segEl.title = `${seg.startSeconds.toFixed(2)}s – ${seg.endSeconds.toFixed(2)}s`;
-    // Read back by the right-click context menu (setupSegmentContextMenu) to
-    // identify which segment was clicked without a separate DOM->data map.
-    segEl.dataset.kind = opts.kind;
-    if (opts.assetId) segEl.dataset.assetId = opts.assetId;
-    segEl.dataset.index = String(index);
-
-    const startHandle = document.createElement('div');
-    startHandle.className = 'direction-segment-handle direction-segment-handle-start';
-    segEl.appendChild(startHandle);
-    const endHandle = document.createElement('div');
-    endHandle.className = 'direction-segment-handle direction-segment-handle-end';
-    segEl.appendChild(endHandle);
-
-    wireSegmentDrag(segEl, segEl, 'move', index, domainDuration, opts);
-    wireSegmentDrag(startHandle, segEl, 'start', index, domainDuration, opts);
-    wireSegmentDrag(endHandle, segEl, 'end', index, domainDuration, opts);
-
-    return segEl;
-  }
-
-  // duration is the shot's real (cut) duration - segments and the "+" add
-  // range never go past it. domainDuration is what 0-100% actually spans
-  // (duration, or duration+overhang when there's H3 render padding to show)
-  // - every row uses the same domainDuration so ticks/segments/bands all
-  // line up across rows.
-  function buildLaneRow(label, segments, duration, domainDuration, opts) {
-    const row = document.createElement('div');
-    row.className = 'direction-lane-row';
-
-    const labelEl = document.createElement('div');
-    labelEl.className = 'direction-lane-label';
-    labelEl.textContent = label;
-    labelEl.title = label;
-    row.appendChild(labelEl);
-
-    const content = document.createElement('div');
-    content.className = 'direction-lane-content';
-    content.addEventListener('pointerdown', (e) => {
-      if (e.target !== content) return;
-      selection = null;
-      renderAll();
-    });
-    row.appendChild(content);
-
-    segments.forEach((seg, index) => content.appendChild(buildSegmentEl(seg, index, domainDuration, opts)));
-
-    const lastEnd = nextSegmentStart(segments);
-    if (lastEnd < duration - 1e-6) {
-      const addEl = document.createElement('div');
-      addEl.className = 'direction-segment-add';
-      addEl.textContent = '+';
-      addEl.title = opts.kind === 'camera' ? 'Add camera segment' : 'Add action';
-      addEl.style.left = `${(lastEnd / domainDuration) * 100}%`;
-      addEl.style.width = `${((duration - lastEnd) / domainDuration) * 100}%`;
-      addEl.addEventListener('click', (e) => {
-        e.stopPropagation();
-        opts.onAdd();
-      });
-      content.appendChild(addEl);
-    }
-
-    appendOverhangBand(content, duration, domainDuration);
-
-    return row;
-  }
-
   // H3 always renders a valid stride length (4n+1/8n+1), which is usually a
   // few frames longer than the shot's actual cut point - that trailing pad
   // gets trimmed after render, but H3 still has to generate *something* for
   // it despite nothing in the prompt describing it. Marking it here (instead
   // of only in the shot table) keeps that blind spot visible while directing.
-  function appendOverhangBand(content, duration, domainDuration) {
-    if (domainDuration <= duration + 1e-6) return;
-    const band = document.createElement('div');
-    band.className = 'direction-overhang-band';
-    band.style.left = `${(duration / domainDuration) * 100}%`;
-    band.style.width = `${((domainDuration - duration) / domainDuration) * 100}%`;
-    band.title = 'H3 render padding after this shot’s cut point (see Render column) - nothing here is described by the prompt.';
-    content.appendChild(band);
+  const OVERHANG_TITLE = 'H3 render padding after this shot’s cut point (see Render column) - nothing here is described by the prompt.';
+
+  // Segment rendering/drag/resize/select mechanics live in laneWidget.js -
+  // this builds the opts contract it expects, wiring shots.js's camera/
+  // subject move functions and this module's own selection/snap state
+  // through to it. See laneWidget.js's buildLaneRow doc comment for the
+  // full opts shape.
+  function buildLaneRow(label, segments, duration, domainDuration, opts) {
+    return MSE.laneWidget.buildLaneRow(label, segments, duration, domainDuration, {
+      labelText: (seg) => segmentLabelText(seg, opts),
+      isSelected: (index) => isSelected(opts, index),
+      moveSegment: (index, timeValue) => (opts.kind === 'camera'
+        ? shotsApi.moveCameraSegment(currentShotId, index, timeValue)
+        : shotsApi.moveSubjectSegment(currentShotId, opts.assetId, index, timeValue)),
+      moveSegmentEdge: (index, side, timeValue) => (opts.kind === 'camera'
+        ? shotsApi.moveCameraSegmentEdge(currentShotId, index, side, timeValue)
+        : shotsApi.moveSubjectSegmentEdge(currentShotId, opts.assetId, index, side, timeValue)),
+      onSelect: (index) => {
+        selection = { kind: opts.kind, assetId: opts.assetId, index };
+      },
+      onCommit: () => shotsApi.notifyDirectionChanged(),
+      onClickOnly: () => renderAll(),
+      onDeselect: () => {
+        selection = null;
+        renderAll();
+      },
+      onAdd: opts.onAdd,
+      addTitle: opts.kind === 'camera' ? 'Add camera segment' : 'Add action',
+      snapTime: (currentValue, altKey) => {
+        const shot = findShot(currentShotId);
+        return snapEnabled && !altKey && shot ? snapToDirectionGrid(currentValue, shot) : currentValue;
+      },
+      datasetAttrs: opts.assetId ? { kind: opts.kind, assetId: opts.assetId } : { kind: opts.kind },
+      overhangTitle: OVERHANG_TITLE,
+    });
   }
 
   const MAX_GRID_TICKS = 200;
@@ -405,7 +282,7 @@
       }
     }
 
-    appendOverhangBand(content, duration, domainDuration);
+    MSE.laneWidget.appendOverhangBand(content, duration, domainDuration, OVERHANG_TITLE);
 
     return row;
   }
@@ -438,7 +315,7 @@
       content.appendChild(tickLabel);
     });
 
-    appendOverhangBand(content, duration, domainDuration);
+    MSE.laneWidget.appendOverhangBand(content, duration, domainDuration, OVERHANG_TITLE);
 
     return row;
   }
@@ -463,7 +340,7 @@
       buildLaneRow('Camera', direction.camera || [], duration, domainDuration, {
         kind: 'camera',
         onAdd: () => {
-          const start = nextSegmentStart(direction.camera || []);
+          const start = MSE.laneWidget.nextSegmentStart(direction.camera || []);
           shotsApi.addCameraSegment(shot.id, { startSeconds: start, endSeconds: duration });
         },
       })
@@ -478,7 +355,7 @@
           kind: 'subject',
           assetId: s.assetId,
           onAdd: () => {
-            const start = nextSegmentStart(track);
+            const start = MSE.laneWidget.nextSegmentStart(track);
             shotsApi.addSubjectSegment(shot.id, s.assetId, { startSeconds: start, endSeconds: duration });
           },
         })
@@ -572,56 +449,33 @@
   }
 
   // Right-click delete on a segment, same interaction as the main Shots
-  // track's context menu (waveformSync.js setupShotContextMenu). Delegated
-  // on el.lanes rather than per-segment so it keeps working across
-  // re-renders and the inline<->modal reparent without rewiring.
+  // track's context menu - both go through contextMenu.js now. Delegated on
+  // el.lanes rather than per-segment so it keeps working across re-renders
+  // and the inline<->modal reparent without rewiring.
   function setupSegmentContextMenu() {
-    const menu = el.segmentContextMenu;
-    const deleteBtn = el.segmentContextDelete;
-    if (!menu || !deleteBtn) return;
-    let target = null;
-
-    function hideMenu() {
-      menu.style.display = 'none';
-      target = null;
-    }
-
-    el.lanes.addEventListener('contextmenu', (e) => {
-      const segEl = e.target.closest('.direction-segment');
-      if (!segEl) {
-        hideMenu();
-        return;
-      }
-      e.preventDefault();
-      target = {
-        kind: segEl.dataset.kind,
-        assetId: segEl.dataset.assetId || null,
-        index: Number(segEl.dataset.index),
-      };
-      menu.style.left = `${e.clientX}px`;
-      menu.style.top = `${e.clientY}px`;
-      menu.style.display = 'block';
-    });
-
-    deleteBtn.addEventListener('click', () => {
-      if (target && currentShotId !== null) {
+    if (!el.segmentContextMenu || !el.segmentContextDelete) return;
+    MSE.contextMenu.create({
+      container: el.lanes,
+      menuEl: el.segmentContextMenu,
+      deleteBtn: el.segmentContextDelete,
+      resolveTarget: (e) => {
+        const segEl = e.target.closest('.direction-segment');
+        if (!segEl) return null;
+        return {
+          kind: segEl.dataset.kind,
+          assetId: segEl.dataset.assetId || null,
+          index: Number(segEl.dataset.index),
+        };
+      },
+      onDelete: (target) => {
+        if (currentShotId === null) return;
         if (selection && selection.kind === target.kind && selection.index === target.index && selection.assetId === target.assetId) {
           selection = null;
         }
         if (target.kind === 'camera') shotsApi.removeCameraSegment(currentShotId, target.index);
         else shotsApi.removeSubjectSegment(currentShotId, target.assetId, target.index);
-      }
-      hideMenu();
+      },
     });
-
-    document.addEventListener('pointerdown', (e) => {
-      if (menu.style.display !== 'none' && !menu.contains(e.target)) hideMenu();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hideMenu();
-    });
-    window.addEventListener('scroll', hideMenu, true);
-    on('shots-changed', hideMenu);
   }
 
   function wire() {
