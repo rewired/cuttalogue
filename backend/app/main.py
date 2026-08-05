@@ -61,3 +61,8 @@ app.mount("/project-files", StaticFiles(directory=DATA_DIR), name="project-files
 @app.get("/")
 async def index():
     return FileResponse(FRONTEND_DIR / "index.html")
+
+
+@app.get("/favicon.ico")
+async def favicon():
+    return FileResponse(FRONTEND_DIR / "favicon.ico")

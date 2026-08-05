@@ -384,7 +384,10 @@ input.small { width: 44px; }
 .context-menu {
   display: none;
   position: fixed;
-  z-index: 20;
+  /* Above .modal-overlay (z-index: 40) - the Direction segment context menu
+     needs to render above the expanded Direction modal, not just the plain
+     timeline the Shots context menu was originally built for. */
+  z-index: 45;
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
@@ -440,8 +443,34 @@ input.small { width: 44px; }
 .context-panel {
   flex: 1 1 auto;
   min-width: 260px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border-left: 1px solid var(--panel-border);
   padding-left: 16px;
+}
+
+.tab-content:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#prompt-tab-detail,
+#notes-tab-detail {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+#shot-detail-prompt,
+#shot-detail-notes {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
+  resize: none;
 }
 
 .shot-list-panel .placeholder-hint,
@@ -803,8 +832,7 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
 }
 .direction-remove-btn:hover { color: var(--text); border-color: transparent; }
 
-.direction-lanes-toolbar { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 4px; }
-.direction-lanes-toolbar .hint { flex: 1 1 auto; margin: 0; }
+.direction-lanes-toolbar { display: flex; align-items: flex-start; justify-content: flex-end; gap: 10px; margin-bottom: 4px; }
 
 .direction-lanes { border: 1px solid var(--panel-border); border-radius: 6px; overflow: hidden; margin-bottom: 14px; }
 .direction-lane-row {
@@ -881,6 +909,24 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   cursor: pointer;
 }
 .direction-segment-add:hover { border-color: var(--accent); color: var(--accent); }
+
+.direction-overhang-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  border-left: 1px dashed rgba(255, 100, 100, 0.4);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 100, 100, 0.06),
+    rgba(255, 100, 100, 0.06) 6px,
+    rgba(255, 100, 100, 0.12) 6px,
+    rgba(255, 100, 100, 0.12) 12px
+  );
+}
+
+.direction-grid-toggle { cursor: pointer; user-select: none; }
+.direction-grid-toggle:hover { color: var(--text); background: var(--panel-border); }
 
 .direction-grid-row .direction-lane-content { height: 18px; background: transparent; }
 .direction-grid-tick {
