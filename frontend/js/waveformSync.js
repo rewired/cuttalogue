@@ -741,41 +741,17 @@
     const menu = document.getElementById('shot-context-menu');
     const deleteBtn = document.getElementById('shot-context-delete');
     if (!menu || !deleteBtn) return;
-    const wrapper = shotsWs.getWrapper();
-    let targetShotId = null;
-
-    function hideMenu() {
-      menu.style.display = 'none';
-      targetShotId = null;
-    }
-
-    wrapper.addEventListener('contextmenu', (e) => {
-      const region = regionsPlugin.getRegions().find((r) => r.element && r.element.contains(e.target));
-      const index = region ? shotIndexFromRegionId(region.id) : -1;
-      if (index === -1) {
-        hideMenu();
-        return;
-      }
-      e.preventDefault();
-      targetShotId = state.shots[index].id;
-      menu.style.left = `${e.clientX}px`;
-      menu.style.top = `${e.clientY}px`;
-      menu.style.display = 'block';
+    MSE.contextMenu.create({
+      container: shotsWs.getWrapper(),
+      menuEl: menu,
+      deleteBtn,
+      resolveTarget: (e) => {
+        const region = regionsPlugin.getRegions().find((r) => r.element && r.element.contains(e.target));
+        const index = region ? shotIndexFromRegionId(region.id) : -1;
+        return index === -1 ? null : state.shots[index].id;
+      },
+      onDelete: (shotId) => shotsApi.deleteShot(shotId),
     });
-
-    deleteBtn.addEventListener('click', () => {
-      if (targetShotId !== null) shotsApi.deleteShot(targetShotId);
-      hideMenu();
-    });
-
-    document.addEventListener('pointerdown', (e) => {
-      if (menu.style.display !== 'none' && !menu.contains(e.target)) hideMenu();
-    });
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hideMenu();
-    });
-    window.addEventListener('scroll', hideMenu, true);
-    on('shots-changed', hideMenu);
   }
 
   // WaveSurfer hides its native scrollbar (hideScrollbar:true) and the grid/shots
