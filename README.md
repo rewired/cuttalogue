@@ -22,8 +22,8 @@ uvicorn app.main:app --reload
 
 Then open `http://localhost:8000` in your browser.
 
-1. Use **"Load mix"** to pick your music mix.
-2. Optionally use **"Load vocal"** to add the vocal stem.
+1. Open the **☰** menu (top left of the header) and use **"Load mix"** to pick your music mix.
+2. Optionally use **"Load vocal"** in the same menu to add the vocal stem.
 
 Once the mix is loaded, the timeline appears with four synchronized tracks: **Grid**, **Shots**, **Mix**, **Vocal**.
 
@@ -39,13 +39,15 @@ Loading a mix/vocal file also copies it to the backend project folder in the bac
 | Switch A/B (mix ↔ vocal) | Radio buttons in the transport bar |
 | Zoom | Zoom slider in the transport bar |
 | Scroll horizontally | Mouse wheel / trackpad gesture over the timeline |
-| Set playback position | Click or drag on the mix or vocal track |
+| Set playback position | Click or drag on the grid, mix, or vocal track |
 
 All four tracks (grid, shots, mix, vocal) always stay in sync - same zoom, same scroll range, shared playhead.
 
 ---
 
 ## Tempo & grid
+
+Click the **⚙** icon on the Grid track's label to open the Tempo/Video/Shot length flyout.
 
 In the **Tempo** panel:
 
@@ -79,11 +81,13 @@ The shots track starts empty - no shot is created automatically. Shots don't hav
 
 While dragging (creating or moving), the boundary only snaps to the selected grid on release - it follows the mouse freely during the drag itself.
 
-Each shot's row in the table below shows: start, end, duration, status (too short / valid / too long), cut frames, H3 render frames, and the frame overhang.
+Each shot's row in the table below shows: start, end, duration, status (too short / valid / too long), cut frames, H3 render frames, and the frame overhang. Double-click a shot's **#** in the table to rename it inline (Enter to confirm, Esc to cancel).
 
 ---
 
 ## Saving, naming & switching projects
+
+Save, export, and project-switching controls all live in the **☰** menu (top left of the header).
 
 - The text field in the header is the project's **name** - type into it and hit **"Save project"** to persist it (same as tempo/shots, not saved until you click Save).
 - **"Save project"**: writes tempo, video and shot settings plus all shot boundaries to the project folder on disk via the backend. The audio files themselves are **not** saved - when reloading the project, the mix and vocal may need to be reselected.
@@ -94,26 +98,32 @@ Each shot's row in the table below shows: start, end, duration, status (too shor
 
 ## Assets
 
-The **Assets** tab (next to **Shot**, in the panel right of the shot list) holds the project's asset pool:
+The top-level **Assets** tab (next to **Shots**, above the timeline) is the project's asset library - a master/detail view, not scoped to any shot:
 
 - **"Add files"** imports images, videos, or audio - each gets copied into the project folder, probed with FFprobe (duration, dimensions, fps, codec, sample rate, channels), and given a thumbnail (images/video only).
-- Tag each asset with a comma-separated list; the filter box above the grid matches on tags.
-- Select a shot first, then use each card's **Assign / Remove** button to attach or detach it from that shot (click-based - no drag-and-drop). Assigned assets also show up as removable chips in the **Shot** tab.
-- Tags and assignments live in the same project state as prompt/notes, so they only become durable once you hit **"Save project"**; imported files themselves land on disk immediately.
+- Every asset gets a **kind** right on its card - Location / Character / Prop for images, Full mix / Lip-sync for audio, Motion guide for video - fixed for that asset everywhere in the project (a person can't be a character in one shot and a location in the next). An asset must be classified before it can be assigned to a shot.
+- Selecting a card opens the detail panel on the right with its tags (comma-separated; the filter box above the grid matches on tags) and, for images, a description field plus a **"Describe image"** button (see [Setup](#setup--optional-ai-image-descriptions) below).
+- Tags, kind, and descriptions live in the same project state as prompt/notes, so they only become durable once you hit **"Save project"**; imported files themselves land on disk immediately.
+
+Assigning an asset to a specific shot happens per-shot instead, in that shot's **Cast & Locations** tab (see below) - the library has no concept of "the selected shot".
 
 ---
 
-## Direction (camera & action lanes)
+## Cast & Locations, Direction, Prompt, Notes (per shot)
 
-The **Direction** tab (per shot, next to **Cast & Locations**) is a small draggable/resizable lane timeline scoped to that shot's own duration - one **Camera** lane plus one lane per cast subject with an acting role (see [Cast & Locations](#assets) above for casting). Drag a segment to move it, drag its edges to resize, click it to edit its fields (movement/framing/speed for camera, free-text action for subjects) in the panel below. A beat/time ruler above the lanes and a beat-boundary preview row below them show the musical grid and the semantic beats the compiler will actually merge segments into. The expand icon moves the same lanes into a large modal for more room - no separate view, just a reparent.
+Selecting a shot (click its row in the table) exposes four tabs to its right:
 
-**"Compile prompt"** feeds this data into MiniMax H3's structured reference-generation prompt (see [docs/h3-shot-direction-roadmap.md](docs/h3-shot-direction-roadmap.md)) and writes the result into the shot's **Prompt** tab. Keep segments coarse - a handful of large beats compiles far more reliably than many tiny ones.
+- **Cast & Locations** - the shot's assigned assets as chips. Click the trailing **"+"** tile to open the asset picker: a grid of every classified asset where clicking an unassigned tile assigns it and closes the picker immediately (unclassified assets show as unavailable until given a kind in the Assets tab). Click a chip's **×** to unassign it. Character assets also get a per-shot **role** (primary / supporting character) and locations get an environment role - these are per-shot, since the same character can lead one shot and support the next, unlike kind which is fixed for the asset everywhere.
+- **Direction** - a small draggable/resizable lane timeline scoped to the shot's own duration - one **Camera** lane plus one lane per cast subject with an acting role. Drag a segment to move it, drag its edges to resize, click it to edit its fields (movement/framing/speed for camera, free-text action for subjects) in the panel below. A beat/time ruler above the lanes and a beat-boundary preview row below them show the musical grid and the semantic beats the compiler will actually merge segments into. The **Snap: on/off** toggle in the toolbar controls whether dragging a segment (or its edges) snaps to that ruler on release, same free-during-drag/snap-on-release behavior as the Shots track. The expand icon moves the same lanes into a large modal for more room - no separate view, just a reparent.
+- **Prompt** / **Notes** - free-text fields for that shot, round-tripped through the project JSON like everything else here.
+
+**"Compile prompt"** (in the Direction tab) feeds the Direction data into MiniMax H3's structured reference-generation prompt (see [docs/h3-shot-direction-roadmap.md](docs/h3-shot-direction-roadmap.md)) and writes the result into the **Prompt** tab. Keep segments coarse - a handful of large beats compiles far more reliably than many tiny ones.
 
 ---
 
 ## Export
 
-- **Whole project** - the header menu has an **"Export project"** button (plus an **"Include mix snippet"** checkbox). It builds the full per-shot export package from the product doc: `export/shot-XXX/` folders, each with `lip_sync.flac`, `shot.json` (the render manifest - frame counts, frame rule, assigned asset paths), `prompt.txt`, `notes.md`, copied assigned assets, and optionally `mix.flac`. A floating task panel (bottom-right) tracks aggregate progress ("Shot 12 of 37") with a **Cancel** button; cancelling stops between shots (and mid-encode on the current one) without leaving a corrupted or partially-written shot folder behind.
+- **Whole project** - the **☰** menu has an **"Export project"** button (plus an **"Include mix snippet"** checkbox). It builds the full per-shot export package from the product doc: `export/shot-XXX/` folders, each with `lip_sync.flac`, `shot.json` (the render manifest - frame counts, frame rule, assigned asset paths), `prompt.txt`, `notes.md`, copied assigned assets, and optionally `mix.flac`. A floating task panel (bottom-right) tracks aggregate progress ("Shot 12 of 37") with a **Cancel** button; cancelling stops between shots (and mid-encode on the current one) without leaving a corrupted or partially-written shot folder behind.
 
 Both need a vocal track already loaded (see above), and the mix track too if "Include mix snippet" is checked; the project must have been saved at least once since.
 
@@ -121,7 +131,7 @@ Both need a vocal track already loaded (see above), and the mix track too if "In
 
 ## Setup & optional AI image descriptions
 
-The **"Setup"** button in the header (top right) opens an application-wide connection dialog - separate from any project, stored locally on the backend and never written into a project's JSON or export:
+The **"Setup"** button in the **☰** menu opens an application-wide connection dialog - separate from any project, stored locally on the backend and never written into a project's JSON or export:
 
 - **API base URL** and **API key** for an OpenRouter-compatible chat completions API.
 - **Default model**: used whenever a per-image request doesn't override it.
@@ -145,7 +155,7 @@ A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" s
 - `POST /api/settings/test` makes a lightweight authenticated request to the configured provider and reports whether it succeeded.
 - `POST /api/projects/{id}/assets/{assetId}/describe` streams one image to the configured provider's chat completions endpoint (`stream: true`) and re-emits each token as a job event's `delta` field over the same SSE job shape, so the frontend can pour the response into the description field as it arrives.
 
-Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage` and switches it via the **Projects** picker in the header.
+Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage` and switches it via the **Projects** picker in the **☰** menu.
 
 Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export. `ffmpeg` calls all run via a plain synchronous `subprocess.Popen` in a background thread rather than `asyncio.create_subprocess_exec` - the latter needs the Proactor event loop on Windows and raises `NotImplementedError` on Selector, which some `uvicorn --reload` worker processes end up on regardless of the policy set at startup.
 
