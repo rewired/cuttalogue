@@ -19,6 +19,7 @@
 
   function cacheElements() {
     el.openBtn = document.getElementById('asset-library-open-btn');
+    el.menuOpenBtn = document.getElementById('asset-library-menu-btn');
     el.overlay = document.getElementById('asset-library-screen');
     el.closeBtn = document.getElementById('asset-library-close-btn');
     el.fileInput = document.getElementById('asset-library-file-input');
@@ -230,6 +231,7 @@
 
   function wire() {
     el.openBtn.addEventListener('click', openScreen);
+    el.menuOpenBtn.addEventListener('click', openScreen);
     el.closeBtn.addEventListener('click', closeScreen);
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && !el.overlay.hidden) closeScreen();

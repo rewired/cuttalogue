@@ -51,15 +51,6 @@
     return res.json(); // { relativePath, fileName }
   }
 
-  async function exportLipSync(id, shotId) {
-    const res = await fetch(`/api/projects/${id}/shots/${shotId}/export/lip-sync`, { method: 'POST' });
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.detail || `export failed: ${res.status}`);
-    }
-    return res.json(); // { jobId, expectedDurationSeconds }
-  }
-
   async function exportProject(id, options) {
     const res = await fetch(`/api/projects/${id}/export`, {
       method: 'POST',
@@ -155,7 +146,6 @@
     putProject,
     uploadAssets,
     uploadAudioTrack,
-    exportLipSync,
     exportProject,
     cancelJob,
     watchJob,

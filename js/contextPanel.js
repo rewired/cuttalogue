@@ -1,7 +1,7 @@
-// Context panel: [Shot] / [Assets] tabs on the right of the shot list. Owns the
-// transient (non-persisted) selected-shot id and renders that shot's readouts
-// plus its editable prompt/notes fields, which live on the shot itself and
-// round-trip through the project JSON.
+// Context panel: [Assets] / [Direction] / [Prompt] / [Notes] tabs on the
+// right of the shot list. Owns the transient (non-persisted) selected-shot
+// id and renders that shot's readouts plus its editable prompt/notes fields,
+// which live on the shot itself and round-trip through the project JSON.
 (function (MSE) {
   'use strict';
 
@@ -13,12 +13,22 @@
   const el = {};
 
   function cacheElements() {
-    el.tabShotBtn = document.getElementById('tab-btn-shot');
     el.tabAssetsBtn = document.getElementById('tab-btn-assets');
-    el.tabShot = document.getElementById('tab-shot');
+    el.tabDirectionBtn = document.getElementById('tab-btn-direction');
+    el.tabPromptBtn = document.getElementById('tab-btn-prompt');
+    el.tabNotesBtn = document.getElementById('tab-btn-notes');
     el.tabAssets = document.getElementById('tab-assets');
-    el.empty = document.getElementById('shot-detail-empty');
-    el.detail = document.getElementById('shot-detail');
+    el.tabDirection = document.getElementById('tab-direction');
+    el.tabPrompt = document.getElementById('tab-prompt');
+    el.tabNotes = document.getElementById('tab-notes');
+
+    el.directionEmpty = document.getElementById('direction-tab-empty');
+    el.directionDetail = document.getElementById('direction-tab-detail');
+    el.promptEmpty = document.getElementById('prompt-tab-empty');
+    el.promptDetail = document.getElementById('prompt-tab-detail');
+    el.notesEmpty = document.getElementById('notes-tab-empty');
+    el.notesDetail = document.getElementById('notes-tab-detail');
+
     el.prompt = document.getElementById('shot-detail-prompt');
     el.notes = document.getElementById('shot-detail-notes');
     el.assignedAssets = document.getElementById('shot-detail-assets');
@@ -28,46 +38,48 @@
     el.assetStatus = document.getElementById('asset-status');
     el.assetEmpty = document.getElementById('asset-empty');
     el.assetGrid = document.getElementById('asset-grid');
-
-    el.exportBtn = document.getElementById('export-lip-sync-btn');
-    el.exportProgress = document.getElementById('export-progress');
-    el.exportProgressFill = document.getElementById('export-progress-fill');
-    el.exportProgressLabel = document.getElementById('export-progress-label');
-    el.exportStatus = document.getElementById('export-status');
   }
 
   function findSelectedShot() {
     return state.shots.find((s) => s.id === selectedShotId) || null;
   }
 
-  function renderShotTab() {
+  // Direction/Prompt/Notes only make sense for a selected shot, so each tab
+  // toggles its own empty-hint vs detail content the same way the old single
+  // Shot tab used to as a whole.
+  function renderShotSpecificTabs() {
     const shot = findSelectedShot();
+    const hasShot = !!shot;
+
+    el.directionEmpty.style.display = hasShot ? 'none' : '';
+    el.directionDetail.style.display = hasShot ? '' : 'none';
+    el.promptEmpty.style.display = hasShot ? 'none' : '';
+    el.promptDetail.style.display = hasShot ? '' : 'none';
+    el.notesEmpty.style.display = hasShot ? 'none' : '';
+    el.notesDetail.style.display = hasShot ? '' : 'none';
+
+    if (hasShot) {
+      // Skip the field currently being typed in, so a re-render triggered by
+      // e.g. dragging the shot's edge in the timeline can't clobber live input.
+      if (document.activeElement !== el.prompt) el.prompt.value = shot.prompt || '';
+      if (document.activeElement !== el.notes) el.notes.value = shot.notes || '';
+    }
+
+    renderAssignedAssets();
+  }
+
+  function renderAssignedAssets() {
+    const shot = findSelectedShot();
+    el.assignedAssets.innerHTML = '';
+
     if (!shot) {
-      el.empty.style.display = '';
-      el.detail.style.display = 'none';
+      const span = document.createElement('span');
+      span.className = 'placeholder-hint';
+      span.textContent = 'Select a shot to see its assigned assets.';
+      el.assignedAssets.appendChild(span);
       return;
     }
-    el.empty.style.display = 'none';
-    el.detail.style.display = '';
 
-    // Skip the field currently being typed in, so a re-render triggered by
-    // e.g. dragging the shot's edge in the timeline can't clobber live input.
-    if (document.activeElement !== el.prompt) el.prompt.value = shot.prompt || '';
-    if (document.activeElement !== el.notes) el.notes.value = shot.notes || '';
-
-    renderAssignedAssets(shot);
-  }
-
-  function resetExportUI() {
-    el.exportBtn.disabled = false;
-    el.exportProgress.hidden = true;
-    el.exportProgressFill.style.width = '0%';
-    el.exportProgressLabel.textContent = '';
-    el.exportStatus.textContent = '';
-  }
-
-  function renderAssignedAssets(shot) {
-    el.assignedAssets.innerHTML = '';
     const assigned = MSE.assets.assetsForShot(shot);
     if (assigned.length === 0) {
       const span = document.createElement('span');
@@ -170,9 +182,8 @@
 
   function selectShot(shotId) {
     selectedShotId = shotId;
-    renderShotTab();
+    renderShotSpecificTabs();
     renderAssetsTab();
-    resetExportUI();
     emit('shot-selected', { shotId });
   }
 
@@ -217,53 +228,26 @@
     el.assetTagFilter.addEventListener('input', renderAssetsTab);
   }
 
-  function wireExportControls() {
-    el.exportBtn.addEventListener('click', async () => {
-      const shot = findSelectedShot();
-      if (!shot) return;
-      const projectId = MSE.project.getProjectId();
-      if (!projectId) {
-        el.exportStatus.textContent = 'Backend unavailable.';
-        return;
-      }
-
-      el.exportBtn.disabled = true;
-      el.exportStatus.textContent = '';
-      el.exportProgress.hidden = false;
-      el.exportProgressFill.style.width = '0%';
-      el.exportProgressLabel.textContent = 'Starting...';
-
-      try {
-        const { jobId } = await MSE.api.exportLipSync(projectId, shot.id);
-        const done = await MSE.api.watchJob(jobId, (event) => {
-          const pct = Math.round((event.progressFraction || 0) * 100);
-          el.exportProgressFill.style.width = `${pct}%`;
-          el.exportProgressLabel.textContent = `${pct}%`;
-        });
-        el.exportProgressFill.style.width = '100%';
-        el.exportProgressLabel.textContent = '100%';
-        const url = `/project-files/${projectId}/${done.result.relativePath}`;
-        el.exportStatus.innerHTML = `Done - <a href="${url}" target="_blank" rel="noopener">lip_sync.flac</a> (${done.result.renderDurationSeconds.toFixed(3)}s, ${done.result.renderFrames} frames)`;
-      } catch (err) {
-        console.error(err);
-        el.exportProgress.hidden = true;
-        el.exportStatus.textContent = `Export failed: ${err.message}`;
-      } finally {
-        el.exportBtn.disabled = false;
-      }
-    });
-  }
-
   function wireTabs() {
+    const buttons = {
+      assets: el.tabAssetsBtn,
+      direction: el.tabDirectionBtn,
+      prompt: el.tabPromptBtn,
+      notes: el.tabNotesBtn,
+    };
+    const panels = {
+      assets: el.tabAssets,
+      direction: el.tabDirection,
+      prompt: el.tabPrompt,
+      notes: el.tabNotes,
+    };
     function activate(tab) {
-      const isShot = tab === 'shot';
-      el.tabShotBtn.classList.toggle('active', isShot);
-      el.tabAssetsBtn.classList.toggle('active', !isShot);
-      el.tabShot.hidden = !isShot;
-      el.tabAssets.hidden = isShot;
+      Object.keys(buttons).forEach((key) => {
+        buttons[key].classList.toggle('active', key === tab);
+        panels[key].hidden = key !== tab;
+      });
     }
-    el.tabShotBtn.addEventListener('click', () => activate('shot'));
-    el.tabAssetsBtn.addEventListener('click', () => activate('assets'));
+    Object.keys(buttons).forEach((key) => buttons[key].addEventListener('click', () => activate(key)));
   }
 
   function init() {
@@ -271,8 +255,7 @@
     wireTabs();
     wireTextInputs();
     wireAssetControls();
-    wireExportControls();
-    renderShotTab();
+    renderShotSpecificTabs();
     renderAssetsTab();
   }
 
@@ -281,7 +264,7 @@
     // renumbers), in which case fall back to the empty state instead of
     // showing stale data for an id that no longer exists.
     if (selectedShotId !== null && !findSelectedShot()) selectedShotId = null;
-    renderShotTab();
+    renderShotSpecificTabs();
     // Assign/remove buttons in the Assets tab reflect the selected shot's
     // assetIds, which is exactly what a 'shots-changed' from (un)assigning
     // an asset changes.
@@ -289,11 +272,11 @@
   });
   on('assets-changed', () => {
     renderAssetsTab();
-    renderShotTab();
+    renderShotSpecificTabs();
   });
   on('project-loaded', () => {
     selectedShotId = null;
-    renderShotTab();
+    renderShotSpecificTabs();
   });
 
   document.addEventListener('DOMContentLoaded', init);

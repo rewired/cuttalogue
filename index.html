@@ -3,18 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Musical Shot Editor</title>
+<title>CUTTAlogue</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 
 <header class="app-header">
-  <div class="header-left">
-    <h1>Musical Shot Editor</h1>
-    <input type="text" id="project-name-input" class="project-name-input" placeholder="Untitled project">
-  </div>
   <div class="app-menu">
-    <button type="button" id="app-menu-btn">Menu &#9662;</button>
+    <button type="button" id="app-menu-btn" title="Menu" aria-label="Menu">&#9776;</button>
     <div id="app-menu-panel" class="app-menu-panel" hidden>
       <div class="project-picker">
         <button type="button" id="projects-btn">Projects &#9662;</button>
@@ -41,6 +37,7 @@
       </div>
       <div class="app-menu-divider"></div>
       <button type="button" id="setup-btn">Setup</button>
+      <button type="button" id="asset-library-menu-btn">Asset library</button>
       <div class="app-menu-divider"></div>
       <div class="app-menu-row">
         <button id="save-project-btn">Save project</button>
@@ -52,9 +49,10 @@
       <button id="export-project-btn">Export project</button>
     </div>
   </div>
-</header>
-
-<section class="transport">
+  <div class="header-left">
+    <h1>CUTTAlogue</h1>
+    <input type="text" id="project-name-input" class="project-name-input" placeholder="Untitled project">
+  </div>
   <button id="play-pause-btn" disabled>&#9654; Play</button>
   <div class="readout" id="current-time-readout">00:00.000</div>
   <div class="grid-tempo-flyout">
@@ -105,7 +103,7 @@
     <label for="zoom-slider">Zoom</label>
     <input type="range" id="zoom-slider" min="20" max="500" value="80">
   </div>
-</section>
+</header>
 
 <section class="timeline-area">
   <p class="placeholder-hint" id="timeline-placeholder">Load a mix file to start the timeline.</p>
@@ -140,8 +138,8 @@
     <table>
       <thead>
         <tr>
-          <th>#</th><th>Start</th><th>End</th><th>Dur</th><th>Status</th>
-          <th>Cut (f)</th><th>Render frames</th>
+          <th>#</th><th class="numeric-col">Start</th><th class="numeric-col">End</th><th class="numeric-col">Dur</th><th class="status-col">Status</th>
+          <th class="numeric-col">Cut (f)</th><th class="numeric-col">Render (f)</th>
         </tr>
       </thead>
       <tbody id="shot-list"></tbody>
@@ -155,45 +153,17 @@
 
   <div class="context-panel">
     <div class="context-tabs">
-      <button type="button" id="tab-btn-shot" class="tab-btn active">Shot</button>
-      <button type="button" id="tab-btn-assets" class="tab-btn">Assets</button>
+      <button type="button" id="tab-btn-assets" class="tab-btn active">Assets</button>
+      <button type="button" id="tab-btn-direction" class="tab-btn">Direction</button>
+      <button type="button" id="tab-btn-prompt" class="tab-btn">Prompt</button>
+      <button type="button" id="tab-btn-notes" class="tab-btn">Notes</button>
     </div>
 
-    <div class="tab-content" id="tab-shot">
-      <p class="placeholder-hint" id="shot-detail-empty">Select a shot to see its details.</p>
-      <div id="shot-detail" class="shot-detail" style="display:none;">
-        <div class="shot-detail-field">
-          <span>Assigned assets</span>
-          <div id="shot-detail-assets" class="assigned-assets"></div>
-        </div>
-        <div class="shot-detail-field">
-          <span>Direction</span>
-          <div class="direction-field-row">
-            <span class="placeholder-hint" id="direction-summary"></span>
-            <button type="button" id="open-direction-btn">Edit direction</button>
-          </div>
-        </div>
-        <label class="shot-detail-field">Prompt
-          <textarea id="shot-detail-prompt" rows="4" placeholder="Prompt for this shot..."></textarea>
-        </label>
-        <label class="shot-detail-field">Notes
-          <textarea id="shot-detail-notes" rows="4" placeholder="Notes..."></textarea>
-        </label>
-        <div class="shot-detail-field export-field">
-          <span>Export</span>
-          <div class="export-controls">
-            <button type="button" id="export-lip-sync-btn">Export lip-sync</button>
-            <div class="export-progress" id="export-progress" hidden>
-              <div class="export-progress-bar"><div class="export-progress-fill" id="export-progress-fill"></div></div>
-              <span id="export-progress-label"></span>
-            </div>
-            <p class="placeholder-hint" id="export-status"></p>
-          </div>
-        </div>
+    <div class="tab-content" id="tab-assets">
+      <div class="shot-detail-field">
+        <span>Assigned to this shot</span>
+        <div id="shot-detail-assets" class="assigned-assets"></div>
       </div>
-    </div>
-
-    <div class="tab-content" id="tab-assets" hidden>
       <div class="asset-toolbar">
         <label class="file-button">Add files
           <input type="file" id="asset-file-input" multiple accept="image/*,video/*,audio/*">
@@ -204,6 +174,30 @@
       <p class="placeholder-hint" id="asset-status"></p>
       <p class="placeholder-hint" id="asset-empty">No assets yet</p>
       <div class="asset-grid" id="asset-grid"></div>
+    </div>
+
+    <div class="tab-content" id="tab-direction" hidden>
+      <p class="placeholder-hint" id="direction-tab-empty">Select a shot to see its details.</p>
+      <div class="shot-detail-field" id="direction-tab-detail" style="display:none;">
+        <div class="direction-field-row">
+          <span class="placeholder-hint" id="direction-summary"></span>
+          <button type="button" id="open-direction-btn">Edit direction</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="tab-content" id="tab-prompt" hidden>
+      <p class="placeholder-hint" id="prompt-tab-empty">Select a shot to see its details.</p>
+      <label class="shot-detail-field" id="prompt-tab-detail" style="display:none;">
+        <textarea id="shot-detail-prompt" rows="18" placeholder="Prompt for this shot..."></textarea>
+      </label>
+    </div>
+
+    <div class="tab-content" id="tab-notes" hidden>
+      <p class="placeholder-hint" id="notes-tab-empty">Select a shot to see its details.</p>
+      <label class="shot-detail-field" id="notes-tab-detail" style="display:none;">
+        <textarea id="shot-detail-notes" rows="18" placeholder="Notes..."></textarea>
+      </label>
     </div>
   </div>
 </section>
@@ -277,25 +271,27 @@
   </div>
 </div>
 
-<div id="asset-library-screen" class="asset-library-screen" hidden>
-  <div class="asset-library-header">
-    <h2>Asset library</h2>
-    <button type="button" id="asset-library-close-btn" class="modal-close">&times;</button>
-  </div>
-  <div class="asset-library-toolbar">
-    <label class="file-button">Add files
-      <input type="file" id="asset-library-file-input" multiple accept="image/*,video/*,audio/*">
-    </label>
-    <input type="text" id="asset-library-tag-filter" placeholder="Filter by tag...">
-    <p class="placeholder-hint" id="asset-library-status"></p>
-  </div>
-  <div class="asset-library-body">
-    <div class="asset-library-detail" id="asset-library-detail">
-      <p class="placeholder-hint" id="asset-library-detail-empty">Select an asset on the right to see its details.</p>
+<div id="asset-library-screen" class="modal-overlay" hidden>
+  <div class="modal asset-library-modal">
+    <div class="asset-library-header">
+      <h2>Asset library</h2>
+      <button type="button" id="asset-library-close-btn" class="modal-close">&times;</button>
     </div>
-    <div class="asset-library-list-col">
-      <p class="placeholder-hint" id="asset-library-empty">No assets yet</p>
-      <div class="asset-grid asset-grid-compact" id="asset-library-grid"></div>
+    <div class="asset-library-toolbar">
+      <label class="file-button">Add files
+        <input type="file" id="asset-library-file-input" multiple accept="image/*,video/*,audio/*">
+      </label>
+      <input type="text" id="asset-library-tag-filter" placeholder="Filter by tag...">
+      <p class="placeholder-hint" id="asset-library-status"></p>
+    </div>
+    <div class="asset-library-body">
+      <div class="asset-library-detail" id="asset-library-detail">
+        <p class="placeholder-hint" id="asset-library-detail-empty">Select an asset on the right to see its details.</p>
+      </div>
+      <div class="asset-library-list-col">
+        <p class="placeholder-hint" id="asset-library-empty">No assets yet</p>
+        <div class="asset-grid asset-grid-compact" id="asset-library-grid"></div>
+      </div>
     </div>
   </div>
 </div>

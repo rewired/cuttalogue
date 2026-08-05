@@ -445,31 +445,69 @@
     gridWs.setScroll(target);
   }
 
-  // The shot's name is only ever editable here (the timeline region label,
-  // above, just displays it) - a plain text input inline in the # cell,
-  // committed on 'change' (blur/Enter) rather than every keystroke so typing
-  // a name never gets interrupted by an unrelated re-render mid-edit.
+  // Single-line "#N name" display; the name is only ever editable here (the
+  // timeline region label, above, just displays it), and only on double-click
+  // - the input isn't permanently in the DOM, so the common case (just
+  // reading/selecting shots) never shows an idle textbox for every row.
+  function buildNumberDisplay(shot) {
+    const span = document.createElement('span');
+    span.className = 'shot-number-display';
+    const num = document.createElement('strong');
+    num.textContent = `#${shot.id}`;
+    span.appendChild(num);
+    span.appendChild(document.createTextNode(' '));
+    const nameSpan = document.createElement('span');
+    if (shot.name) {
+      nameSpan.textContent = shot.name;
+    } else {
+      nameSpan.className = 'shot-name-placeholder';
+      nameSpan.textContent = 'unnamed';
+    }
+    span.appendChild(nameSpan);
+    return span;
+  }
+
   function buildNumberCell(shot) {
     const cell = document.createElement('td');
     cell.className = 'shot-number-cell';
+    cell.title = 'Double-click to rename';
+    cell.appendChild(buildNumberDisplay(shot));
 
-    const numberLabel = document.createElement('div');
-    numberLabel.className = 'shot-number-label';
-    numberLabel.textContent = `#${shot.id}`;
-    cell.appendChild(numberLabel);
-
-    const nameInput = document.createElement('input');
-    nameInput.type = 'text';
-    nameInput.className = 'shot-name-input';
-    nameInput.placeholder = 'unnamed';
-    nameInput.value = shot.name || '';
     // Prevents the row's own click handler (which selects the shot and can
-    // trigger a re-render via 'shot-selected') from firing on the same click
-    // that focuses this field - a re-render mid-click would rebuild this
-    // input out from under the browser's pending focus.
-    nameInput.addEventListener('click', (e) => e.stopPropagation());
-    nameInput.addEventListener('change', () => shotsApi.setShotName(shot.id, nameInput.value.trim()));
-    cell.appendChild(nameInput);
+    // trigger a re-render via 'shot-selected') from firing on the same
+    // double-click that enters edit mode - a re-render mid-click would
+    // rebuild this cell out from under the browser's pending focus.
+    cell.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+      cell.innerHTML = '';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.className = 'shot-name-input';
+      nameInput.placeholder = 'unnamed';
+      nameInput.value = shot.name || '';
+      nameInput.addEventListener('click', (ev) => ev.stopPropagation());
+      nameInput.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') nameInput.blur();
+        if (ev.key === 'Escape') {
+          nameInput.value = shot.name || '';
+          nameInput.blur();
+        }
+      });
+      // Committed on 'change' (blur/Enter) rather than every keystroke so
+      // typing a name never gets interrupted by an unrelated re-render
+      // mid-edit - renderShotList() itself also skips rebuilding entirely
+      // while this input is focused, as a second layer of protection.
+      nameInput.addEventListener('change', () => shotsApi.setShotName(shot.id, nameInput.value.trim()));
+      nameInput.addEventListener('blur', () => {
+        cell.innerHTML = '';
+        cell.appendChild(buildNumberDisplay(shot));
+      });
+
+      cell.appendChild(nameInput);
+      nameInput.focus();
+      nameInput.select();
+    });
 
     return cell;
   }
@@ -477,6 +515,10 @@
   function renderShotList() {
     const list = document.getElementById('shot-list');
     if (!list) return;
+    // A full rebuild while a shot name is mid-edit would tear out the
+    // focused input (and its unsaved keystrokes) out from under the user -
+    // same guard shape as the Prompt/Notes activeElement check elsewhere.
+    if (document.activeElement && document.activeElement.classList.contains('shot-name-input')) return;
     list.innerHTML = '';
     const selectedId = MSE.context ? MSE.context.getSelectedShotId() : null;
     state.shots.forEach((shot) => {
@@ -488,19 +530,22 @@
       row.appendChild(buildNumberCell(shot));
 
       const startCell = document.createElement('td');
+      startCell.className = 'numeric-col';
       startCell.textContent = formatTime(shot.startSeconds);
       row.appendChild(startCell);
 
       const endCell = document.createElement('td');
+      endCell.className = 'numeric-col';
       endCell.textContent = formatTime(shot.endSeconds);
       row.appendChild(endCell);
 
       const durCell = document.createElement('td');
+      durCell.className = 'numeric-col';
       durCell.textContent = `${shotsApi.shotDuration(shot).toFixed(3)} s`;
       row.appendChild(durCell);
 
       const statusCell = document.createElement('td');
-      statusCell.className = 'status-cell';
+      statusCell.className = 'status-cell status-col';
       const swatch = document.createElement('span');
       swatch.className = `status-swatch status-${status}`;
       swatch.title = statusLabel(status);
@@ -508,10 +553,12 @@
       row.appendChild(statusCell);
 
       const cutCell = document.createElement('td');
+      cutCell.className = 'numeric-col';
       cutCell.textContent = `${calc.cutFrames}`;
       row.appendChild(cutCell);
 
       const renderCell = document.createElement('td');
+      renderCell.className = 'numeric-col';
       renderCell.textContent = `${calc.renderFrames}f (${calc.overhangFrames}f/${calc.overhangSeconds.toFixed(3)}s)`;
       row.appendChild(renderCell);
 

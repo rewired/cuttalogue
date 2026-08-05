@@ -1,7 +1,6 @@
-# Phase 4a: lip-sync export for a single shot, proving the -ss/-t math
-# against H3 render duration (not cut duration) and the ffmpeg-progress job
-# shape on one shot before Phase 4b (export_project, below) runs the same
-# building blocks in a per-shot batch loop with folders/manifests/assets.
+# Whole-project export: per-shot folders, shot.json manifest, copied assets,
+# prompt/notes, optional mix.flac, aggregate progress, and cancellation
+# (checked between shots and mid-encode via media.py's should_cancel).
 import asyncio
 import json
 import logging
@@ -69,72 +68,6 @@ def _require_track(data: dict, directory: Path, track: str) -> Path:
     return path
 
 
-@router.post("/api/projects/{project_id}/shots/{shot_id}/export/lip-sync")
-async def export_lip_sync(project_id: str, shot_id: int):
-    data, directory = _load_project(project_id)
-
-    shot = next((s for s in data.get("shots", []) if s["id"] == shot_id), None)
-    if shot is None:
-        raise HTTPException(status_code=404, detail="shot not found")
-
-    vocal_path = _require_track(data, directory, "vocal")
-
-    cut_duration = shot["endSeconds"] - shot["startSeconds"]
-    calc = frames.frame_calc(cut_duration, data["video"])
-    render_duration = calc["renderFrames"] / frames.fps(data["video"])
-
-    scratch_dir = directory / "exports" / "scratch"
-    scratch_dir.mkdir(parents=True, exist_ok=True)
-    output_path = scratch_dir / f"shot-{shot_id}-lip_sync.flac"
-    output_relative_path = f"exports/scratch/{output_path.name}"
-
-    cmd = _snippet_cmd(vocal_path, shot["startSeconds"], render_duration, output_path)
-
-    job = jobs.create_job()
-
-    async def run():
-        try:
-            await jobs.emit(
-                job,
-                {
-                    "status": "running",
-                    "phase": "encoding",
-                    "message": "Encoding lip_sync.flac",
-                    "progressFraction": 0.0,
-                },
-            )
-
-            async def on_progress(fraction: float) -> None:
-                await jobs.emit(job, {"status": "running", "phase": "encoding", "progressFraction": fraction})
-
-            await media.run_ffmpeg_with_progress(cmd, render_duration, on_progress)
-
-            job.result = {
-                "relativePath": output_relative_path,
-                "renderDurationSeconds": render_duration,
-                "cutFrames": calc["cutFrames"],
-                "renderFrames": calc["renderFrames"],
-                "overhangFrames": calc["overhangFrames"],
-            }
-            await jobs.emit(
-                job,
-                {"status": "done", "phase": "complete", "message": "Saved", "progressFraction": 1.0, "result": job.result},
-            )
-        except Exception as exc:  # noqa: BLE001 - reported to the client as a job error, not raised
-            logger.error("lip-sync export failed for shot %s: %s", shot_id, traceback.format_exc())
-            job.error = _error_message(exc)
-            await jobs.emit(job, {"status": "error", "message": job.error})
-        finally:
-            await jobs.close(job)
-
-    asyncio.create_task(run())
-    return JSONResponse(status_code=202, content={"jobId": job.id, "expectedDurationSeconds": render_duration})
-
-
-# Phase 4b: the whole-project export package - per-shot folders, shot.json
-# manifest, copied assets, prompt/notes, optional mix.flac, aggregate
-# progress, and cancellation (checked between shots and mid-encode via
-# media.py's should_cancel).
 @router.post("/api/projects/{project_id}/export")
 async def export_project(project_id: str, options: dict = Body(default={})):
     include_mix = bool(options.get("includeMixSnippet"))
