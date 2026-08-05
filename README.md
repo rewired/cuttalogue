@@ -103,6 +103,14 @@ The **Assets** tab (next to **Shot**, in the panel right of the shot list) holds
 
 ---
 
+## Direction (camera & action lanes)
+
+The **Direction** tab (per shot, next to **Cast & Locations**) is a small draggable/resizable lane timeline scoped to that shot's own duration - one **Camera** lane plus one lane per cast subject with an acting role (see [Cast & Locations](#assets) above for casting). Drag a segment to move it, drag its edges to resize, click it to edit its fields (movement/framing/speed for camera, free-text action for subjects) in the panel below. A beat/time ruler above the lanes and a beat-boundary preview row below them show the musical grid and the semantic beats the compiler will actually merge segments into. The expand icon moves the same lanes into a large modal for more room - no separate view, just a reparent.
+
+**"Compile prompt"** feeds this data into MiniMax H3's structured reference-generation prompt (see [docs/h3-shot-direction-roadmap.md](docs/h3-shot-direction-roadmap.md)) and writes the result into the shot's **Prompt** tab. Keep segments coarse - a handful of large beats compiles far more reliably than many tiny ones.
+
+---
+
 ## Export
 
 - **Whole project** - the header menu has an **"Export project"** button (plus an **"Include mix snippet"** checkbox). It builds the full per-shot export package from the product doc: `export/shot-XXX/` folders, each with `lip_sync.flac`, `shot.json` (the render manifest - frame counts, frame rule, assigned asset paths), `prompt.txt`, `notes.md`, copied assigned assets, and optionally `mix.flac`. A floating task panel (bottom-right) tracks aggregate progress ("Shot 12 of 37") with a **Cancel** button; cancelling stops between shots (and mid-encode on the current one) without leaving a corrupted or partially-written shot folder behind.

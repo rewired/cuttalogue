@@ -41,6 +41,34 @@
     return match ? match.label : asset.kind;
   }
 
+  // What H3 subject role an asset CAN play is fixed by its kind (above) - a
+  // location can never become a character mid-project. What's still a
+  // per-shot choice is whether a character is the lead or supporting in
+  // THIS particular shot, which is genuinely variable from shot to shot -
+  // returns null for kinds with nothing to cast (audio/video).
+  function roleOptionsFor(kind) {
+    if (kind === 'character') {
+      return [
+        ['', 'No role'],
+        ['primary_character', 'Primary character'],
+        ['supporting_character', 'Supporting character'],
+      ];
+    }
+    if (kind === 'location') {
+      return [
+        ['', 'Not cast'],
+        ['environment', 'Environment / location'],
+      ];
+    }
+    if (kind === 'prop') {
+      return [
+        ['', 'Not cast'],
+        ['prop', 'Prop'],
+      ];
+    }
+    return null;
+  }
+
   function setAssetKind(assetId, kind) {
     const asset = findAsset(assetId);
     if (!asset) return;
@@ -118,5 +146,6 @@
     isClassified,
     setAssetKind,
     kindLabel,
+    roleOptionsFor,
   };
 })(window.MSE = window.MSE || {});

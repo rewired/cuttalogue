@@ -15,5 +15,10 @@
     return seconds.toFixed(digits);
   }
 
-  MSE.format = { formatTime, formatSeconds };
+  function stripFileExtension(fileName) {
+    const dot = fileName.lastIndexOf('.');
+    return dot > 0 ? fileName.slice(0, dot) : fileName;
+  }
+
+  MSE.format = { formatTime, formatSeconds, stripFileExtension };
 })(window.MSE = window.MSE || {});
