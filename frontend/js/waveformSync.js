@@ -1,6 +1,16 @@
-// Creates and synchronizes four WaveSurfer instances (Grid, Shots, Mix, Vocal):
-// shared zoom, shared scroll, shared playhead, unified seeking, A/B playback
-// switching, and the Timeline/Regions/Hover plugin wiring.
+// Creates and synchronizes the timeline: three real WaveSurfer instances
+// (Grid, Mix, Vocal) plus the Shots track, which is a plain hand-rolled DOM
+// lane (see the "Shots lane" section below, built on laneWidget.js) rather
+// than a fourth WaveSurfer instance - shots.js's regions never contained
+// real audio, and running them through the Regions plugin meant two
+// independent pointer-handling systems (the plugin's own drag/resize and
+// this file's hand-rolled create/split) fighting over the same events.
+// shotsWs still holds a value once initTimeline runs, but it's a small
+// adapter object (setScrollTime/zoom/setTime), not a real WS instance - see
+// initTimeline - so it can keep participating in forEachInstance/
+// wireScrollSync/zoomTo without those needing a special case.
+// Shared zoom, shared scroll, shared playhead, unified seeking, A/B playback
+// switching, and the Timeline/Hover plugin wiring.
 (function (MSE) {
   'use strict';
 
@@ -23,7 +33,6 @@
   let shotsWs = null;
   let mixWs = null;
   let vocalWs = null;
-  let regionsPlugin = null;
   let timelinePlugin = null;
 
   let pxPerSecond = 80;
@@ -61,26 +70,16 @@
     altHeld = false;
   });
 
-  // Set whenever the Regions plugin reports an actual position change during
-  // a drag (handleRegionUpdate, below). setupShotsInteraction's own
-  // hand-rolled click/drag disambiguation checks this to tell a genuine
-  // click-to-split from a small nudge-drag of an existing region apart: a
-  // real region move always fires at least one 'update' event - itself
-  // triggered by pointer movement - strictly before the pointerup that ends
-  // the same gesture, so this is reliable regardless of listener
-  // registration order between this handler and the wrapper's own pointerup.
-  // Without it, a quick small drag of a shot both moved it (via the Regions
-  // plugin) and got misread as a click-to-split by the wrapper handler,
-  // leaving a stray extra shot behind.
-  let regionMoveOccurred = false;
-
   const els = {};
 
   function cacheElements() {
     els.gridContainer = document.getElementById('track-grid');
+    els.gridWrap = document.getElementById('track-grid-wrap');
     els.shotsContainer = document.getElementById('track-shots');
     els.mixContainer = document.getElementById('track-mix');
+    els.mixWrap = document.getElementById('track-mix-wrap');
     els.vocalContainer = document.getElementById('track-vocal');
+    els.vocalWrap = document.getElementById('track-vocal-wrap');
     els.silenceLayer = document.getElementById('silence-layer');
     els.playhead = document.getElementById('current-time-readout');
   }
@@ -166,7 +165,16 @@
     return [new Float32Array(2)];
   }
 
-  function createProxyInstance(container, height) {
+  // interactive: true lets clicking/dragging in this proxy seek the whole
+  // group, same as Mix/Vocal - only used for the Grid row. The Shots track
+  // isn't a WaveSurfer instance anymore at all (see the shots-lane section
+  // below) - it hand-rolls its own pointer handling directly, so there's no
+  // dual-system race to avoid here anymore either.
+  // cursorWidth: 0 on every instance - the single #playhead-line overlay
+  // (see renderPlayheadLoop) is now the only visible cursor, decoupled from
+  // each instance's own .setTime() sync so it never inherits the throttled
+  // cross-instance sync's jitter (see REAL_SYNC_INTERVAL_MS below).
+  function createProxyInstance(container, height, interactive) {
     return WS.create({
       container,
       height,
@@ -174,9 +182,9 @@
       peaks: silentPeaks(),
       waveColor: 'transparent',
       progressColor: 'transparent',
-      cursorColor: 'var(--cursor)',
-      cursorWidth: 2,
-      interact: false,
+      cursorWidth: 0,
+      interact: !!interactive,
+      dragToSeek: !!interactive,
       hideScrollbar: true,
       minPxPerSec: pxPerSecond,
       fillParent: false,
@@ -191,8 +199,7 @@
       url,
       waveColor: '#5b7ea3',
       progressColor: '#8fb8e0',
-      cursorColor: 'var(--cursor)',
-      cursorWidth: 2,
+      cursorWidth: 0,
       interact: true,
       dragToSeek: true,
       hideScrollbar: true,
@@ -214,6 +221,7 @@
         if (other !== ws) other.setScrollTime(startTime);
       });
       isSyncingScroll = false;
+      updatePlayheadPosition();
     });
   }
 
@@ -250,6 +258,7 @@
       });
       isSyncingTime = false;
       updatePlayheadReadout(newTime);
+      updatePlayheadPosition();
     });
   }
 
@@ -257,10 +266,69 @@
     if (els.playhead) els.playhead.textContent = hoverLabel(seconds);
   }
 
+  // The visible cursor line is now a single overlay per track row (see
+  // createPlayheadSegments/updatePlayheadPosition below), driven by its own
+  // rAF loop while playing rather than each WaveSurfer instance's native
+  // cursor - see the cursorWidth:0 note on createProxyInstance/
+  // createAudioInstance for why. The throttled cross-instance .setTime()
+  // sync above still runs unchanged: it's what keeps Mix/Vocal's own
+  // progress-fill (the waveform's played/unplayed coloring) reasonably
+  // accurate on whichever of the two isn't currently playing, which is a
+  // much coarser visual than a thin cursor line and doesn't need every-
+  // frame precision the way the line did.
   function wirePlaybackStateEvents(ws) {
-    ws.on('play', () => emit('playback-state-changed', { isPlaying: true }));
-    ws.on('pause', () => emit('playback-state-changed', { isPlaying: false }));
-    ws.on('finish', () => emit('playback-state-changed', { isPlaying: false }));
+    ws.on('play', () => {
+      emit('playback-state-changed', { isPlaying: true });
+      startPlayheadLoop();
+    });
+    ws.on('pause', () => {
+      emit('playback-state-changed', { isPlaying: false });
+      stopPlayheadLoop();
+    });
+    ws.on('finish', () => {
+      emit('playback-state-changed', { isPlaying: false });
+      stopPlayheadLoop();
+    });
+  }
+
+  let playheadEls = [];
+  let playheadRafId = null;
+
+  function createPlayheadSegments() {
+    playheadEls = [els.gridWrap, els.shotsContainer, els.mixWrap, els.vocalWrap]
+      .filter(Boolean)
+      .map((container) => {
+        const seg = document.createElement('div');
+        seg.className = 'playhead-segment';
+        container.appendChild(seg);
+        return seg;
+      });
+  }
+
+  function updatePlayheadPosition() {
+    if (!gridWs || !playheadEls.length) return;
+    const left = getCurrentTime() * pxPerSecond - gridWs.getScroll();
+    playheadEls.forEach((el) => {
+      el.style.left = `${left}px`;
+    });
+  }
+
+  function playheadLoop() {
+    updatePlayheadPosition();
+    playheadRafId = requestAnimationFrame(playheadLoop);
+  }
+
+  function startPlayheadLoop() {
+    if (playheadRafId !== null) return;
+    playheadLoop();
+  }
+
+  function stopPlayheadLoop() {
+    if (playheadRafId !== null) {
+      cancelAnimationFrame(playheadRafId);
+      playheadRafId = null;
+    }
+    updatePlayheadPosition();
   }
 
   function activeWs() {
@@ -296,6 +364,7 @@
     pxPerSecond = Math.max(10, px);
     forEachInstance((ws) => ws.zoom(pxPerSecond));
     layoutSilenceOverlay();
+    updatePlayheadPosition();
   }
 
   function setAudioTrackHeight(px) {
@@ -320,155 +389,94 @@
     });
   }
 
-  function renderShots() {
-    if (!regionsPlugin) return;
-    regionsPlugin.clearRegions();
-    state.shots.forEach((shot) => {
-      const status = shotsApi.shotStatus(shot);
-      const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
-      const region = regionsPlugin.addRegion({
-        id: `shot-${shot.id}`,
-        start: shot.startSeconds,
-        end: shot.endSeconds,
-        drag: true,
-        resize: true,
-        resizeStart: true,
-        resizeEnd: true,
-        color: STATUS_COLOR[status],
-        content: buildRegionLabel(shot, status, calc),
-      });
-      region.on('update', (side) => handleRegionUpdate(region, side));
-      region.on('update-end', (side) => handleRegionUpdateEnd(region, side));
-    });
-    renderShotList();
-    undoLabelOverlapShift();
+  // --- Shots lane -----------------------------------------------------
+  // Plain DOM, built on laneWidget.js's pixel-mode segment engine (see its
+  // file header) instead of WaveSurfer's Regions plugin - see the comment
+  // at the top of this file for why. shotsContentEl is the one scrollable/
+  // zoomable element: its own width is duration*pxPerSecond, and it shifts
+  // via a CSS transform for scroll (setShotsScrollTime) - every shot inside
+  // it is positioned in that same untransformed time*pxPerSecond space, so
+  // none of them need to know the current scroll offset themselves.
+  let shotsContentEl = null;
+  let shotsScrollTime = 0;
+
+  function shotsTimeAtClientX(clientX) {
+    const rect = shotsContentEl.getBoundingClientRect();
+    return Math.max(0, (clientX - rect.left) / pxPerSecond);
   }
 
-  // The Regions plugin's own avoidOverlapping() measures each region's label
-  // 10ms after it's added and pushes it down (via marginTop) whenever it
-  // thinks the label visually collides with an earlier region's label - a
-  // stacking feature meant for genuinely time-overlapping regions. Our shots
-  // are always sequential (never overlap in time), but sub-pixel rounding at
-  // the shared boundary between adjacent shots can still trip that check,
-  // shoving a label out of the SHOTS row into the track below. Every
-  // boundary move rebuilds all regions from scratch (see 'shots-changed'
-  // above), so this same false shove can reappear on every drag - undo it
-  // shortly after the plugin's own timeout, on every render.
-  function undoLabelOverlapShift() {
-    if (!regionsPlugin) return;
-    setTimeout(() => {
-      regionsPlugin.getRegions().forEach((region) => {
-        if (region.content) region.content.style.marginTop = '0px';
-      });
-    }, 30);
+  function shotsMetrics() {
+    return {
+      pxPerSecond: () => pxPerSecond,
+      position(el, seg) {
+        el.style.left = `${seg.startSeconds * pxPerSecond}px`;
+        el.style.width = `${Math.max(1, (seg.endSeconds - seg.startSeconds) * pxPerSecond)}px`;
+      },
+    };
   }
 
-  // The name is user-entered free text (only editable from the shot list
-  // table, not here), so this builds real DOM nodes with textContent rather
-  // than an innerHTML template - no escaping to get wrong. Layout-critical
-  // styles are set inline rather than via the .shot-region-label CSS classes
-  // in style.css: this content renders inside WaveSurfer's own shadow DOM,
-  // which the page's stylesheet cannot reach at all (confirmed - the CSS
-  // classes are kept for documentation/color only, "display: block" from
-  // them never actually applies here, same limitation already worked around
-  // for the drag-opacity styling below).
-  function buildRegionLabel(shot, status, calc) {
+  function buildShotLabel(shot, status, calc) {
     const el = document.createElement('div');
     el.className = `shot-region-label status-${status}`;
-    el.style.overflow = 'hidden';
-
     const title = document.createElement('strong');
-    title.style.display = 'block';
-    title.style.fontWeight = '700';
-    title.style.whiteSpace = 'nowrap';
-    title.style.overflow = 'hidden';
-    title.style.textOverflow = 'ellipsis';
     const name = (shot.name || '').trim() || 'unnamed';
     title.textContent = `#${shot.id} ${name}`;
     el.appendChild(title);
-
     const durationSeconds = shotsApi.shotDuration(shot);
     const info = document.createElement('span');
-    info.style.display = 'block';
-    info.style.fontSize = '10px';
-    info.style.opacity = '0.75';
-    info.style.whiteSpace = 'nowrap';
-    info.style.overflow = 'hidden';
-    info.style.textOverflow = 'ellipsis';
     info.textContent = `${durationInBarsBeats(durationSeconds, state.tempo)} / ${durationSeconds.toFixed(2)}s / ${calc.cutFrames}f`;
     el.appendChild(info);
-
     return el;
   }
 
-  function shotIndexFromRegionId(regionId) {
-    const id = Number(regionId.replace('shot-', ''));
-    return state.shots.findIndex((s) => s.id === id);
-  }
+  function renderShots() {
+    if (!shotsContentEl) return;
+    shotsContentEl.innerHTML = '';
+    shotsContentEl.style.width = `${state.audio.mix.durationSeconds * pxPerSecond}px`;
+    const metrics = shotsMetrics();
+    state.shots.forEach((shot, index) => {
+      const status = shotsApi.shotStatus(shot);
+      const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
+      const segEl = MSE.laneWidget.buildSegment(shot, index, metrics, {
+        className: 'lane-segment shot-lane-segment',
+        isSelected: () => false,
+        renderLabel: (el) => el.appendChild(buildShotLabel(shot, status, calc)),
+        // shot.id is closed over from this exact build - safe within a
+        // single render pass, same as Direction's index-into-a-fixed-array
+        // closures (shots.js's own move/split/create functions are what
+        // rebuild the array; nothing here re-renders mid-drag).
+        moveSegment: (i, timeValue) => shotsApi.moveShot(shot.id, timeValue, { snap: false }),
+        moveSegmentEdge: (i, side, timeValue) => shotsApi.moveEdge(shot.id, side, timeValue, { snap: false }),
+        onSelect: () => {},
+        onCommit: () => shotsApi.notifyBoundaryMoved(),
+        // Only a plain click on the shot's body (not a handle) splits it -
+        // mode is 'start'/'end' for the resize handles, which should do
+        // nothing on a click-without-drag.
+        onClickOnly: (ev, mode) => {
+          if (mode !== 'move') return;
+          shotsApi.splitShotAt(shotsTimeAtClientX(ev.clientX));
+        },
+        snapTime: (current, altKey) => (altKey ? current : shotsApi.snapSeconds(current)),
+        datasetAttrs: { shotId: String(shot.id) },
+      });
+      segEl.style.background = STATUS_COLOR[status];
 
-  // While actively dragging, the edge moves freely (unsnapped) so every small
-  // pointer delta is reflected. Snapping only the final position (see
-  // handleRegionUpdateEnd) would otherwise repeatedly reset the edge back to the
-  // same grid line on each intermediate move, making the drag feel frozen.
-  // Each shot's edges are independent: moving one only clamps against its own
-  // opposite edge and its neighbor's facing edge - the neighbor itself never
-  // moves, since a gap between shots is a normal, valid state now.
-  function handleRegionUpdate(region, side) {
-    regionMoveOccurred = true;
-    const index = shotIndexFromRegionId(region.id);
-    if (index === -1) return;
-    const shot = state.shots[index];
-    if (!side) {
-      // Whole-shot drag (region body, not a resize handle). The Regions plugin
-      // translates start/end freely with no notion of neighboring shots, so
-      // moveShot's clamp is what actually stops it at a neighbor or track
-      // bound - re-applying it here overrides any further translation once
-      // that bound is reached.
-      const clamped = shotsApi.moveShot(shot.id, region.start, { snap: false });
-      if (clamped === null) return;
-      region.setOptions({ start: clamped, end: clamped + shotsApi.shotDuration(shot) });
-      // Regions render inside WaveSurfer's own shadow DOM, which the page's
-      // stylesheet can't reach - set the dimming directly on the element
-      // instead of toggling a CSS class.
-      region.element.style.opacity = '0.55';
-      refreshShotVisuals(index);
-      renderShotList();
-      return;
-    }
-    const time = side === 'end' ? region.end : region.start;
-    const clamped = shotsApi.moveEdge(shot.id, side, time, { snap: false });
-    if (clamped === null) return;
-    region.setOptions({ [side]: clamped });
-    refreshShotVisuals(index);
+      // Double-click a shared boundary to merge - a genuine browser dblclick
+      // on the resize handle, independent of the drag/click state machine
+      // buildSegment already wired onto it.
+      const startHandle = segEl.querySelector('.lane-segment-handle-start');
+      const endHandle = segEl.querySelector('.lane-segment-handle-end');
+      if (startHandle) startHandle.addEventListener('dblclick', () => shotsApi.removeBoundary(index - 1));
+      if (endHandle) endHandle.addEventListener('dblclick', () => shotsApi.removeBoundary(index));
+
+      shotsContentEl.appendChild(segEl);
+    });
     renderShotList();
   }
 
-  function refreshShotVisuals(index) {
-    const shot = state.shots[index];
-    if (!shot || !regionsPlugin) return;
-    const status = shotsApi.shotStatus(shot);
-    const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
-    const region = regionsPlugin.getRegions().find((r) => r.id === `shot-${shot.id}`);
-    if (region) {
-      region.setOptions({ color: STATUS_COLOR[status], content: buildRegionLabel(shot, status, calc) });
-    }
-  }
-
-  function handleRegionUpdateEnd(region, side) {
-    const index = shotIndexFromRegionId(region.id);
-    if (index !== -1) {
-      const shot = state.shots[index];
-      if (side) {
-        const time = side === 'end' ? region.end : region.start;
-        shotsApi.moveEdge(shot.id, side, time, { snap: !altHeld });
-      } else {
-        shotsApi.moveShot(shot.id, region.start, { snap: !altHeld });
-      }
-    }
-    // Always re-renders (via 'shots-changed'), which rebuilds every region's
-    // DOM element from scratch - that's what clears the dragging opacity
-    // class, no manual removal needed.
-    shotsApi.notifyBoundaryMoved();
+  function setShotsScrollTime(t) {
+    shotsScrollTime = Math.max(0, t);
+    if (shotsContentEl) shotsContentEl.style.transform = `translateX(${-shotsScrollTime * pxPerSecond}px)`;
   }
 
   // Centers the shots/grid/mix/vocal tracks (they scroll in sync) on the given
@@ -620,20 +628,17 @@
   // space (a gap) draws a new shot instead - the two are disambiguated by
   // whether the pointerdown time falls inside a shot or in a gap
   // (shotsApi.gapAt). A plain click in a gap (no real drag) is a no-op.
+  // Drag-to-create on empty space only - move/resize/click-to-split/merge
+  // for existing shots are all wired per-segment in renderShots() instead
+  // (buildSegment's own pointerdown handlers stopPropagation, so this
+  // container-level listener only ever fires for genuinely empty space).
   function setupShotsInteraction() {
-    const wrapper = shotsWs.getWrapper();
     const CLICK_MOVE_THRESHOLD_PX = 4;
 
-    let down = null; // { x, y, t, time, gap }
+    let down = null; // { x, y, time, gap }
     let dragging = false;
     let draftEl = null;
     let draftLabelEl = null;
-
-    function timeAtClientX(clientX) {
-      const rect = wrapper.getBoundingClientRect();
-      const x = clientX - rect.left + shotsWs.getScroll();
-      return Math.max(0, x / pxPerSecond);
-    }
 
     function removeDraft() {
       if (draftEl) {
@@ -647,7 +652,9 @@
     // (unless Alt is held, matching the final drop behavior) - the box
     // visibly jumping to each grid line as the pointer moves is the "future
     // snap destination" feedback; a class toggle marks the unsnapped
-    // (Alt-held) case so it can be styled differently.
+    // (Alt-held) case so it can be styled differently. Positioned in the
+    // same untransformed time*pxPerSecond space as shot segments (see the
+    // Shots lane section above) - no scroll subtraction needed here either.
     function updateDraft(startTime, endTime, snapped) {
       if (!draftEl) {
         draftEl = document.createElement('div');
@@ -655,16 +662,13 @@
         draftLabelEl = document.createElement('div');
         draftLabelEl.className = 'shot-draft-label';
         draftEl.appendChild(draftLabelEl);
-        wrapper.appendChild(draftEl);
+        shotsContentEl.appendChild(draftEl);
       }
       draftEl.classList.toggle('unsnapped', !snapped);
-      const scroll = shotsWs.getScroll();
       const lo = Math.min(startTime, endTime);
       const hi = Math.max(startTime, endTime);
-      const left = lo * pxPerSecond - scroll;
-      const width = Math.max(1, (hi - lo) * pxPerSecond);
-      draftEl.style.left = `${left}px`;
-      draftEl.style.width = `${width}px`;
+      draftEl.style.left = `${lo * pxPerSecond}px`;
+      draftEl.style.width = `${Math.max(1, (hi - lo) * pxPerSecond)}px`;
       draftLabelEl.textContent = `${formatTime(lo)} – ${formatTime(hi)} · ${(hi - lo).toFixed(2)}s`;
     }
 
@@ -674,7 +678,7 @@
     // to the gap being dragged in (snapping alone can push a point past the
     // gap boundary, e.g. onto a neighboring shot snapped to the same grid).
     function computeDragRange(clientX) {
-      const rawTime = timeAtClientX(clientX);
+      const rawTime = shotsTimeAtClientX(clientX);
       const clamped = Math.min(down.gap.end, Math.max(down.gap.start, rawTime));
       const snap = !altHeld;
       let start = snap ? shotsApi.snapSeconds(Math.min(down.time, clamped)) : Math.min(down.time, clamped);
@@ -703,37 +707,22 @@
       if (dragging && down.gap) {
         const { start, end } = computeDragRange(e.clientX);
         shotsApi.createShot(start, end);
-      } else if (!dragging && !down.gap && !regionMoveOccurred) {
-        const movedEnough =
-          Math.abs(e.clientX - down.x) > CLICK_MOVE_THRESHOLD_PX || Date.now() - down.t > 400;
-        if (!movedEnough) shotsApi.splitShotAt(down.time);
       }
+      // A plain click in a gap (no real drag) is a no-op, same as before.
 
       removeDraft();
       down = null;
       dragging = false;
     }
 
-    wrapper.addEventListener('pointerdown', (e) => {
+    shotsContentEl.addEventListener('pointerdown', (e) => {
       if (e.button !== 0) return;
-      if (e.target.closest('[part*="region-handle"]')) return;
-      const time = timeAtClientX(e.clientX);
-      down = { x: e.clientX, y: e.clientY, t: Date.now(), time, gap: shotsApi.gapAt(time) };
+      if (e.target !== shotsContentEl) return;
+      const time = shotsTimeAtClientX(e.clientX);
+      down = { x: e.clientX, y: e.clientY, time, gap: shotsApi.gapAt(time) };
       dragging = false;
-      regionMoveOccurred = false;
       document.addEventListener('pointermove', onPointerMove);
       document.addEventListener('pointerup', onPointerUp);
-    });
-
-    wrapper.addEventListener('dblclick', (e) => {
-      const handle = e.target.closest('[part*="region-handle"]');
-      if (!handle) return;
-      const region = regionsPlugin.getRegions().find((r) => r.element && r.element.contains(handle));
-      if (!region) return;
-      const index = shotIndexFromRegionId(region.id);
-      const isLeftHandle = handle.getAttribute('part').includes('left');
-      const boundaryIndex = isLeftHandle ? index - 1 : index;
-      shotsApi.removeBoundary(boundaryIndex);
     });
   }
 
@@ -742,13 +731,12 @@
     const deleteBtn = document.getElementById('shot-context-delete');
     if (!menu || !deleteBtn) return;
     MSE.contextMenu.create({
-      container: shotsWs.getWrapper(),
+      container: shotsContentEl,
       menuEl: menu,
       deleteBtn,
       resolveTarget: (e) => {
-        const region = regionsPlugin.getRegions().find((r) => r.element && r.element.contains(e.target));
-        const index = region ? shotIndexFromRegionId(region.id) : -1;
-        return index === -1 ? null : state.shots[index].id;
+        const segEl = e.target.closest('.lane-segment');
+        return segEl ? Number(segEl.dataset.shotId) : null;
       },
       onDelete: (shotId) => shotsApi.deleteShot(shotId),
     });
@@ -778,28 +766,41 @@
     cacheElements();
     state.audio.mix.durationSeconds = mixDurationSeconds;
 
-    gridWs = createProxyInstance(els.gridContainer, 2);
-    shotsWs = createProxyInstance(els.shotsContainer, 44);
-
+    gridWs = createProxyInstance(els.gridContainer, 2, true);
     rebuildTimelinePlugin();
-    regionsPlugin = shotsWs.registerPlugin(WS.Regions.create());
+
+    shotsContentEl = document.createElement('div');
+    shotsContentEl.className = 'shots-lane-content';
+    els.shotsContainer.appendChild(shotsContentEl);
+    // A lightweight stand-in for a WaveSurfer instance (see the file-header
+    // comment on shotsWs) - just enough surface for forEachInstance/
+    // wireScrollSync/zoomTo to keep treating it as one of the four synced
+    // tracks without a special case. setTime is a no-op: the Shots lane
+    // never rendered a per-instance cursor even before the switch to the
+    // shared #playhead overlay, so there's nothing for it to sync.
+    shotsWs = {
+      setScrollTime: (t) => setShotsScrollTime(t),
+      zoom: () => {
+        renderShots();
+        setShotsScrollTime(shotsScrollTime);
+      },
+      setTime: () => {},
+    };
 
     setupShotsInteraction();
     setupShotContextMenu();
+    createPlayheadSegments();
 
-    [gridWs, shotsWs].forEach((ws) => {
-      wireScrollSync(ws);
-      wireTimeSync(ws);
-    });
+    wireScrollSync(gridWs);
+    wireTimeSync(gridWs);
 
     // Shots may already be in state by the time the timeline is created now
     // that a project can be loaded from the backend before any mix is picked
-    // (renderShots() no-ops with no regionsPlugin yet) - draw them now that
-    // one exists, instead of waiting for the next unrelated shots-changed.
-    // Deferred one frame: the shots track container has width 0 until the
-    // browser's next layout pass, and the Regions plugin sizes each region
-    // from the container's current pixel width at the moment it's added -
-    // add them synchronously here and every region freezes at 0 width.
+    // - draw them now that shotsContentEl exists, instead of waiting for the
+    // next unrelated shots-changed. Deferred one frame: the shots track
+    // container has width 0 until the browser's next layout pass, and
+    // startX/pxPerSecond-based drag math would be wrong against a
+    // zero-width content div for anything rendered before that pass.
     requestAnimationFrame(() => renderShots());
 
     emit('timeline-ready');

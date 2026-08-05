@@ -299,6 +299,21 @@ input.small { width: 44px; }
   background: #0f1114;
 }
 
+/* One per track row (see renderPlayheadLoop in waveformSync.js), driven by
+   a single rAF loop reading the active track's own currentTime - replaces
+   each WaveSurfer instance's native cursor (cursorWidth:0 everywhere now),
+   which visibly jittered on whichever of Mix/Vocal wasn't playing since
+   that one was only .setTime()-synced every REAL_SYNC_INTERVAL_MS. */
+.playhead-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--cursor);
+  pointer-events: none;
+  z-index: 3;
+}
+
 .track-label-playable {
   border: none;
   border-right: 1px solid var(--panel-border);
@@ -351,6 +366,19 @@ input.small { width: 44px; }
   border-left: 1px solid rgba(255, 255, 255, 0.15);
   border-right: 1px solid rgba(255, 255, 255, 0.15);
 }
+
+/* The Shots track (waveformSync.js) is plain light-DOM now, not a
+   WaveSurfer-shadow-DOM region - this class actually applies (see the
+   removed inline-style workaround it used to need). */
+#track-shots { height: 44px; overflow: hidden; }
+
+/* The one element that actually scrolls/zooms (see setShotsScrollTime in
+   waveformSync.js) - its own width is duration*pxPerSecond, shifted left
+   via transform to reveal the scrolled position; shot segments inside are
+   positioned in this same untransformed space. */
+.shots-lane-content { position: relative; height: 100%; }
+
+.shot-lane-segment { border-color: rgba(255, 255, 255, 0.15); padding: 0; }
 
 .shot-region-label {
   padding: 2px 4px;
@@ -875,7 +903,11 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   background: #0f1114;
 }
 
-.direction-segment {
+/* Shared by laneWidget.js's buildSegment/buildLaneRow - both the Direction
+   lane editor and the Shots track render their draggable/resizable blocks
+   through the same engine, so these are intentionally not "direction-"
+   prefixed even though Direction was their first consumer. */
+.lane-segment {
   position: absolute;
   top: 4px;
   bottom: 4px;
@@ -891,19 +923,19 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   cursor: grab;
   user-select: none;
 }
-.direction-segment:active { cursor: grabbing; }
-.direction-segment.selected { border-color: var(--accent); background: rgba(76, 141, 255, 0.55); }
-.direction-segment-handle {
+.lane-segment:active { cursor: grabbing; }
+.lane-segment.selected { border-color: var(--accent); background: rgba(76, 141, 255, 0.55); }
+.lane-segment-handle {
   position: absolute;
   top: 0;
   bottom: 0;
   width: 6px;
   cursor: ew-resize;
 }
-.direction-segment-handle-start { left: 0; }
-.direction-segment-handle-end { right: 0; }
+.lane-segment-handle-start { left: 0; }
+.lane-segment-handle-end { right: 0; }
 
-.direction-segment-add {
+.lane-segment-add {
   position: absolute;
   top: 4px;
   bottom: 4px;
@@ -916,9 +948,9 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   font-size: 14px;
   cursor: pointer;
 }
-.direction-segment-add:hover { border-color: var(--accent); color: var(--accent); }
+.lane-segment-add:hover { border-color: var(--accent); color: var(--accent); }
 
-.direction-overhang-band {
+.lane-overhang-band {
   position: absolute;
   top: 0;
   bottom: 0;
