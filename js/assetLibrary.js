@@ -49,11 +49,54 @@
     renderDetail();
   }
 
+  // Asset kind (location/character/prop/...) is required before an asset can
+  // be assigned to a shot (see contextPanel.js) - this <select> is the one
+  // place it's ever set, right on the card the moment the asset shows up, so
+  // classifying it never needs a separate blocking step after import.
+  function buildKindSelect(asset) {
+    const options = MSE.assets.kindOptionsFor(asset.type);
+    const select = document.createElement('select');
+    select.className = 'asset-kind-select';
+
+    if (options.length === 0) {
+      select.disabled = true;
+      const opt = document.createElement('option');
+      opt.textContent = 'N/A';
+      select.appendChild(opt);
+      return select;
+    }
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'What is this?';
+    placeholder.disabled = true;
+    placeholder.selected = !asset.kind;
+    select.appendChild(placeholder);
+
+    options.forEach(({ value, label }) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      opt.selected = asset.kind === value;
+      select.appendChild(opt);
+    });
+
+    select.classList.toggle('unclassified', !asset.kind);
+    // Lives inside a clickable card/button - without this, opening the
+    // dropdown or picking an option would also fire the card's own click
+    // handler and swap the selected asset out from under the user.
+    select.addEventListener('click', (e) => e.stopPropagation());
+    select.addEventListener('change', () => MSE.assets.setAssetKind(asset.id, select.value));
+    return select;
+  }
+
   function renderGridCard(asset) {
-    const card = document.createElement('button');
-    card.type = 'button';
+    const card = document.createElement('div');
     card.className = 'asset-card asset-card-pick';
+    card.setAttribute('role', 'button');
+    card.tabIndex = 0;
     card.classList.toggle('selected', asset.id === selectedAssetId);
+    card.classList.toggle('needs-classification', !MSE.assets.isClassified(asset));
 
     const previewUrl = assetPreviewUrl(asset);
     if (previewUrl) {
@@ -74,7 +117,15 @@
     name.textContent = asset.fileName;
     card.appendChild(name);
 
+    card.appendChild(buildKindSelect(asset));
+
     card.addEventListener('click', () => selectAsset(asset.id));
+    card.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        selectAsset(asset.id);
+      }
+    });
     return card;
   }
 
@@ -115,6 +166,14 @@
     name.className = 'asset-detail-filename';
     name.textContent = asset.fileName;
     el.detail.appendChild(name);
+
+    if (MSE.assets.kindOptionsFor(asset.type).length > 0) {
+      const kindLabel = document.createElement('div');
+      kindLabel.className = 'asset-description-label';
+      kindLabel.textContent = 'Kind';
+      el.detail.appendChild(kindLabel);
+      el.detail.appendChild(buildKindSelect(asset));
+    }
 
     const tagLabel = document.createElement('div');
     tagLabel.className = 'asset-description-label';

@@ -155,12 +155,29 @@
       card.appendChild(tags);
     }
 
+    const kindLabel = MSE.assets.kindLabel(asset);
+    const kindReadout = document.createElement('div');
+    kindReadout.className = 'asset-tags-readout';
+    if (kindLabel) {
+      kindReadout.textContent = kindLabel;
+    } else if (!MSE.assets.isClassified(asset)) {
+      kindReadout.textContent = 'Not classified yet';
+      kindReadout.classList.add('asset-kind-warning');
+    }
+    if (kindReadout.textContent) card.appendChild(kindReadout);
+
     const assignBtn = document.createElement('button');
     assignBtn.type = 'button';
     assignBtn.className = 'asset-assign-btn';
     const shot = findSelectedShot();
+    // Casting is an asset-level fact (see assets.js), so a shot can't assign
+    // an asset before it's classified - that's the only point where "what is
+    // this" gets decided, in the Asset library.
     if (!shot) {
       assignBtn.textContent = 'Select a shot to assign';
+      assignBtn.disabled = true;
+    } else if (!MSE.assets.isClassified(asset)) {
+      assignBtn.textContent = 'Classify in Asset library first';
       assignBtn.disabled = true;
     } else {
       const assigned = (shot.assetIds || []).includes(asset.id);

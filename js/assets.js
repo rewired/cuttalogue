@@ -6,6 +6,48 @@
 
   const { state, emit } = MSE.state;
 
+  // What an asset actually IS, fixed once per asset (not per shot it's used
+  // in) - a person can't be a character in one shot and a location in the
+  // next. Keyed by asset.type so adding a new type or a new kind under an
+  // existing type later is a one-line change here, nowhere else. Types with
+  // no entry (e.g. "other") have nothing to classify, so isClassified()
+  // treats them as always classified.
+  const KIND_OPTIONS = {
+    image: [
+      { value: 'location', label: 'Location' },
+      { value: 'character', label: 'Character' },
+      { value: 'prop', label: 'Prop' },
+    ],
+    audio: [
+      { value: 'fullmix', label: 'Full mix' },
+      { value: 'lip-sync', label: 'Lip-sync' },
+    ],
+    video: [
+      { value: 'motionguide', label: 'Motion guide' },
+    ],
+  };
+
+  function kindOptionsFor(assetType) {
+    return KIND_OPTIONS[assetType] || [];
+  }
+
+  function isClassified(asset) {
+    return kindOptionsFor(asset.type).length === 0 || !!asset.kind;
+  }
+
+  function kindLabel(asset) {
+    if (!asset.kind) return null;
+    const match = kindOptionsFor(asset.type).find((o) => o.value === asset.kind);
+    return match ? match.label : asset.kind;
+  }
+
+  function setAssetKind(assetId, kind) {
+    const asset = findAsset(assetId);
+    if (!asset) return;
+    asset.kind = kind;
+    emit('assets-changed', { reason: 'kind' });
+  }
+
   function addAssets(newAssets) {
     state.assets.push(...newAssets);
     emit('assets-changed', { reason: 'import' });
@@ -72,5 +114,9 @@
     removeAssetFromShot,
     assetsForShot,
     removeAsset,
+    kindOptionsFor,
+    isClassified,
+    setAssetKind,
+    kindLabel,
   };
 })(window.MSE = window.MSE || {});

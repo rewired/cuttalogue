@@ -14,18 +14,20 @@
 
   const shotsApi = MSE.shots;
 
-  const ROLE_ORDER = ['primary_character', 'supporting_character', 'environment'];
+  const ROLE_ORDER = ['primary_character', 'supporting_character', 'environment', 'prop'];
 
   const ROLE_PRESERVE = {
     primary_character: 'identity, face, hair, wardrobe, and body proportions',
     supporting_character: 'identity, face, hair, wardrobe, and body proportions',
     environment: 'architecture, lighting, and spatial layout',
+    prop: 'shape, material, color, and design',
   };
 
   const ROLE_DESCRIPTION = {
     primary_character: 'the primary character',
     supporting_character: 'a supporting character',
     environment: 'the environment',
+    prop: 'a prop',
   };
 
   const MOVEMENT_PHRASES = {

@@ -10,12 +10,32 @@
   const { state, on } = MSE.state;
   const shotsApi = MSE.shots;
 
-  const ROLE_LABELS = {
-    '': 'No role',
-    primary_character: 'Primary character',
-    supporting_character: 'Supporting character',
-    environment: 'Environment / location',
-  };
+  // What role an asset CAN play is fixed by its kind (assets.js) - a location
+  // can never become a character mid-project. What's still a per-shot choice
+  // is whether a character is the lead or supporting in THIS particular shot,
+  // which is genuinely variable from shot to shot.
+  function roleOptionsFor(kind) {
+    if (kind === 'character') {
+      return [
+        ['', 'No role'],
+        ['primary_character', 'Primary character'],
+        ['supporting_character', 'Supporting character'],
+      ];
+    }
+    if (kind === 'location') {
+      return [
+        ['', 'Not cast'],
+        ['environment', 'Environment / location'],
+      ];
+    }
+    if (kind === 'prop') {
+      return [
+        ['', 'Not cast'],
+        ['prop', 'Prop'],
+      ];
+    }
+    return null;
+  }
 
   const MOVEMENT_LABELS = {
     zoom_in: 'Zoom in',
@@ -120,7 +140,9 @@
 
   function renderCast(shot) {
     el.castList.innerHTML = '';
-    const assigned = MSE.assets.assetsForShot(shot);
+    // Only images can be H3 subjects - audio/video assets (fullmix, lip-sync,
+    // motionguide) are assigned to the shot for reference but never cast.
+    const assigned = MSE.assets.assetsForShot(shot).filter((a) => a.type === 'image');
     el.castEmpty.style.display = assigned.length === 0 ? '' : 'none';
     assigned.forEach((asset) => {
       const row = document.createElement('div');
@@ -131,18 +153,20 @@
       name.textContent = asset.fileName;
       row.appendChild(name);
 
-      const currentRole = (shot.assetRoles || {})[asset.id] || '';
-      const select = buildSelect(
-        [
-          ['', ROLE_LABELS['']],
-          ['primary_character', ROLE_LABELS.primary_character],
-          ['supporting_character', ROLE_LABELS.supporting_character],
-          ['environment', ROLE_LABELS.environment],
-        ],
-        currentRole,
-        (value) => shotsApi.setAssetRole(shot.id, asset.id, value || null)
-      );
-      row.appendChild(select);
+      const options = roleOptionsFor(asset.kind);
+      if (!options) {
+        // Shouldn't normally happen - assigning to a shot is blocked until an
+        // asset is classified - but old projects can have assetIds that
+        // predate this feature, so this stays a safe fallback, not a crash.
+        const note = document.createElement('span');
+        note.className = 'placeholder-hint';
+        note.textContent = 'Not classified - set this in the Asset library.';
+        row.appendChild(note);
+      } else {
+        const currentRole = (shot.assetRoles || {})[asset.id] || '';
+        const select = buildSelect(options, currentRole, (value) => shotsApi.setAssetRole(shot.id, asset.id, value || null));
+        row.appendChild(select);
+      }
 
       el.castList.appendChild(row);
     });

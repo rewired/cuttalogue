@@ -577,6 +577,16 @@ input.small { width: 44px; }
 }
 .asset-card-pick:hover { border-color: var(--panel-border); }
 .asset-card-pick.selected { border-color: var(--accent); background: rgba(76, 141, 255, 0.1); }
+.asset-card-pick.needs-classification { border-color: #ffc107; }
+
+.asset-kind-select {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 11px;
+  padding: 3px 4px;
+}
+.asset-kind-select.unclassified { border-color: #ffc107; color: #ffc107; }
+.asset-kind-warning { color: #ffc107; }
 
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
 th, td {

@@ -52,6 +52,7 @@ async def import_assets(project_id: str, files: list[UploadFile] = File(...)):
                 "thumbnailPath": thumbnail_path,
                 "tags": [],
                 "description": "",
+                "kind": None,
                 "metadata": metadata,
             }
         )
