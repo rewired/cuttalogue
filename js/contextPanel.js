@@ -22,6 +22,8 @@
     el.tabPrompt = document.getElementById('tab-prompt');
     el.tabNotes = document.getElementById('tab-notes');
 
+    el.assetsTabEmpty = document.getElementById('assets-tab-empty');
+    el.assetsTabDetail = document.getElementById('assets-tab-detail');
     el.directionEmpty = document.getElementById('direction-tab-empty');
     el.directionDetail = document.getElementById('direction-tab-detail');
     el.promptEmpty = document.getElementById('prompt-tab-empty');
@@ -44,13 +46,18 @@
     return state.shots.find((s) => s.id === selectedShotId) || null;
   }
 
-  // Direction/Prompt/Notes only make sense for a selected shot, so each tab
-  // toggles its own empty-hint vs detail content the same way the old single
-  // Shot tab used to as a whole.
+  // Assets/Direction/Prompt/Notes only make sense for a selected shot, so each
+  // tab toggles its own empty-hint vs detail content the same way the old
+  // single Shot tab used to as a whole. For Assets specifically: showing the
+  // full pick-a-shot-to-assign grid with every button disabled when nothing
+  // is selected reads as "here are your assets" with no indication anything
+  // is missing - hiding it entirely until a shot is selected is clearer.
   function renderShotSpecificTabs() {
     const shot = findSelectedShot();
     const hasShot = !!shot;
 
+    el.assetsTabEmpty.style.display = hasShot ? 'none' : '';
+    el.assetsTabDetail.style.display = hasShot ? '' : 'none';
     el.directionEmpty.style.display = hasShot ? 'none' : '';
     el.directionDetail.style.display = hasShot ? '' : 'none';
     el.promptEmpty.style.display = hasShot ? 'none' : '';

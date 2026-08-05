@@ -160,20 +160,23 @@
     </div>
 
     <div class="tab-content" id="tab-assets">
-      <div class="shot-detail-field">
-        <span>Assigned to this shot</span>
-        <div id="shot-detail-assets" class="assigned-assets"></div>
+      <p class="placeholder-hint" id="assets-tab-empty">Select a shot to assign assets to it.</p>
+      <div id="assets-tab-detail" style="display:none;">
+        <div class="shot-detail-field">
+          <span>Assigned to this shot</span>
+          <div id="shot-detail-assets" class="assigned-assets"></div>
+        </div>
+        <div class="asset-toolbar">
+          <label class="file-button">Add files
+            <input type="file" id="asset-file-input" multiple accept="image/*,video/*,audio/*">
+          </label>
+          <input type="text" id="asset-tag-filter" placeholder="Filter by tag...">
+        </div>
+        <p class="placeholder-hint" id="asset-status"></p>
+        <p class="placeholder-hint" id="asset-empty">No assets yet</p>
+        <div class="asset-grid" id="asset-grid"></div>
       </div>
-      <div class="asset-toolbar">
-        <label class="file-button">Add files
-          <input type="file" id="asset-file-input" multiple accept="image/*,video/*,audio/*">
-        </label>
-        <input type="text" id="asset-tag-filter" placeholder="Filter by tag...">
-        <button type="button" id="asset-library-open-btn">Manage assets &rarr;</button>
-      </div>
-      <p class="placeholder-hint" id="asset-status"></p>
-      <p class="placeholder-hint" id="asset-empty">No assets yet</p>
-      <div class="asset-grid" id="asset-grid"></div>
+      <button type="button" id="asset-library-open-btn">Manage assets &rarr;</button>
     </div>
 
     <div class="tab-content" id="tab-direction" hidden>
@@ -285,12 +288,12 @@
       <p class="placeholder-hint" id="asset-library-status"></p>
     </div>
     <div class="asset-library-body">
-      <div class="asset-library-detail" id="asset-library-detail">
-        <p class="placeholder-hint" id="asset-library-detail-empty">Select an asset on the right to see its details.</p>
-      </div>
       <div class="asset-library-list-col">
         <p class="placeholder-hint" id="asset-library-empty">No assets yet</p>
         <div class="asset-grid asset-grid-compact" id="asset-library-grid"></div>
+      </div>
+      <div class="asset-library-detail" id="asset-library-detail">
+        <p class="placeholder-hint" id="asset-library-detail-empty">Select an asset on the left to see its details.</p>
       </div>
     </div>
   </div>

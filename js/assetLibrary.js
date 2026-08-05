@@ -1,12 +1,11 @@
-// Phase 5 of the layout cleanup: the "fiddly" per-asset editing (tags,
-// description, [Describe image], delete) moved out of the context panel's
-// Assets tab into this full-screen library, since that's occasional
-// housekeeping, not the every-click assign/remove workflow the tab is used
-// for constantly. Assigning assets to shots stays in the tab - it has no
-// concept of "the selected shot" here.
+// The "fiddly" per-asset editing (tags, description, [Describe image],
+// delete) lives in this modal, separate from the context panel's Assets
+// tab, since that's occasional housekeeping, not the every-click
+// assign/remove workflow the tab is used for constantly. Assigning assets
+// to shots stays in the tab - it has no concept of "the selected shot" here.
 //
-// Master-detail layout: a compact thumbnail grid on the right to pick an
-// asset, a roomy detail panel on the left for whichever one is selected -
+// Master-detail layout: a compact thumbnail grid on the left to pick an
+// asset, a roomy detail panel on the right for whichever one is selected -
 // the description text especially needs real space, not a 3-row textarea
 // squeezed into a 140px-wide grid card.
 (function (MSE) {
@@ -98,7 +97,7 @@
       const empty = document.createElement('p');
       empty.className = 'placeholder-hint';
       empty.id = 'asset-library-detail-empty';
-      empty.textContent = 'Select an asset on the right to see its details.';
+      empty.textContent = 'Select an asset on the left to see its details.';
       el.detail.appendChild(empty);
       return;
     }

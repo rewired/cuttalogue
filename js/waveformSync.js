@@ -526,6 +526,7 @@
       const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
       const row = document.createElement('tr');
       row.className = `status-${status}${shot.id === selectedId ? ' selected' : ''}`;
+      row.dataset.shotId = String(shot.id);
 
       row.appendChild(buildNumberCell(shot));
 
@@ -843,9 +844,20 @@
   on('limits-changed', () => renderShots());
   on('shots-changed', () => renderShots());
   // Selecting a shot (from the list, or scrollToShot elsewhere) never changes
-  // region geometry, so a plain renderShotList() is enough to (re)apply the
-  // .selected row class - no need for renderShots()'s full region rebuild.
-  on('shot-selected', () => renderShotList());
+  // any row's content, so just toggle the .selected class in place - a full
+  // renderShotList() rebuild here would replace the row/cell DOM nodes on
+  // every click, which breaks the browser's native double-click detection
+  // (it can't accumulate a click count on a target that no longer exists),
+  // making the inline shot-rename dblclick handler in buildNumberCell
+  // effectively unreachable via a real double-click.
+  on('shot-selected', (e) => {
+    const list = document.getElementById('shot-list');
+    if (!list) return;
+    const shotId = e.detail.shotId;
+    list.querySelectorAll('tr').forEach((row) => {
+      row.classList.toggle('selected', row.dataset.shotId === String(shotId));
+    });
+  });
 
   wireWheelScroll();
 

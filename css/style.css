@@ -549,12 +549,14 @@ input.small { width: 44px; }
 .asset-delete-btn { font-size: 11px; padding: 4px 6px; width: 100%; border-color: #f44336; color: #f44336; }
 .asset-delete-btn:hover { background: rgba(244, 67, 54, 0.12); border-color: #f44336; }
 
-.asset-library-body { display: flex; gap: 24px; flex: 1 1 auto; min-height: 0; }
+.asset-library-body { display: flex; flex: 1 1 auto; min-height: 0; }
 
 .asset-library-detail {
   flex: 0 0 320px;
   overflow-y: auto;
-  padding-right: 4px;
+  border-left: 1px solid var(--panel-border);
+  padding-left: 20px;
+  margin-left: 20px;
   display: flex;
   flex-direction: column;
   gap: 6px;
