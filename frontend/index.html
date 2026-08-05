@@ -74,7 +74,9 @@
     <div class="track-label">
       <button type="button" id="grid-tempo-btn" class="icon-btn" title="Grid &amp; Tempo" aria-label="Grid &amp; Tempo">&#9881;</button>
     </div>
-    <div class="track-content" id="track-grid"></div>
+    <div class="track-content" id="track-grid-wrap">
+      <div id="track-grid"></div>
+    </div>
     <div id="grid-tempo-panel" class="grid-tempo-panel settings-panel" hidden>
       <fieldset>
         <legend>Tempo</legend>
@@ -127,11 +129,13 @@ Right-click a shot to delete it">&#9432;</span></div>
   </div>
   <div class="track-row">
     <button type="button" class="track-label track-label-playable" id="track-label-mix" title="Play this track">Mix</button>
-    <div class="track-content" id="track-mix"></div>
+    <div class="track-content" id="track-mix-wrap">
+      <div id="track-mix"></div>
+    </div>
   </div>
   <div class="track-row">
     <button type="button" class="track-label track-label-playable" id="track-label-vocal" title="Play this track">Vocal</button>
-    <div class="track-content vocal-wrapper">
+    <div class="track-content vocal-wrapper" id="track-vocal-wrap">
       <div id="track-vocal"></div>
       <div class="silence-overlay" id="silence-layer"></div>
     </div>

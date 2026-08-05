@@ -1,11 +1,16 @@
-// Generic lane-row rendering + drag/resize/select engine, extracted out of
+// Generic segment rendering + drag/resize/select engine, extracted out of
 // direction.js once the Direction lane editor proved the hand-rolled
-// (no WaveSurfer) approach out. Knows nothing about shots, cameras, or
-// H3 - a "segment" is just any {startSeconds, endSeconds}-shaped object in
-// a plain array, positioned as a % of domainDuration. All shot/H3-specific
-// behavior (what a segment means, how it's labeled, how it's moved in the
-// underlying data, snapping) is supplied by the caller through opts -
-// see direction.js for the current (only) consumer.
+// (no WaveSurfer) approach out, then generalized further once the Shots
+// track became its second consumer (see waveformSync.js). Knows nothing
+// about shots, cameras, or H3 - a "segment" is just any {startSeconds,
+// endSeconds}-shaped object in a plain array. It also knows nothing about
+// *how* a segment's time maps to on-screen position: Direction's lanes are
+// percentage-of-a-small-fixed-duration (buildLaneRow); the Shots track is
+// pixels-per-second against a scrollable, zoomable song-length timeline
+// (buildSegment, called directly by waveformSync.js). Both go through the
+// same buildSegment/wireSegmentDrag core via a small "metrics" contract:
+//   metrics.position(el, seg) -> sets el's left/width for its current times
+//   metrics.pxPerSecond() -> real on-screen px per second, read once per drag
 (function (MSE) {
   'use strict';
 
@@ -18,14 +23,15 @@
   // which a caller would emit a change event) only fires once on release -
   // firing it on every move would let a re-render replace the DOM out from
   // under the drag in progress.
-  function wireSegmentDrag(target, segEl, seg, mode, index, domainDuration, opts) {
+  function wireSegmentDrag(target, segEl, seg, mode, index, metrics, opts) {
     target.addEventListener('pointerdown', (e) => {
+      // Left button only - a right-click here (opening a context menu, e.g.
+      // Shots' delete) must not also register as a click-to-select/split via
+      // onClickOnly below, nor start a drag on a middle-click.
+      if (e.button !== 0) return;
       e.stopPropagation();
       e.preventDefault();
-      // segEl is always the segment element itself (not the handle that may
-      // have triggered this), so its parent is reliably the lane content.
-      const content = segEl.parentElement;
-      const pxPerSecond = content.getBoundingClientRect().width / domainDuration;
+      const pxPerSecond = metrics.pxPerSecond();
       const startX = e.clientX;
       const startStart = seg.startSeconds;
       const startEnd = seg.endSeconds;
@@ -50,8 +56,7 @@
         if (applyMove(timeValue) === null) return;
         // seg is the live array element moveSegment/moveSegmentEdge mutated
         // in place, so both edges already reflect the clamped result here.
-        segEl.style.left = `${(seg.startSeconds / domainDuration) * 100}%`;
-        segEl.style.width = `${Math.max(0, (seg.endSeconds - seg.startSeconds) / domainDuration) * 100}%`;
+        metrics.position(segEl, seg);
       }
       function onUp(ev) {
         document.removeEventListener('pointermove', onMove);
@@ -64,7 +69,7 @@
           }
           opts.onCommit();
         } else {
-          opts.onClickOnly();
+          opts.onClickOnly(ev, mode);
         }
       }
       document.addEventListener('pointermove', onMove);
@@ -72,14 +77,21 @@
     });
   }
 
-  function buildSegmentEl(seg, index, domainDuration, opts) {
+  // The lower-level per-consumer entry point: builds one draggable/
+  // resizable segment element and wires it up, given a metrics contract
+  // (see file header) and the same opts shape documented on buildLaneRow
+  // below. Direction goes through buildLaneRow, which builds a percentage
+  // metrics object internally; the Shots track (waveformSync.js) calls this
+  // directly with a pixels-per-second metrics object since it has no lane
+  // row/label/add-tile wrapper to render.
+  function buildSegment(seg, index, metrics, opts) {
     const segEl = document.createElement('div');
-    segEl.className = 'direction-segment';
+    segEl.className = opts.className || 'lane-segment';
     segEl.classList.toggle('selected', opts.isSelected(index));
-    segEl.style.left = `${(seg.startSeconds / domainDuration) * 100}%`;
-    segEl.style.width = `${Math.max(0, (seg.endSeconds - seg.startSeconds) / domainDuration) * 100}%`;
-    segEl.textContent = opts.labelText(seg);
-    segEl.title = `${seg.startSeconds.toFixed(2)}s – ${seg.endSeconds.toFixed(2)}s`;
+    metrics.position(segEl, seg);
+    if (opts.renderLabel) opts.renderLabel(segEl, seg);
+    else segEl.textContent = opts.labelText(seg);
+    segEl.title = opts.titleText ? opts.titleText(seg) : `${seg.startSeconds.toFixed(2)}s – ${seg.endSeconds.toFixed(2)}s`;
     // Read back by a caller's right-click context menu (see contextMenu.js)
     // to identify which segment was clicked, without a separate DOM->data
     // map - the widget doesn't interpret these, just copies them through.
@@ -91,15 +103,15 @@
     segEl.dataset.index = String(index);
 
     const startHandle = document.createElement('div');
-    startHandle.className = 'direction-segment-handle direction-segment-handle-start';
+    startHandle.className = 'lane-segment-handle lane-segment-handle-start';
     segEl.appendChild(startHandle);
     const endHandle = document.createElement('div');
-    endHandle.className = 'direction-segment-handle direction-segment-handle-end';
+    endHandle.className = 'lane-segment-handle lane-segment-handle-end';
     segEl.appendChild(endHandle);
 
-    wireSegmentDrag(segEl, segEl, seg, 'move', index, domainDuration, opts);
-    wireSegmentDrag(startHandle, segEl, seg, 'start', index, domainDuration, opts);
-    wireSegmentDrag(endHandle, segEl, seg, 'end', index, domainDuration, opts);
+    wireSegmentDrag(segEl, segEl, seg, 'move', index, metrics, opts);
+    wireSegmentDrag(startHandle, segEl, seg, 'start', index, metrics, opts);
+    wireSegmentDrag(endHandle, segEl, seg, 'end', index, metrics, opts);
 
     return segEl;
   }
@@ -107,6 +119,29 @@
   function nextSegmentStart(segments) {
     if (!segments.length) return 0;
     return Math.max(...segments.map((s) => s.endSeconds));
+  }
+
+  function appendOverhangBand(content, duration, domainDuration, title) {
+    if (domainDuration <= duration + 1e-6) return;
+    const band = document.createElement('div');
+    band.className = 'lane-overhang-band';
+    band.style.left = `${(duration / domainDuration) * 100}%`;
+    band.style.width = `${((domainDuration - duration) / domainDuration) * 100}%`;
+    if (title) band.title = title;
+    content.appendChild(band);
+  }
+
+  // Percentage-mode metrics: 0-100% spans domainDuration, measured against
+  // the lane's actual rendered container width at drag-start (so it stays
+  // correct even if the panel was resized since the last render).
+  function percentMetrics(domainDuration, content) {
+    return {
+      pxPerSecond: () => content.getBoundingClientRect().width / domainDuration,
+      position(el, seg) {
+        el.style.left = `${(seg.startSeconds / domainDuration) * 100}%`;
+        el.style.width = `${Math.max(0, (seg.endSeconds - seg.startSeconds) / domainDuration) * 100}%`;
+      },
+    };
   }
 
   // duration is the real content range - segments and the "+" add range
@@ -122,7 +157,9 @@
   //   moveSegmentEdge(index, side, timeValue) -> clamped value, or null
   //   onSelect(index) -> called on release, click or drag alike
   //   onCommit() -> called once after a real drag settles
-  //   onClickOnly() -> called instead of onCommit when nothing moved
+  //   onClickOnly(ev, mode) -> called instead of onCommit when nothing moved -
+  //     ev is the pointerup event (e.g. for reading click position), mode is
+  //     'move'/'start'/'end' (which part was clicked)
   //   onDeselect() -> called on pointerdown in empty lane content
   //   onAdd() -> called when the "+" add tile is clicked
   //   addTitle -> tooltip text for the "+" add tile
@@ -148,12 +185,13 @@
     });
     row.appendChild(content);
 
-    segments.forEach((seg, index) => content.appendChild(buildSegmentEl(seg, index, domainDuration, opts)));
+    const metrics = percentMetrics(domainDuration, content);
+    segments.forEach((seg, index) => content.appendChild(buildSegment(seg, index, metrics, opts)));
 
     const lastEnd = nextSegmentStart(segments);
     if (lastEnd < duration - 1e-6) {
       const addEl = document.createElement('div');
-      addEl.className = 'direction-segment-add';
+      addEl.className = 'lane-segment-add';
       addEl.textContent = '+';
       addEl.title = opts.addTitle || 'Add';
       addEl.style.left = `${(lastEnd / domainDuration) * 100}%`;
@@ -170,18 +208,9 @@
     return row;
   }
 
-  function appendOverhangBand(content, duration, domainDuration, title) {
-    if (domainDuration <= duration + 1e-6) return;
-    const band = document.createElement('div');
-    band.className = 'direction-overhang-band';
-    band.style.left = `${(duration / domainDuration) * 100}%`;
-    band.style.width = `${((domainDuration - duration) / domainDuration) * 100}%`;
-    if (title) band.title = title;
-    content.appendChild(band);
-  }
-
   MSE.laneWidget = {
     buildLaneRow,
+    buildSegment,
     appendOverhangBand,
     nextSegmentStart,
   };

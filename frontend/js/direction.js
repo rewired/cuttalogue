@@ -459,7 +459,7 @@
       menuEl: el.segmentContextMenu,
       deleteBtn: el.segmentContextDelete,
       resolveTarget: (e) => {
-        const segEl = e.target.closest('.direction-segment');
+        const segEl = e.target.closest('.lane-segment');
         if (!segEl) return null;
         return {
           kind: segEl.dataset.kind,
