@@ -74,5 +74,34 @@
     return `${bars}.${beats}.${sixteenths}.${String(ticks).padStart(3, '0')}`;
   }
 
-  MSE.grid = { beatDuration, barDuration, gridStepSeconds, snapToGrid, barBeatAt, durationInBarsBeats };
+  // Formats a *position* (not a duration) in the same bars.beats.sixteenths.ticks
+  // shape, but bar/beat are 1-based (like barBeatAt) while sixteenth/tick stay
+  // 0-based within the beat - standard DAW position notation, e.g. "24.2.3.120".
+  function positionInBarsBeats(timeSeconds, tempo) {
+    const bd = beatDuration(tempo.bpm);
+    const rel = Math.max(0, timeSeconds - tempo.gridOffsetSeconds);
+    const totalTicks = Math.round((rel / bd) * TICKS_PER_BEAT);
+    const ticksPerSixteenth = TICKS_PER_BEAT / 4;
+    const ticksPerBar = TICKS_PER_BEAT * tempo.numerator;
+
+    const bar = Math.floor(totalTicks / ticksPerBar);
+    let remainder = totalTicks - bar * ticksPerBar;
+    const beat = Math.floor(remainder / TICKS_PER_BEAT);
+    remainder -= beat * TICKS_PER_BEAT;
+    const sixteenth = Math.floor(remainder / ticksPerSixteenth);
+    remainder -= sixteenth * ticksPerSixteenth;
+    const tick = Math.round(remainder);
+
+    return `${bar + 1}.${beat + 1}.${sixteenth}.${String(tick).padStart(3, '0')}`;
+  }
+
+  MSE.grid = {
+    beatDuration,
+    barDuration,
+    gridStepSeconds,
+    snapToGrid,
+    barBeatAt,
+    durationInBarsBeats,
+    positionInBarsBeats,
+  };
 })(window.MSE = window.MSE || {});

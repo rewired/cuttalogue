@@ -5,7 +5,7 @@
   'use strict';
 
   const { state, emit, on } = MSE.state;
-  const { gridStepSeconds, barDuration, barBeatAt, snapToGrid, durationInBarsBeats } = MSE.grid;
+  const { gridStepSeconds, barDuration, barBeatAt, snapToGrid, durationInBarsBeats, positionInBarsBeats } = MSE.grid;
   const { formatTime } = MSE.format;
   const { frameCalc, fps } = MSE.frames;
   const shotsApi = MSE.shots;
@@ -90,8 +90,7 @@
   }
 
   function hoverLabel(seconds) {
-    const { bar, beat } = barBeatAt(seconds, state.tempo);
-    return `${formatTime(seconds)} · F${frameAtTime(seconds)} · B${bar}.${beat}`;
+    return `${formatTime(seconds)} · F${frameAtTime(seconds)} · ${positionInBarsBeats(seconds, state.tempo)}`;
   }
 
   // 'second'/'frame' are grid divisions that depend on video state, not tempo, so
@@ -142,6 +141,15 @@
       timeInterval: step,
       primaryLabelSpacing: primarySpacing,
       secondaryLabelSpacing: 1,
+      // The plugin bolds a notch when EITHER the spacing above matches OR a
+      // separate, density-derived primaryLabelInterval/secondaryLabelInterval
+      // (real seconds, defaults ~10s/5s, nothing to do with bars/beats) is
+      // hit - left unset, that default occasionally coincides with a notch
+      // near but not at a real bar boundary, bolding two adjacent notches at
+      // once. Infinity can only match at t=0 (already primary via spacing),
+      // so this leaves spacing as the sole source of truth.
+      primaryLabelInterval: Infinity,
+      secondaryLabelInterval: Infinity,
     });
   }
 
@@ -333,6 +341,26 @@
       region.on('update-end', (side) => handleRegionUpdateEnd(region, side));
     });
     renderShotList();
+    undoLabelOverlapShift();
+  }
+
+  // The Regions plugin's own avoidOverlapping() measures each region's label
+  // 10ms after it's added and pushes it down (via marginTop) whenever it
+  // thinks the label visually collides with an earlier region's label - a
+  // stacking feature meant for genuinely time-overlapping regions. Our shots
+  // are always sequential (never overlap in time), but sub-pixel rounding at
+  // the shared boundary between adjacent shots can still trip that check,
+  // shoving a label out of the SHOTS row into the track below. Every
+  // boundary move rebuilds all regions from scratch (see 'shots-changed'
+  // above), so this same false shove can reappear on every drag - undo it
+  // shortly after the plugin's own timeout, on every render.
+  function undoLabelOverlapShift() {
+    if (!regionsPlugin) return;
+    setTimeout(() => {
+      regionsPlugin.getRegions().forEach((region) => {
+        if (region.content) region.content.style.marginTop = '0px';
+      });
+    }, 30);
   }
 
   // The name is user-entered free text (only editable from the shot list
@@ -347,10 +375,14 @@
   function buildRegionLabel(shot, status, calc) {
     const el = document.createElement('div');
     el.className = `shot-region-label status-${status}`;
+    el.style.overflow = 'hidden';
 
     const title = document.createElement('strong');
     title.style.display = 'block';
     title.style.fontWeight = '700';
+    title.style.whiteSpace = 'nowrap';
+    title.style.overflow = 'hidden';
+    title.style.textOverflow = 'ellipsis';
     const name = (shot.name || '').trim() || 'unnamed';
     title.textContent = `#${shot.id} ${name}`;
     el.appendChild(title);
@@ -360,6 +392,9 @@
     info.style.display = 'block';
     info.style.fontSize = '10px';
     info.style.opacity = '0.75';
+    info.style.whiteSpace = 'nowrap';
+    info.style.overflow = 'hidden';
+    info.style.textOverflow = 'ellipsis';
     info.textContent = `${durationInBarsBeats(durationSeconds, state.tempo)} / ${durationSeconds.toFixed(2)}s / ${calc.cutFrames}f`;
     el.appendChild(info);
 
@@ -530,6 +565,14 @@
 
       row.appendChild(buildNumberCell(shot));
 
+      const statusCell = document.createElement('td');
+      statusCell.className = 'status-cell status-col';
+      const swatch = document.createElement('span');
+      swatch.className = `status-swatch status-${status}`;
+      swatch.title = statusLabel(status);
+      statusCell.appendChild(swatch);
+      row.appendChild(statusCell);
+
       const startCell = document.createElement('td');
       startCell.className = 'numeric-col';
       startCell.textContent = formatTime(shot.startSeconds);
@@ -542,25 +585,21 @@
 
       const durCell = document.createElement('td');
       durCell.className = 'numeric-col';
-      durCell.textContent = `${shotsApi.shotDuration(shot).toFixed(3)} s`;
+      durCell.appendChild(document.createTextNode(`${shotsApi.shotDuration(shot).toFixed(3)} s `));
+      const cutFramesSpan = document.createElement('span');
+      cutFramesSpan.className = 'cell-subvalue';
+      cutFramesSpan.textContent = `· ${calc.cutFrames}f`;
+      durCell.appendChild(cutFramesSpan);
       row.appendChild(durCell);
-
-      const statusCell = document.createElement('td');
-      statusCell.className = 'status-cell status-col';
-      const swatch = document.createElement('span');
-      swatch.className = `status-swatch status-${status}`;
-      swatch.title = statusLabel(status);
-      statusCell.appendChild(swatch);
-      row.appendChild(statusCell);
-
-      const cutCell = document.createElement('td');
-      cutCell.className = 'numeric-col';
-      cutCell.textContent = `${calc.cutFrames}`;
-      row.appendChild(cutCell);
 
       const renderCell = document.createElement('td');
       renderCell.className = 'numeric-col';
-      renderCell.textContent = `${calc.renderFrames}f (${calc.overhangFrames}f/${calc.overhangSeconds.toFixed(3)}s)`;
+      renderCell.appendChild(document.createTextNode(`${calc.renderFrames}f `));
+      const overhangSpan = document.createElement('span');
+      overhangSpan.className = 'cell-subvalue';
+      overhangSpan.title = `${calc.overhangSeconds.toFixed(3)}s padding, trimmed after render`;
+      overhangSpan.textContent = `+${calc.overhangFrames}f`;
+      renderCell.appendChild(overhangSpan);
       row.appendChild(renderCell);
 
       row.addEventListener('click', () => {

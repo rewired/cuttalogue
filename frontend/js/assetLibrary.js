@@ -1,8 +1,9 @@
 // The "fiddly" per-asset editing (tags, description, [Describe image],
-// delete) lives in this modal, separate from the context panel's Assets
-// tab, since that's occasional housekeeping, not the every-click
-// assign/remove workflow the tab is used for constantly. Assigning assets
-// to shots stays in the tab - it has no concept of "the selected shot" here.
+// delete, kind classification) lives in the top-level Assets tab, separate
+// from a shot's Cast & Locations tab, since that's occasional housekeeping,
+// not the every-click assign workflow the picker (assetPicker.js) is used
+// for constantly. Assigning assets to shots stays out of here entirely -
+// this view has no concept of "the selected shot".
 //
 // Master-detail layout: a compact thumbnail grid on the left to pick an
 // asset, a roomy detail panel on the right for whichever one is selected -
@@ -15,12 +16,9 @@
 
   const el = {};
   let selectedAssetId = null;
+  let isVisible = false;
 
   function cacheElements() {
-    el.openBtn = document.getElementById('asset-library-open-btn');
-    el.menuOpenBtn = document.getElementById('asset-library-menu-btn');
-    el.overlay = document.getElementById('asset-library-screen');
-    el.closeBtn = document.getElementById('asset-library-close-btn');
     el.fileInput = document.getElementById('asset-library-file-input');
     el.tagFilter = document.getElementById('asset-library-tag-filter');
     el.status = document.getElementById('asset-library-status');
@@ -277,24 +275,7 @@
     renderDetail();
   }
 
-  function openScreen() {
-    el.overlay.hidden = false;
-    el.status.textContent = '';
-    render();
-  }
-
-  function closeScreen() {
-    el.overlay.hidden = true;
-  }
-
   function wire() {
-    el.openBtn.addEventListener('click', openScreen);
-    el.menuOpenBtn.addEventListener('click', openScreen);
-    el.closeBtn.addEventListener('click', closeScreen);
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && !el.overlay.hidden) closeScreen();
-    });
-
     el.tagFilter.addEventListener('input', renderGrid);
 
     el.fileInput.addEventListener('change', async () => {
@@ -320,7 +301,14 @@
     });
 
     on('assets-changed', () => {
-      if (!el.overlay.hidden) render();
+      if (isVisible) render();
+    });
+    on('main-view-changed', ({ detail }) => {
+      isVisible = detail.view === 'assets';
+      if (isVisible) {
+        el.status.textContent = '';
+        render();
+      }
     });
   }
 
@@ -330,6 +318,4 @@
   }
 
   document.addEventListener('DOMContentLoaded', init);
-
-  MSE.assetLibrary = { openScreen, closeScreen };
 })(window.MSE = window.MSE || {});

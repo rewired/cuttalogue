@@ -1,7 +1,8 @@
-// Context panel: [Assets] / [Direction] / [Prompt] / [Notes] tabs on the
-// right of the shot list. Owns the transient (non-persisted) selected-shot
-// id and renders that shot's readouts plus its editable prompt/notes fields,
-// which live on the shot itself and round-trip through the project JSON.
+// Context panel: [Cast & Locations] / [Direction] / [Prompt] / [Notes] tabs
+// on the right of the shot list. Owns the transient (non-persisted)
+// selected-shot id and renders that shot's readouts plus its editable
+// prompt/notes fields, which live on the shot itself and round-trip through
+// the project JSON.
 (function (MSE) {
   'use strict';
 
@@ -34,24 +35,15 @@
     el.prompt = document.getElementById('shot-detail-prompt');
     el.notes = document.getElementById('shot-detail-notes');
     el.assignedAssets = document.getElementById('shot-detail-assets');
-
-    el.assetFileInput = document.getElementById('asset-file-input');
-    el.assetTagFilter = document.getElementById('asset-tag-filter');
-    el.assetStatus = document.getElementById('asset-status');
-    el.assetEmpty = document.getElementById('asset-empty');
-    el.assetGrid = document.getElementById('asset-grid');
   }
 
   function findSelectedShot() {
     return state.shots.find((s) => s.id === selectedShotId) || null;
   }
 
-  // Assets/Direction/Prompt/Notes only make sense for a selected shot, so each
-  // tab toggles its own empty-hint vs detail content the same way the old
-  // single Shot tab used to as a whole. For Assets specifically: showing the
-  // full pick-a-shot-to-assign grid with every button disabled when nothing
-  // is selected reads as "here are your assets" with no indication anything
-  // is missing - hiding it entirely until a shot is selected is clearer.
+  // Cast & Locations/Direction/Prompt/Notes only make sense for a selected
+  // shot, so each tab toggles its own empty-hint vs detail content the same
+  // way the old single Shot tab used to as a whole.
   function renderShotSpecificTabs() {
     const shot = findSelectedShot();
     const hasShot = !!shot;
@@ -75,27 +67,16 @@
     renderAssignedAssets();
   }
 
+  // Assigned assets render as chips (unchanged), plus a trailing "+" chip
+  // that opens the asset picker modal (assetPicker.js) - the only way to
+  // add an asset from here now. Picking happens there; removing still
+  // happens right here via each chip's own x, same as before.
   function renderAssignedAssets() {
     const shot = findSelectedShot();
     el.assignedAssets.innerHTML = '';
+    if (!shot) return;
 
-    if (!shot) {
-      const span = document.createElement('span');
-      span.className = 'placeholder-hint';
-      span.textContent = 'Select a shot to see its assigned assets.';
-      el.assignedAssets.appendChild(span);
-      return;
-    }
-
-    const assigned = MSE.assets.assetsForShot(shot);
-    if (assigned.length === 0) {
-      const span = document.createElement('span');
-      span.className = 'placeholder-hint';
-      span.textContent = 'None assigned.';
-      el.assignedAssets.appendChild(span);
-      return;
-    }
-    assigned.forEach((asset) => {
+    MSE.assets.assetsForShot(shot).forEach((asset) => {
       const chip = document.createElement('span');
       chip.className = 'assigned-asset-chip';
       const label = document.createElement('span');
@@ -109,105 +90,19 @@
       chip.appendChild(removeBtn);
       el.assignedAssets.appendChild(chip);
     });
-  }
 
-  function assetPreviewUrl(asset) {
-    const projectId = MSE.project.getProjectId();
-    const path = asset.thumbnailPath || (asset.type === 'image' ? asset.relativePath : null);
-    if (!projectId || !path) return null;
-    return `/project-files/${projectId}/${path}`;
-  }
-
-  function assetTypeLabel(type) {
-    if (type === 'audio') return 'AUDIO';
-    if (type === 'video') return 'VIDEO';
-    if (type === 'other') return 'FILE';
-    return 'IMAGE';
-  }
-
-  function renderAssetCard(asset) {
-    const card = document.createElement('div');
-    card.className = 'asset-card';
-
-    const previewUrl = assetPreviewUrl(asset);
-    if (previewUrl) {
-      const img = document.createElement('img');
-      img.src = previewUrl;
-      img.alt = asset.fileName;
-      card.appendChild(img);
-    } else {
-      const placeholder = document.createElement('div');
-      placeholder.className = 'asset-icon';
-      placeholder.textContent = assetTypeLabel(asset.type);
-      card.appendChild(placeholder);
-    }
-
-    const name = document.createElement('div');
-    name.className = 'asset-filename';
-    name.title = asset.fileName;
-    name.textContent = asset.fileName;
-    card.appendChild(name);
-
-    if ((asset.tags || []).length > 0) {
-      const tags = document.createElement('div');
-      tags.className = 'asset-tags-readout';
-      tags.textContent = asset.tags.join(', ');
-      card.appendChild(tags);
-    }
-
-    const kindLabel = MSE.assets.kindLabel(asset);
-    const kindReadout = document.createElement('div');
-    kindReadout.className = 'asset-tags-readout';
-    if (kindLabel) {
-      kindReadout.textContent = kindLabel;
-    } else if (!MSE.assets.isClassified(asset)) {
-      kindReadout.textContent = 'Not classified yet';
-      kindReadout.classList.add('asset-kind-warning');
-    }
-    if (kindReadout.textContent) card.appendChild(kindReadout);
-
-    const assignBtn = document.createElement('button');
-    assignBtn.type = 'button';
-    assignBtn.className = 'asset-assign-btn';
-    const shot = findSelectedShot();
-    // Casting is an asset-level fact (see assets.js), so a shot can't assign
-    // an asset before it's classified - that's the only point where "what is
-    // this" gets decided, in the Asset library.
-    if (!shot) {
-      assignBtn.textContent = 'Select a shot to assign';
-      assignBtn.disabled = true;
-    } else if (!MSE.assets.isClassified(asset)) {
-      assignBtn.textContent = 'Classify in Asset library first';
-      assignBtn.disabled = true;
-    } else {
-      const assigned = (shot.assetIds || []).includes(asset.id);
-      assignBtn.textContent = assigned ? `Remove from Shot ${shot.id}` : `Assign to Shot ${shot.id}`;
-      assignBtn.classList.toggle('assigned', assigned);
-      assignBtn.addEventListener('click', () => {
-        if (assigned) MSE.assets.removeAssetFromShot(shot.id, asset.id);
-        else MSE.assets.assignAssetToShot(shot.id, asset.id);
-      });
-    }
-    card.appendChild(assignBtn);
-
-    return card;
-  }
-
-  function renderAssetsTab() {
-    const filterText = el.assetTagFilter.value.trim().toLowerCase();
-    const filtered = state.assets.filter((asset) => {
-      if (!filterText) return true;
-      return (asset.tags || []).some((tag) => tag.toLowerCase().includes(filterText));
-    });
-    el.assetGrid.innerHTML = '';
-    el.assetEmpty.style.display = state.assets.length === 0 ? '' : 'none';
-    filtered.forEach((asset) => el.assetGrid.appendChild(renderAssetCard(asset)));
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'assigned-asset-chip assigned-asset-add-btn';
+    addBtn.textContent = '+';
+    addBtn.title = 'Assign an asset to this shot';
+    addBtn.addEventListener('click', () => MSE.assetPicker.open(shot.id));
+    el.assignedAssets.appendChild(addBtn);
   }
 
   function selectShot(shotId) {
     selectedShotId = shotId;
     renderShotSpecificTabs();
-    renderAssetsTab();
     emit('shot-selected', { shotId });
   }
 
@@ -224,32 +119,6 @@
       const shot = findSelectedShot();
       if (shot) shot.notes = el.notes.value;
     });
-  }
-
-  function wireAssetControls() {
-    el.assetFileInput.addEventListener('change', async () => {
-      const files = el.assetFileInput.files;
-      if (!files || files.length === 0) return;
-      const projectId = MSE.project.getProjectId();
-      if (!projectId) {
-        el.assetStatus.textContent = 'Backend unavailable - cannot import assets.';
-        el.assetFileInput.value = '';
-        return;
-      }
-      el.assetStatus.textContent = `Importing ${files.length} file(s)...`;
-      try {
-        const result = await MSE.api.uploadAssets(projectId, files);
-        MSE.assets.addAssets(result.assets);
-        el.assetStatus.textContent = `Imported ${result.assets.length} file(s).`;
-      } catch (err) {
-        console.error(err);
-        el.assetStatus.textContent = 'Import failed - is the backend running?';
-      } finally {
-        el.assetFileInput.value = '';
-      }
-    });
-
-    el.assetTagFilter.addEventListener('input', renderAssetsTab);
   }
 
   function wireTabs() {
@@ -278,9 +147,7 @@
     cacheElements();
     wireTabs();
     wireTextInputs();
-    wireAssetControls();
     renderShotSpecificTabs();
-    renderAssetsTab();
   }
 
   on('shots-changed', () => {
@@ -289,15 +156,8 @@
     // showing stale data for an id that no longer exists.
     if (selectedShotId !== null && !findSelectedShot()) selectedShotId = null;
     renderShotSpecificTabs();
-    // Assign/remove buttons in the Assets tab reflect the selected shot's
-    // assetIds, which is exactly what a 'shots-changed' from (un)assigning
-    // an asset changes.
-    renderAssetsTab();
   });
-  on('assets-changed', () => {
-    renderAssetsTab();
-    renderShotSpecificTabs();
-  });
+  on('assets-changed', () => renderShotSpecificTabs());
   on('project-loaded', () => {
     selectedShotId = null;
     renderShotSpecificTabs();

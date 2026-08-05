@@ -37,7 +37,6 @@
       </div>
       <div class="app-menu-divider"></div>
       <button type="button" id="setup-btn">Setup</button>
-      <button type="button" id="asset-library-menu-btn">Asset library</button>
       <div class="app-menu-divider"></div>
       <div class="app-menu-row">
         <button id="save-project-btn">Save project</button>
@@ -55,8 +54,26 @@
   </div>
   <button id="play-pause-btn" disabled>&#9654; Play</button>
   <div class="readout" id="current-time-readout">00:00.000</div>
-  <div class="grid-tempo-flyout">
-    <button type="button" id="grid-tempo-btn">Grid &amp; Tempo &#9662;</button>
+  <div class="zoom-control">
+    <label for="zoom-slider">Zoom</label>
+    <input type="range" id="zoom-slider" min="20" max="500" value="80">
+  </div>
+</header>
+
+<div class="main-tabs">
+  <button type="button" id="main-tab-btn-shots" class="tab-btn active">Shots</button>
+  <button type="button" id="main-tab-btn-assets" class="tab-btn">Assets</button>
+</div>
+
+<div id="main-view-shots">
+<section class="timeline-area">
+  <p class="placeholder-hint" id="timeline-placeholder">Load a mix file to start the timeline.</p>
+
+  <div class="track-row grid-tempo-flyout">
+    <div class="track-label">
+      <button type="button" id="grid-tempo-btn" class="icon-btn" title="Grid &amp; Tempo" aria-label="Grid &amp; Tempo">&#9881;</button>
+    </div>
+    <div class="track-content" id="track-grid"></div>
     <div id="grid-tempo-panel" class="grid-tempo-panel settings-panel" hidden>
       <fieldset>
         <legend>Tempo</legend>
@@ -99,21 +116,12 @@
       </fieldset>
     </div>
   </div>
-  <div class="zoom-control">
-    <label for="zoom-slider">Zoom</label>
-    <input type="range" id="zoom-slider" min="20" max="500" value="80">
-  </div>
-</header>
-
-<section class="timeline-area">
-  <p class="placeholder-hint" id="timeline-placeholder">Load a mix file to start the timeline.</p>
-
   <div class="track-row">
-    <div class="track-label">Grid</div>
-    <div class="track-content" id="track-grid"></div>
-  </div>
-  <div class="track-row">
-    <div class="track-label">Shots</div>
+    <div class="track-label">Shots <span class="info-icon" tabindex="0" title="Click a row to select the shot
+Click inside a shot to split it
+Drag on empty space to create a new shot (hold Alt = no grid snap)
+Double-click a shared boundary to merge
+Right-click a shot to delete it">&#9432;</span></div>
     <div class="track-content" id="track-shots"></div>
   </div>
   <div class="track-row">
@@ -133,27 +141,26 @@
 </section>
 
 <section class="work-area">
-  <div class="shot-list-panel">
+  <div class="shot-list-panel" id="shot-list-panel">
     <h2>Shots</h2>
     <table>
       <thead>
         <tr>
-          <th>#</th><th class="numeric-col">Start</th><th class="numeric-col">End</th><th class="numeric-col">Dur</th><th class="status-col">Status</th>
-          <th class="numeric-col">Cut (f)</th><th class="numeric-col">Render (f)</th>
+          <th>#</th><th class="status-col">Status</th><th class="numeric-col">Start</th><th class="numeric-col">End</th><th class="numeric-col">Duration</th>
+          <th class="numeric-col">Render</th>
         </tr>
       </thead>
       <tbody id="shot-list"></tbody>
     </table>
-    <p class="hint">
-      Click a row to select the shot &middot; click inside a shot to split it &middot;
-      drag on empty space to create a new shot (hold Alt = no grid snap) &middot;
-      double-click a shared boundary to merge &middot; right-click a shot to delete it.
-    </p>
+  </div>
+
+  <div id="panel-resize-handle" class="panel-resize-handle" title="Drag to resize">
+    <div class="panel-resize-handle-grip"></div>
   </div>
 
   <div class="context-panel">
     <div class="context-tabs">
-      <button type="button" id="tab-btn-assets" class="tab-btn active">Assets</button>
+      <button type="button" id="tab-btn-assets" class="tab-btn active">Cast &amp; Locations</button>
       <button type="button" id="tab-btn-direction" class="tab-btn">Direction</button>
       <button type="button" id="tab-btn-prompt" class="tab-btn">Prompt</button>
       <button type="button" id="tab-btn-notes" class="tab-btn">Notes</button>
@@ -162,21 +169,8 @@
     <div class="tab-content" id="tab-assets">
       <p class="placeholder-hint" id="assets-tab-empty">Select a shot to assign assets to it.</p>
       <div id="assets-tab-detail" style="display:none;">
-        <div class="shot-detail-field">
-          <span>Assigned to this shot</span>
-          <div id="shot-detail-assets" class="assigned-assets"></div>
-        </div>
-        <div class="asset-toolbar">
-          <label class="file-button">Add files
-            <input type="file" id="asset-file-input" multiple accept="image/*,video/*,audio/*">
-          </label>
-          <input type="text" id="asset-tag-filter" placeholder="Filter by tag...">
-        </div>
-        <p class="placeholder-hint" id="asset-status"></p>
-        <p class="placeholder-hint" id="asset-empty">No assets yet</p>
-        <div class="asset-grid" id="asset-grid"></div>
+        <div id="shot-detail-assets" class="assigned-assets"></div>
       </div>
-      <button type="button" id="asset-library-open-btn">Manage assets &rarr;</button>
     </div>
 
     <div class="tab-content" id="tab-direction" hidden>
@@ -204,6 +198,29 @@
     </div>
   </div>
 </section>
+</div>
+
+<div id="main-view-assets" hidden>
+  <section class="assets-view">
+    <h2>Assets</h2>
+    <div class="asset-library-toolbar">
+      <label class="file-button">Add files
+        <input type="file" id="asset-library-file-input" multiple accept="image/*,video/*,audio/*">
+      </label>
+      <input type="text" id="asset-library-tag-filter" placeholder="Filter by tag...">
+      <p class="placeholder-hint" id="asset-library-status"></p>
+    </div>
+    <div class="asset-library-body">
+      <div class="asset-library-list-col">
+        <p class="placeholder-hint" id="asset-library-empty">No assets yet</p>
+        <div class="asset-grid asset-grid-compact" id="asset-library-grid"></div>
+      </div>
+      <div class="asset-library-detail" id="asset-library-detail">
+        <p class="placeholder-hint" id="asset-library-detail-empty">Select an asset on the left to see its details.</p>
+      </div>
+    </div>
+  </section>
+</div>
 
 <div id="shot-context-menu" class="context-menu">
   <button type="button" id="shot-context-delete">Delete shot</button>
@@ -257,7 +274,7 @@
       </p>
       <section class="direction-section">
         <h3>Cast</h3>
-        <p class="placeholder-hint" id="direction-cast-empty">No assets assigned to this shot yet - assign some in the Assets tab first.</p>
+        <p class="placeholder-hint" id="direction-cast-empty">No assets assigned to this shot yet - assign some in the Cast &amp; Locations tab first.</p>
         <div id="direction-cast-list" class="direction-list"></div>
       </section>
       <section class="direction-section">
@@ -274,27 +291,15 @@
   </div>
 </div>
 
-<div id="asset-library-screen" class="modal-overlay" hidden>
-  <div class="modal asset-library-modal">
-    <div class="asset-library-header">
-      <h2>Asset library</h2>
-      <button type="button" id="asset-library-close-btn" class="modal-close">&times;</button>
+<div id="asset-picker-modal" class="modal-overlay" hidden>
+  <div class="modal asset-picker-modal">
+    <div class="modal-header">
+      <h2>Assign asset</h2>
+      <button type="button" id="asset-picker-close-btn" class="modal-close">&times;</button>
     </div>
-    <div class="asset-library-toolbar">
-      <label class="file-button">Add files
-        <input type="file" id="asset-library-file-input" multiple accept="image/*,video/*,audio/*">
-      </label>
-      <input type="text" id="asset-library-tag-filter" placeholder="Filter by tag...">
-      <p class="placeholder-hint" id="asset-library-status"></p>
-    </div>
-    <div class="asset-library-body">
-      <div class="asset-library-list-col">
-        <p class="placeholder-hint" id="asset-library-empty">No assets yet</p>
-        <div class="asset-grid asset-grid-compact" id="asset-library-grid"></div>
-      </div>
-      <div class="asset-library-detail" id="asset-library-detail">
-        <p class="placeholder-hint" id="asset-library-detail-empty">Select an asset on the left to see its details.</p>
-      </div>
+    <div class="modal-body">
+      <p class="placeholder-hint" id="asset-picker-empty">No assets yet - add some in the Assets tab first.</p>
+      <div class="asset-grid asset-grid-compact" id="asset-picker-grid"></div>
     </div>
   </div>
 </div>
@@ -323,15 +328,18 @@
 <script src="js/silence.js"></script>
 <script src="js/waveformSync.js"></script>
 <script src="js/trackHeightResize.js"></script>
+<script src="js/panelResize.js"></script>
 <script src="js/api.js"></script>
 <script src="js/project.js"></script>
 <script src="js/projectPicker.js"></script>
 <script src="js/appMenu.js"></script>
+<script src="js/mainTabs.js"></script>
 <script src="js/gridTempoFlyout.js"></script>
 <script src="js/settings.js"></script>
 <script src="js/h3Compiler.js"></script>
 <script src="js/direction.js"></script>
 <script src="js/assetLibrary.js"></script>
+<script src="js/assetPicker.js"></script>
 <script src="js/contextPanel.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>

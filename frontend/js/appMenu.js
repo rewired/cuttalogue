@@ -41,7 +41,7 @@
     // button click" delegate, because the nested Projects toggle button is a
     // button too but must NOT close this outer panel when opening its own
     // submenu - only actually switching/creating a project should.
-    ['setup-btn', 'asset-library-menu-btn', 'save-project-btn', 'export-json-btn', 'export-csv-btn', 'export-project-btn'].forEach((id) => {
+    ['setup-btn', 'save-project-btn', 'export-json-btn', 'export-csv-btn', 'export-project-btn'].forEach((id) => {
       const node = document.getElementById(id);
       if (node) node.addEventListener('click', closeMenu);
     });

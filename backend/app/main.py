@@ -22,6 +22,22 @@ FRONTEND_DIR = REPO_ROOT / "frontend"
 
 app = FastAPI(title="CUTTAlogue")
 
+
+# Frontend files carry no Cache-Control header by default, so browsers apply
+# heuristic caching off Last-Modified and can skip asking the server at all
+# on a plain refresh - stale JS/CSS silently keeps running after an edit,
+# with no failed request to explain why. no-cache forces revalidation (an
+# ETag round-trip) on every load without losing the "don't re-download
+# unchanged bytes" benefit, which is what actually matters during local dev.
+@app.middleware("http")
+async def no_cache_frontend(request, call_next):
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.startswith(("/js/", "/css/")):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 app.include_router(projects_router)
 app.include_router(jobs_router)
 app.include_router(assets_router)
