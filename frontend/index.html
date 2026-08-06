@@ -206,6 +206,7 @@ Right-click a shot to delete it">&#9432;</span></div>
         <div class="direction-compile-toolbar">
           <button type="button" id="direction-compile-btn">Compile prompt</button>
           <button type="button" id="direction-expand-ai-btn" title="Expand detailed_description into H3's expected 350-500 words via AI - only that section, nothing else is touched">Expand with AI</button>
+          <label title="The seed you used for this shot's generation, so a take can be reproduced or reasoned about later. Not sent by Cuttalogue to any API - record it here after generating.">Seed <input type="number" id="shot-detail-seed" min="0" step="1" placeholder="random"></label>
           <span id="direction-compile-status" class="placeholder-hint">
             <span class="spinner" id="direction-compile-spinner" hidden></span>
             <span id="direction-compile-status-text"></span>

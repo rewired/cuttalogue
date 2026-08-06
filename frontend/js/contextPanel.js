@@ -34,6 +34,7 @@
 
     el.prompt = document.getElementById('shot-detail-prompt');
     el.notes = document.getElementById('shot-detail-notes');
+    el.seed = document.getElementById('shot-detail-seed');
     el.assignedAssets = document.getElementById('shot-detail-assets');
   }
 
@@ -62,6 +63,7 @@
       // e.g. dragging the shot's edge in the timeline can't clobber live input.
       if (document.activeElement !== el.prompt) el.prompt.value = shot.prompt || '';
       if (document.activeElement !== el.notes) el.notes.value = shot.notes || '';
+      if (document.activeElement !== el.seed) el.seed.value = shot.seed ?? '';
     }
 
     renderAssignedAssets();
@@ -179,6 +181,12 @@
     el.notes.addEventListener('input', () => {
       const shot = findSelectedShot();
       if (shot) shot.notes = el.notes.value;
+    });
+    el.seed.addEventListener('input', () => {
+      const shot = findSelectedShot();
+      if (!shot) return;
+      const parsed = parseInt(el.seed.value, 10);
+      shot.seed = Number.isNaN(parsed) ? null : parsed;
     });
   }
 

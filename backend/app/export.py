@@ -191,6 +191,7 @@ async def export_project(project_id: str, options: dict = Body(default={})):
 
                 manifest = {
                     "shot": shot_id,
+                    "seed": shot.get("seed"),
                     "startSeconds": shot["startSeconds"],
                     "endSeconds": shot["endSeconds"],
                     "cutDurationSeconds": cut_duration,
