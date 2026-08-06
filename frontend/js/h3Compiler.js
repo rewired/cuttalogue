@@ -280,6 +280,17 @@
       limits.push('Do not exchange identities, faces, or wardrobes between subjects.');
       limits.push('No additional people enter the shot.');
     }
+    // Bounded-reference discipline: each <Subject N> is defined from its own
+    // <Picture N> (see subjectDefinitions/retentionAnalysis above) - without
+    // this line nothing stops H3 from letting one subject's reference bleed
+    // into another subject/prop/the environment. Any two references can
+    // bleed into each other, not just two acting roles, so this checks
+    // subjects.length rather than actingSubjects.length.
+    if (subjects.length >= 2) {
+      limits.push(
+        'Do not let one subject’s reference attributes (wardrobe, color, style, or identity) bleed into another subject, prop, or the environment.'
+      );
+    }
     limits.push('No cut or scene transition - this is a single continuous shot.');
     limits.push(...(shot.constraints || []).map(ensureSentence));
     return limits;
