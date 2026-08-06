@@ -134,27 +134,30 @@
   async function getSettings() {
     const res = await fetch('/api/settings');
     if (!res.ok) throw new Error(`get settings failed: ${res.status}`);
-    return res.json(); // { aiProvider: { baseUrl, defaultModel, hasApiKey } }
+    return res.json(); // { providers: { ai: {baseUrl, defaultModel, hasApiKey}, comfy: {baseUrl, mode, hasApiKey} } }
   }
 
-  async function saveSettings(aiProvider) {
+  async function saveSettings(providers) {
     const res = await fetch('/api/settings', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aiProvider }),
+      body: JSON.stringify({ providers }),
     });
     if (!res.ok) throw new Error(`save settings failed: ${res.status}`);
     return res.json();
   }
 
-  async function testSettings(aiProvider) {
+  // providerValues is the flat {baseUrl, apiKey, ...} form currently typed
+  // into just that one provider's fieldset - testing doesn't require (or
+  // wait for) the other provider's form to be valid.
+  async function testSettings(providerKey, providerValues) {
     const res = await fetch('/api/settings/test', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ aiProvider }),
+      body: JSON.stringify({ provider: providerKey, ...providerValues }),
     });
     if (!res.ok) throw new Error(`connection test failed: ${res.status}`);
-    return res.json(); // { ok, message }
+    return res.json(); // { ok, message, models? }
   }
 
   async function describeAsset(projectId, assetId) {
@@ -186,6 +189,21 @@
     return res.json(); // { jobId }
   }
 
+  // shot.prompt (already-compiled/edited text) and the shot's currently-cast
+  // reference image asset ids - the backend doesn't re-derive either.
+  async function generateTake(projectId, shotId, { prompt, seed, referenceAssetIds }) {
+    const res = await fetch(`/api/projects/${projectId}/shots/${shotId}/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt, seed, referenceAssetIds }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `generate failed: ${res.status}`);
+    }
+    return res.json(); // { jobId }
+  }
+
   MSE.api = {
     createProject,
     getProject,
@@ -206,5 +224,6 @@
     testSettings,
     describeAsset,
     expandDescription,
+    generateTake,
   };
 })(window.MSE = window.MSE || {});

@@ -95,7 +95,7 @@ async def describe_asset(project_id: str, asset_id: str, body: dict = Body(defau
     if asset.get("type") != "image":
         raise HTTPException(status_code=400, detail="only images can be described")
 
-    provider = settings.load_settings()["aiProvider"]
+    provider = settings.load_settings()["providers"]["ai"]
     base_url, api_key = provider["baseUrl"], provider["apiKey"]
     if not base_url or not api_key:
         raise HTTPException(status_code=400, detail="AI provider not configured - set it up on the Setup page first")

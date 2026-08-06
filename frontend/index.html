@@ -173,6 +173,7 @@ Right-click a shot to delete it">&#9432;</span></div>
       <button type="button" id="tab-btn-direction" class="tab-btn">Direction</button>
       <button type="button" id="tab-btn-prompt" class="tab-btn">Prompt</button>
       <button type="button" id="tab-btn-notes" class="tab-btn">Notes</button>
+      <button type="button" id="tab-btn-generate" class="tab-btn">Generate</button>
     </div>
 
     <div class="tab-content" id="tab-assets">
@@ -228,6 +229,21 @@ Right-click a shot to delete it">&#9432;</span></div>
         <textarea id="shot-detail-notes" rows="18" placeholder="Notes..."></textarea>
       </label>
     </div>
+
+    <div class="tab-content" id="tab-generate" hidden>
+      <p class="placeholder-hint" id="generate-tab-empty">Select a shot to see its details.</p>
+      <div id="generate-tab-detail" style="display:none;">
+        <div class="direction-compile-toolbar">
+          <button type="button" id="generate-take-btn">Generate new take</button>
+          <span id="generate-status" class="placeholder-hint">
+            <span class="spinner" id="generate-spinner" hidden></span>
+            <span id="generate-status-text"></span>
+          </span>
+        </div>
+        <p class="placeholder-hint" id="generate-seed-readout"></p>
+        <div id="take-history-list" class="take-history-list"></div>
+      </div>
+    </div>
   </div>
 </section>
 </div>
@@ -274,25 +290,44 @@ Right-click a shot to delete it">&#9432;</span></div>
     </div>
     <div class="modal-body">
       <p class="hint">
-        Connects to an OpenRouter-compatible API for the optional "Describe image" action.
-        Application-wide, not part of any project - stored locally on this machine and never
-        written into project files or exports.
+        Both providers below are application-wide, not part of any project -
+        stored locally on this machine and never written into project files
+        or exports.
       </p>
-      <label class="modal-field">API base URL
-        <input type="text" id="settings-base-url" placeholder="https://openrouter.ai/api/v1">
-      </label>
-      <label class="modal-field">API key
-        <input type="password" id="settings-api-key" autocomplete="off">
-      </label>
-      <p class="placeholder-hint" id="settings-key-status"></p>
-      <label class="modal-field">Default model
-        <input type="text" id="settings-default-model" placeholder="e.g. openai/gpt-4o-mini" list="settings-model-list">
-        <datalist id="settings-model-list"></datalist>
-      </label>
-      <div class="modal-actions">
-        <button type="button" id="settings-test-btn">Test connection</button>
-        <span id="settings-test-result" class="placeholder-hint"></span>
-      </div>
+      <fieldset class="modal-fieldset">
+        <legend>AI Provider</legend>
+        <p class="hint">Connects to an OpenRouter-compatible chat API, used by "Describe image" and "Expand with AI".</p>
+        <label class="modal-field">API base URL
+          <input type="text" id="settings-ai-base-url" placeholder="https://openrouter.ai/api/v1">
+        </label>
+        <label class="modal-field">API key
+          <input type="password" id="settings-ai-api-key" autocomplete="off">
+        </label>
+        <p class="placeholder-hint" id="settings-ai-key-status"></p>
+        <label class="modal-field">Default model
+          <input type="text" id="settings-ai-default-model" placeholder="e.g. openai/gpt-4o-mini" list="settings-ai-model-list">
+          <datalist id="settings-ai-model-list"></datalist>
+        </label>
+        <div class="modal-actions">
+          <button type="button" id="settings-ai-test-btn">Test connection</button>
+          <span id="settings-ai-test-result" class="placeholder-hint"></span>
+        </div>
+      </fieldset>
+      <fieldset class="modal-fieldset">
+        <legend>ComfyUI (Pod)</legend>
+        <p class="hint">A ComfyUI instance running on a RunPod Pod, used for per-shot video generation. Authentication isn't wired up yet - the API key is stored but unused for now.</p>
+        <label class="modal-field">Pod base URL
+          <input type="text" id="settings-comfy-base-url" placeholder="https://<pod-id>-8188.proxy.runpod.net">
+        </label>
+        <label class="modal-field">API key (unused for now)
+          <input type="password" id="settings-comfy-api-key" autocomplete="off">
+        </label>
+        <p class="placeholder-hint" id="settings-comfy-key-status"></p>
+        <div class="modal-actions">
+          <button type="button" id="settings-comfy-test-btn">Test connection</button>
+          <span id="settings-comfy-test-result" class="placeholder-hint"></span>
+        </div>
+      </fieldset>
     </div>
     <div class="modal-footer">
       <button type="button" id="settings-save-btn">Save</button>

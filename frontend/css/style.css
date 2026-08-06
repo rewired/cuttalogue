@@ -248,6 +248,18 @@ fieldset {
 
 legend { color: var(--text-dim); font-size: 12px; padding: 0 4px; }
 
+/* Overrides the generic fieldset rule above (row layout, centered) - the
+   Setup modal's two provider sections stack their fields vertically like
+   the rest of the modal body, not side-by-side. */
+.modal-fieldset {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 12px 12px;
+}
+
 .settings-panel label {
   display: flex;
   align-items: center;
@@ -1217,3 +1229,37 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   z-index: 100;
 }
 .toast.visible { opacity: 1; transform: translate(-50%, 0); }
+
+.take-history-list { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+.take-card {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: var(--panel);
+}
+.take-card-header { display: flex; align-items: center; gap: 8px; }
+.take-seed { font-size: 12px; font-weight: 700; }
+.take-status-badge {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  color: #0f1114;
+}
+.take-status-badge-queued { background: var(--text-dim); }
+.take-status-badge-running { background: #ffc107; }
+.take-status-badge-done { background: #4caf50; }
+.take-status-badge-error { background: #f44336; }
+.take-active-badge {
+  font-size: 11px;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 1px 6px;
+}
+.take-timestamp { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+.take-video { display: block; width: 100%; max-height: 220px; margin-top: 8px; border-radius: 4px; background: #000; }
+.take-error { color: #f44336; font-size: 12px; margin-top: 6px; }
+.take-actions { display: flex; gap: 8px; margin-top: 8px; }
+.take-actions button { font-size: 12px; padding: 3px 8px; }

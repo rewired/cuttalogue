@@ -169,7 +169,9 @@
     // half same as assetIds - but direction beats are shot-relative seconds
     // that were authored against the ORIGINAL duration, which no longer
     // matches either half after a split, so both halves start with a blank
-    // direction rather than carrying over now-meaningless timings.
+    // direction rather than carrying over now-meaningless timings. Takes
+    // don't carry over either, same reasoning: they were generated against
+    // content that no longer matches either new half.
     const left = {
       id: 0,
       startSeconds: shot.startSeconds,
@@ -178,6 +180,8 @@
       prompt: shot.prompt || '',
       notes: shot.notes || '',
       seed: null,
+      takes: [],
+      activeTakeId: null,
       assetIds: (shot.assetIds || []).slice(),
       assetRoles: { ...(shot.assetRoles || {}) },
       direction: defaultDirection(),
@@ -190,6 +194,8 @@
       prompt: '',
       notes: '',
       seed: null,
+      takes: [],
+      activeTakeId: null,
       assetIds: [],
       assetRoles: {},
       direction: defaultDirection(),
@@ -219,6 +225,8 @@
       prompt: '',
       notes: '',
       seed: null,
+      takes: [],
+      activeTakeId: null,
       assetIds: [],
       assetRoles: {},
       direction: defaultDirection(),
@@ -746,6 +754,42 @@
     emit('shots-changed', { reason: 'constraints' });
   }
 
+  // Take mutators - addTake is called with an optimistic {status:'queued'}
+  // record the moment "Generate" is clicked, then updateTake carries it
+  // through 'running'/'done'/'error' as the job's SSE events arrive (see
+  // contextPanel.js). Never overwrites an existing take - a regenerate is
+  // always a new addTake, per the "keep every take" requirement.
+  function addTake(shotId, take) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    shot.takes.push(take);
+    emit('shots-changed', { reason: 'take' });
+  }
+
+  function updateTake(shotId, takeId, patch) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    const take = shot.takes.find((t) => t.id === takeId);
+    if (!take) return;
+    Object.assign(take, patch);
+    emit('shots-changed', { reason: 'take' });
+  }
+
+  function setActiveTake(shotId, takeId) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    shot.activeTakeId = takeId;
+    emit('shots-changed', { reason: 'take' });
+  }
+
+  function deleteTake(shotId, takeId) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    shot.takes = shot.takes.filter((t) => t.id !== takeId);
+    if (shot.activeTakeId === takeId) shot.activeTakeId = null;
+    emit('shots-changed', { reason: 'take' });
+  }
+
   function notifyDirectionChanged() {
     emit('shots-changed', { reason: 'direction' });
   }
@@ -774,6 +818,10 @@
     setShotPrompt,
     setAssetRole,
     setShotConstraints,
+    addTake,
+    updateTake,
+    setActiveTake,
+    deleteTake,
     addCameraSegment,
     updateCameraSegment,
     removeCameraSegment,

@@ -1,8 +1,9 @@
-# Application-level settings: the AI provider connection (base URL, API key,
-# default model) used by describe.py. Per the product doc, this is scoped to
-# the whole app, not a project - stored in its own file next to (not inside)
-# backend/data/projects/, and never echoed back to the client or written into
-# a project.json/export.
+# Application-level settings: provider connections used by describe.py/
+# expand.py (the "ai" provider, an OpenRouter-compatible chat API) and
+# comfy.py (the "comfy" provider, a ComfyUI instance on a RunPod Pod). Per
+# the product doc, this is scoped to the whole app, not a project - stored in
+# its own file next to (not inside) backend/data/projects/, and never echoed
+# back to the client or written into a project.json/export.
 import json
 from pathlib import Path
 
@@ -12,22 +13,39 @@ router = APIRouter()
 
 SETTINGS_FILE = Path(__file__).resolve().parents[1] / "data" / "settings.json"
 
-DEFAULT_PROVIDER = {
-    "baseUrl": "https://openrouter.ai/api/v1",
-    "apiKey": "",
-    "defaultModel": "",
+DEFAULT_PROVIDERS = {
+    "ai": {
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "apiKey": "",
+        "defaultModel": "",
+    },
+    "comfy": {
+        "baseUrl": "",
+        "apiKey": "",
+        # 'pod' (a persistent Pod's own HTTP API) is the only mode
+        # implemented so far - RunPod Serverless (a different job-wrapper
+        # API) is deliberately deferred, this field just reserves the shape.
+        "mode": "pod",
+    },
 }
 
 
 def load_settings() -> dict:
     if not SETTINGS_FILE.exists():
-        return {"aiProvider": dict(DEFAULT_PROVIDER)}
+        return {"providers": {k: dict(v) for k, v in DEFAULT_PROVIDERS.items()}}
     try:
         data = json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
-        return {"aiProvider": dict(DEFAULT_PROVIDER)}
-    provider = {**DEFAULT_PROVIDER, **(data.get("aiProvider") or {})}
-    return {"aiProvider": provider}
+        return {"providers": {k: dict(v) for k, v in DEFAULT_PROVIDERS.items()}}
+    # Pre-two-provider saves only have a flat "aiProvider" key - migrate it
+    # into providers.ai on load rather than carrying a permanent compat shim.
+    if "providers" not in data and "aiProvider" in data:
+        data = {"providers": {"ai": data["aiProvider"]}}
+    providers = {
+        key: {**default, **(data.get("providers", {}).get(key) or {})}
+        for key, default in DEFAULT_PROVIDERS.items()
+    }
+    return {"providers": providers}
 
 
 def save_settings(data: dict) -> None:
@@ -36,12 +54,19 @@ def save_settings(data: dict) -> None:
 
 
 def _public_view(data: dict) -> dict:
-    provider = data["aiProvider"]
+    providers = data["providers"]
     return {
-        "aiProvider": {
-            "baseUrl": provider["baseUrl"],
-            "defaultModel": provider["defaultModel"],
-            "hasApiKey": bool(provider["apiKey"]),
+        "providers": {
+            "ai": {
+                "baseUrl": providers["ai"]["baseUrl"],
+                "defaultModel": providers["ai"]["defaultModel"],
+                "hasApiKey": bool(providers["ai"]["apiKey"]),
+            },
+            "comfy": {
+                "baseUrl": providers["comfy"]["baseUrl"],
+                "mode": providers["comfy"]["mode"],
+                "hasApiKey": bool(providers["comfy"]["apiKey"]),
+            },
         }
     }
 
@@ -54,29 +79,36 @@ async def get_settings():
 @router.put("/api/settings")
 async def put_settings(body: dict = Body(default={})):
     current = load_settings()
-    provider = current["aiProvider"]
-    incoming = body.get("aiProvider") or body  # accept either {aiProvider:{...}} or the flat object
+    incoming_providers = body.get("providers") or {}
 
-    if "baseUrl" in incoming:
-        provider["baseUrl"] = (incoming["baseUrl"] or "").strip() or DEFAULT_PROVIDER["baseUrl"]
-    if "defaultModel" in incoming:
-        provider["defaultModel"] = (incoming["defaultModel"] or "").strip()
+    ai = current["providers"]["ai"]
+    incoming_ai = incoming_providers.get("ai") or {}
+    if "baseUrl" in incoming_ai:
+        ai["baseUrl"] = (incoming_ai["baseUrl"] or "").strip() or DEFAULT_PROVIDERS["ai"]["baseUrl"]
+    if "defaultModel" in incoming_ai:
+        ai["defaultModel"] = (incoming_ai["defaultModel"] or "").strip()
     # An empty/absent apiKey means "leave the saved key alone" - the client
     # never gets the real key back to redisplay, so it can't round-trip one
-    # the user didn't just type.
-    if incoming.get("apiKey"):
-        provider["apiKey"] = incoming["apiKey"].strip()
+    # the user didn't just type. Same rule for both providers below.
+    if incoming_ai.get("apiKey"):
+        ai["apiKey"] = incoming_ai["apiKey"].strip()
+
+    comfy = current["providers"]["comfy"]
+    incoming_comfy = incoming_providers.get("comfy") or {}
+    if "baseUrl" in incoming_comfy:
+        comfy["baseUrl"] = (incoming_comfy["baseUrl"] or "").strip()
+    if "mode" in incoming_comfy:
+        comfy["mode"] = (incoming_comfy["mode"] or "").strip() or DEFAULT_PROVIDERS["comfy"]["mode"]
+    if incoming_comfy.get("apiKey"):
+        comfy["apiKey"] = incoming_comfy["apiKey"].strip()
 
     save_settings(current)
     return _public_view(current)
 
 
-@router.post("/api/settings/test")
-async def test_settings(body: dict = Body(default={})):
+async def _test_ai(incoming: dict, current: dict) -> dict:
     import httpx
 
-    incoming = body.get("aiProvider") or body
-    current = load_settings()["aiProvider"]
     base_url = (incoming.get("baseUrl") or current["baseUrl"] or "").rstrip("/")
     api_key = incoming.get("apiKey") or current["apiKey"]
     model = (incoming.get("defaultModel") or current["defaultModel"] or "").strip()
@@ -122,3 +154,36 @@ async def test_settings(body: dict = Body(default={})):
         }
     except Exception as exc:  # noqa: BLE001 - reported to the client, not raised
         return {"ok": False, "message": f"Generation check with \"{model}\" failed: {exc}", "models": models}
+
+
+async def _test_comfy(incoming: dict, current: dict) -> dict:
+    import httpx
+
+    base_url = (incoming.get("baseUrl") or current["baseUrl"] or "").rstrip("/")
+    if not base_url:
+        return {"ok": False, "message": "No ComfyUI base URL provided."}
+
+    # No auth header sent yet - the Pod's authentication scheme (basic-auth
+    # sidecar, SSH tunnel, or something else) hasn't been decided. A stored
+    # apiKey is accepted here but deliberately unused until that's settled.
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            res = await client.get(f"{base_url}/system_stats")
+        if res.status_code != 200:
+            return {"ok": False, "message": f"ComfyUI returned HTTP {res.status_code} for /system_stats."}
+        return {"ok": True, "message": "Connected - ComfyUI responded to /system_stats."}
+    except Exception as exc:  # noqa: BLE001 - reported to the client, not raised
+        return {"ok": False, "message": str(exc) or repr(exc)}
+
+
+@router.post("/api/settings/test")
+async def test_settings(body: dict = Body(default={})):
+    provider_key = body.get("provider")
+    if provider_key not in ("ai", "comfy"):
+        return {"ok": False, "message": "Unknown provider."}
+
+    current = load_settings()["providers"][provider_key]
+    incoming = {k: v for k, v in body.items() if k != "provider"}
+    if provider_key == "ai":
+        return await _test_ai(incoming, current)
+    return await _test_comfy(incoming, current)

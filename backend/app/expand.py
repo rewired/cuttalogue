@@ -85,7 +85,7 @@ async def expand_description(body: dict = Body(default={})):
     if not text:
         raise HTTPException(status_code=400, detail="no text given")
 
-    provider = settings.load_settings()["aiProvider"]
+    provider = settings.load_settings()["providers"]["ai"]
     base_url, api_key = provider["baseUrl"], provider["apiKey"]
     if not base_url or not api_key:
         raise HTTPException(status_code=400, detail="AI provider not configured - set it up on the Setup page first")

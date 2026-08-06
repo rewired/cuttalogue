@@ -1,8 +1,8 @@
-// Context panel: [Cast & Locations] / [Direction] / [Prompt] / [Notes] tabs
-// on the right of the shot list. Owns the transient (non-persisted)
-// selected-shot id and renders that shot's readouts plus its editable
-// prompt/notes fields, which live on the shot itself and round-trip through
-// the project JSON.
+// Context panel: [Cast & Locations] / [Direction] / [Prompt] / [Notes] /
+// [Generate] tabs on the right of the shot list. Owns the transient (non-
+// persisted) selected-shot id and renders that shot's readouts plus its
+// editable prompt/notes fields and take history, which live on the shot
+// itself and round-trip through the project JSON.
 (function (MSE) {
   'use strict';
 
@@ -18,10 +18,12 @@
     el.tabDirectionBtn = document.getElementById('tab-btn-direction');
     el.tabPromptBtn = document.getElementById('tab-btn-prompt');
     el.tabNotesBtn = document.getElementById('tab-btn-notes');
+    el.tabGenerateBtn = document.getElementById('tab-btn-generate');
     el.tabAssets = document.getElementById('tab-assets');
     el.tabDirection = document.getElementById('tab-direction');
     el.tabPrompt = document.getElementById('tab-prompt');
     el.tabNotes = document.getElementById('tab-notes');
+    el.tabGenerate = document.getElementById('tab-generate');
 
     el.assetsTabEmpty = document.getElementById('assets-tab-empty');
     el.assetsTabDetail = document.getElementById('assets-tab-detail');
@@ -31,11 +33,19 @@
     el.promptDetail = document.getElementById('prompt-tab-detail');
     el.notesEmpty = document.getElementById('notes-tab-empty');
     el.notesDetail = document.getElementById('notes-tab-detail');
+    el.generateEmpty = document.getElementById('generate-tab-empty');
+    el.generateDetail = document.getElementById('generate-tab-detail');
 
     el.prompt = document.getElementById('shot-detail-prompt');
     el.notes = document.getElementById('shot-detail-notes');
     el.seed = document.getElementById('shot-detail-seed');
     el.assignedAssets = document.getElementById('shot-detail-assets');
+
+    el.generateBtn = document.getElementById('generate-take-btn');
+    el.generateSpinner = document.getElementById('generate-spinner');
+    el.generateStatusText = document.getElementById('generate-status-text');
+    el.generateSeedReadout = document.getElementById('generate-seed-readout');
+    el.takeHistoryList = document.getElementById('take-history-list');
   }
 
   function findSelectedShot() {
@@ -57,6 +67,8 @@
     el.promptDetail.style.display = hasShot ? '' : 'none';
     el.notesEmpty.style.display = hasShot ? 'none' : '';
     el.notesDetail.style.display = hasShot ? '' : 'none';
+    el.generateEmpty.style.display = hasShot ? 'none' : '';
+    el.generateDetail.style.display = hasShot ? '' : 'none';
 
     if (hasShot) {
       // Skip the field currently being typed in, so a re-render triggered by
@@ -64,9 +76,12 @@
       if (document.activeElement !== el.prompt) el.prompt.value = shot.prompt || '';
       if (document.activeElement !== el.notes) el.notes.value = shot.notes || '';
       if (document.activeElement !== el.seed) el.seed.value = shot.seed ?? '';
+      el.generateSeedReadout.textContent =
+        shot.seed != null ? `Next seed: ${shot.seed} (edit in the Prompt tab)` : 'Next seed: random (set one in the Prompt tab to pin it)';
     }
 
     renderAssignedAssets();
+    renderTakeHistory();
   }
 
   function assetPreviewUrl(asset) {
@@ -163,6 +178,142 @@
     el.assignedAssets.appendChild(addCard);
   }
 
+  function formatTakeTimestamp(ms) {
+    return ms ? new Date(ms).toLocaleString() : '';
+  }
+
+  // Newest first, one card per take - never fewer than what's in
+  // shot.takes (regenerating always adds, never overwrites, per the
+  // "keep every take" requirement).
+  function renderTakeHistory() {
+    const shot = findSelectedShot();
+    el.takeHistoryList.innerHTML = '';
+    if (!shot) return;
+
+    const projectId = MSE.project.getProjectId();
+    const takes = (shot.takes || []).slice().reverse();
+    takes.forEach((take) => {
+      const isActive = shot.activeTakeId === take.id;
+      const card = document.createElement('div');
+      card.className = `take-card take-status-${take.status}`;
+
+      const header = document.createElement('div');
+      header.className = 'take-card-header';
+      const seedLabel = document.createElement('span');
+      seedLabel.className = 'take-seed';
+      seedLabel.textContent = take.seed != null ? `Seed ${take.seed}` : 'Seed random';
+      header.appendChild(seedLabel);
+      const statusBadge = document.createElement('span');
+      statusBadge.className = `take-status-badge take-status-badge-${take.status}`;
+      statusBadge.textContent = take.status;
+      header.appendChild(statusBadge);
+      if (isActive) {
+        const activeBadge = document.createElement('span');
+        activeBadge.className = 'take-active-badge';
+        activeBadge.textContent = 'Active';
+        header.appendChild(activeBadge);
+      }
+      card.appendChild(header);
+
+      const timeEl = document.createElement('div');
+      timeEl.className = 'take-timestamp';
+      timeEl.textContent = formatTakeTimestamp(take.createdAt);
+      card.appendChild(timeEl);
+
+      if (take.status === 'done' && take.relativePath && projectId) {
+        const video = document.createElement('video');
+        video.controls = true;
+        video.className = 'take-video';
+        video.src = `/project-files/${projectId}/${take.relativePath}?v=${take.id}`;
+        card.appendChild(video);
+      } else if (take.status === 'error') {
+        const err = document.createElement('div');
+        err.className = 'take-error';
+        err.textContent = take.errorMessage || 'Generation failed.';
+        card.appendChild(err);
+      }
+
+      const actions = document.createElement('div');
+      actions.className = 'take-actions';
+      if (take.status === 'done') {
+        const setActiveBtn = document.createElement('button');
+        setActiveBtn.type = 'button';
+        setActiveBtn.textContent = isActive ? 'Active' : 'Set active';
+        setActiveBtn.disabled = isActive;
+        setActiveBtn.addEventListener('click', () => shotsApi.setActiveTake(shot.id, take.id));
+        actions.appendChild(setActiveBtn);
+      }
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.textContent = 'Delete';
+      deleteBtn.addEventListener('click', () => shotsApi.deleteTake(shot.id, take.id));
+      actions.appendChild(deleteBtn);
+      card.appendChild(actions);
+
+      el.takeHistoryList.appendChild(card);
+    });
+  }
+
+  // Optimistic take: appended as 'queued' the instant the button is
+  // clicked, then carried through 'running'/'done'/'error' via the job's
+  // SSE events, mirroring direction.js's "Expand with AI" job flow.
+  function wireGenerateTab() {
+    el.generateBtn.addEventListener('click', async () => {
+      const shot = findSelectedShot();
+      const projectId = MSE.project.getProjectId();
+      if (!shot || !projectId) return;
+
+      const referenceAssetIds = MSE.assets
+        .assetsForShot(shot)
+        .filter((a) => a.type === 'image')
+        .map((a) => a.id);
+
+      const takeId = `local-${Date.now()}`;
+      shotsApi.addTake(shot.id, {
+        id: takeId,
+        seed: shot.seed ?? null,
+        status: 'queued',
+        jobId: null,
+        relativePath: null,
+        createdAt: Date.now(),
+        errorMessage: null,
+      });
+
+      el.generateBtn.disabled = true;
+      el.generateSpinner.hidden = false;
+      el.generateStatusText.textContent = 'Starting…';
+
+      try {
+        const { jobId } = await MSE.api.generateTake(projectId, shot.id, {
+          prompt: shot.prompt || '',
+          seed: shot.seed ?? null,
+          referenceAssetIds,
+        });
+        shotsApi.updateTake(shot.id, takeId, { jobId, status: 'running' });
+        el.generateStatusText.textContent = 'Generating…';
+
+        const event = await MSE.api.watchJob(jobId, (progressEvent) => {
+          if (progressEvent.message) el.generateStatusText.textContent = progressEvent.message;
+        });
+        const result = event.result || {};
+        shotsApi.updateTake(shot.id, takeId, {
+          status: 'done',
+          relativePath: result.relativePath,
+          seed: result.seed,
+        });
+        if (shot.activeTakeId == null) shotsApi.setActiveTake(shot.id, takeId);
+        el.generateStatusText.textContent = 'Done.';
+      } catch (err) {
+        console.error(err);
+        shotsApi.updateTake(shot.id, takeId, { status: 'error', errorMessage: err.message });
+        el.generateStatusText.textContent = `Failed: ${err.message}`;
+      } finally {
+        el.generateBtn.disabled = false;
+        el.generateSpinner.hidden = true;
+      }
+    });
+  }
+
   function selectShot(shotId) {
     selectedShotId = shotId;
     renderShotSpecificTabs();
@@ -196,12 +347,14 @@
       direction: el.tabDirectionBtn,
       prompt: el.tabPromptBtn,
       notes: el.tabNotesBtn,
+      generate: el.tabGenerateBtn,
     };
     const panels = {
       assets: el.tabAssets,
       direction: el.tabDirection,
       prompt: el.tabPrompt,
       notes: el.tabNotes,
+      generate: el.tabGenerate,
     };
     function activate(tab) {
       Object.keys(buttons).forEach((key) => {
@@ -216,6 +369,7 @@
     cacheElements();
     wireTabs();
     wireTextInputs();
+    wireGenerateTab();
     renderShotSpecificTabs();
   }
 

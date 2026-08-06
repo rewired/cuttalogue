@@ -1,9 +1,10 @@
-// Setup modal: application-level AI provider connection (base URL, API key,
-// default model), stored on the backend outside of any project - never part
-// of project.json or an export. The API key itself is never sent back down
-// from the backend (see settings.py's _public_view), so this form only shows
-// whether one is saved, not what it is; leaving the key field blank on save
-// keeps whatever is already stored.
+// Setup modal: application-level provider connections (AI chat API for
+// "Describe image"/"Expand with AI", and the ComfyUI Pod for per-shot
+// generation) - stored on the backend outside of any project, never part of
+// project.json or an export. Neither provider's API key is ever sent back
+// down from the backend (see settings.py's _public_view), so this form only
+// shows whether one is saved, not what it is; leaving a key field blank on
+// save keeps whatever is already stored for that provider.
 (function (MSE) {
   'use strict';
 
@@ -13,13 +14,24 @@
     el.openBtn = document.getElementById('setup-btn');
     el.overlay = document.getElementById('settings-modal');
     el.closeBtn = document.getElementById('settings-close-btn');
-    el.baseUrl = document.getElementById('settings-base-url');
-    el.apiKey = document.getElementById('settings-api-key');
-    el.keyStatus = document.getElementById('settings-key-status');
-    el.defaultModel = document.getElementById('settings-default-model');
-    el.modelList = document.getElementById('settings-model-list');
-    el.testBtn = document.getElementById('settings-test-btn');
-    el.testResult = document.getElementById('settings-test-result');
+
+    el.ai = {
+      baseUrl: document.getElementById('settings-ai-base-url'),
+      apiKey: document.getElementById('settings-ai-api-key'),
+      keyStatus: document.getElementById('settings-ai-key-status'),
+      defaultModel: document.getElementById('settings-ai-default-model'),
+      modelList: document.getElementById('settings-ai-model-list'),
+      testBtn: document.getElementById('settings-ai-test-btn'),
+      testResult: document.getElementById('settings-ai-test-result'),
+    };
+    el.comfy = {
+      baseUrl: document.getElementById('settings-comfy-base-url'),
+      apiKey: document.getElementById('settings-comfy-api-key'),
+      keyStatus: document.getElementById('settings-comfy-key-status'),
+      testBtn: document.getElementById('settings-comfy-test-btn'),
+      testResult: document.getElementById('settings-comfy-test-result'),
+    };
+
     el.saveBtn = document.getElementById('settings-save-btn');
     el.saveStatus = document.getElementById('settings-save-status');
   }
@@ -29,35 +41,75 @@
   // wipe out the "Saved." confirmation the save handler just set.
   async function loadIntoForm() {
     try {
-      const { aiProvider } = await MSE.api.getSettings();
-      el.baseUrl.value = aiProvider.baseUrl || '';
-      el.defaultModel.value = aiProvider.defaultModel || '';
-      el.apiKey.value = '';
-      el.apiKey.placeholder = aiProvider.hasApiKey ? 'Saved - leave blank to keep it' : 'sk-...';
-      el.keyStatus.textContent = aiProvider.hasApiKey ? 'An API key is saved.' : 'No API key saved yet.';
+      const { providers } = await MSE.api.getSettings();
+      el.ai.baseUrl.value = providers.ai.baseUrl || '';
+      el.ai.defaultModel.value = providers.ai.defaultModel || '';
+      el.ai.apiKey.value = '';
+      el.ai.apiKey.placeholder = providers.ai.hasApiKey ? 'Saved - leave blank to keep it' : 'sk-...';
+      el.ai.keyStatus.textContent = providers.ai.hasApiKey ? 'An API key is saved.' : 'No API key saved yet.';
+
+      el.comfy.baseUrl.value = providers.comfy.baseUrl || '';
+      el.comfy.apiKey.value = '';
+      el.comfy.apiKey.placeholder = providers.comfy.hasApiKey ? 'Saved - leave blank to keep it' : '(optional for now)';
+      el.comfy.keyStatus.textContent = providers.comfy.hasApiKey ? 'An API key is saved.' : 'No API key saved yet.';
     } catch (err) {
       console.error(err);
       el.saveStatus.textContent = 'Could not load settings - is the backend running?';
     }
   }
 
-  function currentFormValues() {
+  function currentAiValues() {
     return {
-      baseUrl: el.baseUrl.value.trim(),
-      apiKey: el.apiKey.value.trim(),
-      defaultModel: el.defaultModel.value.trim(),
+      baseUrl: el.ai.baseUrl.value.trim(),
+      apiKey: el.ai.apiKey.value.trim(),
+      defaultModel: el.ai.defaultModel.value.trim(),
+    };
+  }
+
+  function currentComfyValues() {
+    return {
+      baseUrl: el.comfy.baseUrl.value.trim(),
+      apiKey: el.comfy.apiKey.value.trim(),
     };
   }
 
   function openModal() {
     el.overlay.hidden = false;
-    el.testResult.textContent = '';
+    el.ai.testResult.textContent = '';
+    el.comfy.testResult.textContent = '';
     el.saveStatus.textContent = '';
     loadIntoForm();
   }
 
   function closeModal() {
     el.overlay.hidden = true;
+  }
+
+  function wireTest(providerKey, section, currentValues) {
+    section.testBtn.addEventListener('click', async () => {
+      section.testBtn.disabled = true;
+      section.testResult.textContent = 'Testing...';
+      section.testResult.style.color = '';
+      try {
+        const result = await MSE.api.testSettings(providerKey, currentValues());
+        if (Array.isArray(result.models) && section.modelList) {
+          section.modelList.innerHTML = '';
+          result.models.forEach((id) => {
+            const option = document.createElement('option');
+            option.value = id;
+            section.modelList.appendChild(option);
+          });
+        }
+        section.testResult.textContent = result.message || (result.ok ? 'OK' : 'Failed');
+        section.testResult.style.color = result.ok ? '#4caf50' : '#f44336';
+      } catch (err) {
+        console.error(err);
+        section.testResult.textContent = 'Test request failed.';
+        section.testResult.style.color = '#f44336';
+      } finally {
+        section.testBtn.disabled = false;
+      }
+    });
   }
 
   function wire() {
@@ -70,36 +122,16 @@
       if (e.key === 'Escape' && !el.overlay.hidden) closeModal();
     });
 
-    el.testBtn.addEventListener('click', async () => {
-      el.testBtn.disabled = true;
-      el.testResult.textContent = 'Testing...';
-      el.testResult.style.color = '';
-      try {
-        const result = await MSE.api.testSettings(currentFormValues());
-        if (Array.isArray(result.models)) {
-          el.modelList.innerHTML = '';
-          result.models.forEach((id) => {
-            const option = document.createElement('option');
-            option.value = id;
-            el.modelList.appendChild(option);
-          });
-        }
-        el.testResult.textContent = result.message || (result.ok ? 'OK' : 'Failed');
-        el.testResult.style.color = result.ok ? '#4caf50' : '#f44336';
-      } catch (err) {
-        console.error(err);
-        el.testResult.textContent = 'Test request failed.';
-        el.testResult.style.color = '#f44336';
-      } finally {
-        el.testBtn.disabled = false;
-      }
-    });
+    wireTest('ai', el.ai, currentAiValues);
+    wireTest('comfy', el.comfy, currentComfyValues);
 
     el.saveBtn.addEventListener('click', async () => {
       el.saveBtn.disabled = true;
       el.saveStatus.textContent = 'Saving...';
       try {
-        await MSE.api.saveSettings(currentFormValues());
+        // mode is fixed to 'pod' until Serverless support exists - not a form
+        // field yet, just sent through so the backend always has a value.
+        await MSE.api.saveSettings({ ai: currentAiValues(), comfy: { ...currentComfyValues(), mode: 'pod' } });
         el.saveStatus.textContent = 'Saved.';
         await loadIntoForm();
       } catch (err) {
