@@ -109,6 +109,13 @@
   // dragged boundary that no longer forms this beat, project load).
   let selection = null;
 
+  // One .playhead-segment per .direction-lane-content row (same class/CSS
+  // the main Grid/Shots/Mix/Vocal playhead uses, just positioned in % of
+  // this shot's domainDuration instead of px against the song timeline) -
+  // rebuilt every renderLanes() call since el.lanes.innerHTML = '' already
+  // discards the old row elements.
+  let directionPlayheadEls = [];
+
   // 'absolute' labels grid ticks with the song's own bar.beat (matches the
   // main Shots timeline); 'relative' re-anchors bar 1 beat 1 to this shot's
   // own start, which reads easier when eyeballing a shot's internal beat
@@ -506,6 +513,7 @@
 
   function renderLanes(shot) {
     el.lanes.innerHTML = '';
+    directionPlayheadEls = [];
     const duration = shotsApi.shotDuration(shot);
     if (duration <= 0) return;
 
@@ -568,6 +576,34 @@
       el.lanes.appendChild(buildBeatRow(shot, allSubjects, duration, domainDuration));
       el.lanes.appendChild(buildBeatOrphansRow(shot, allSubjects));
     }
+
+    directionPlayheadEls = Array.from(el.lanes.querySelectorAll('.direction-lane-content')).map((content) => {
+      const seg = document.createElement('div');
+      seg.className = 'playhead-segment';
+      content.appendChild(seg);
+      return seg;
+    });
+    updateDirectionPlayhead();
+  }
+
+  // Synced to the main Grid/Shots/Mix/Vocal playhead via
+  // MSE.sync.onPlayheadTick (see waveformSync.js) - hidden whenever the
+  // current position falls outside the shot this tab is currently showing,
+  // since every row here is scoped to just that one shot.
+  function updateDirectionPlayhead() {
+    if (!directionPlayheadEls.length) return;
+    const shot = findShot(currentShotId);
+    if (!shot) return;
+    const duration = shotsApi.shotDuration(shot);
+    const calc = MSE.frames.frameCalc(duration, state.video);
+    const domainDuration = duration + calc.overhangSeconds;
+    const currentTime = MSE.sync.getCurrentTime();
+    const pct = domainDuration > 0 ? ((currentTime - shot.startSeconds) / domainDuration) * 100 : 0;
+    const visible = pct >= 0 && pct <= 100;
+    directionPlayheadEls.forEach((el) => {
+      el.style.display = visible ? '' : 'none';
+      if (visible) el.style.left = `${pct}%`;
+    });
   }
 
   // A beat can't be deleted (its boundaries are derived, not authored), only
@@ -999,6 +1035,7 @@
     el.constraintsInput.setAttribute('list', 'direction-constraint-suggestions');
     wire();
     updateSnapToggle();
+    MSE.sync.onPlayheadTick(updateDirectionPlayhead);
   }
 
   document.addEventListener('DOMContentLoaded', init);

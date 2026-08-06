@@ -323,6 +323,14 @@
 
   let playheadEls = [];
   let playheadRafId = null;
+  // Other modules that draw their own playhead in a different coordinate
+  // system (e.g. direction.js's shot-relative % lanes) hook in here instead
+  // of duplicating the rAF/scrub/pause plumbing above - see onPlayheadTick.
+  const playheadTickListeners = [];
+
+  function onPlayheadTick(fn) {
+    playheadTickListeners.push(fn);
+  }
 
   function createPlayheadSegments() {
     playheadEls = [els.gridWrap, els.shotsContainer, els.mixWrap, els.vocalWrap]
@@ -336,11 +344,13 @@
   }
 
   function updatePlayheadPosition() {
-    if (!gridWs || !playheadEls.length) return;
-    const left = getCurrentTime() * pxPerSecond - gridWs.getScroll();
-    playheadEls.forEach((el) => {
-      el.style.left = `${left}px`;
-    });
+    if (gridWs && playheadEls.length) {
+      const left = getCurrentTime() * pxPerSecond - gridWs.getScroll();
+      playheadEls.forEach((el) => {
+        el.style.left = `${left}px`;
+      });
+    }
+    playheadTickListeners.forEach((fn) => fn());
   }
 
   function playheadLoop() {
@@ -1067,6 +1077,7 @@
     setPlaybackTrack,
     zoomTo,
     getCurrentTime,
+    onPlayheadTick,
     getPxPerSecond: () => pxPerSecond,
     isTimelineReady: () => !!gridWs,
     setAudioTrackHeight,
