@@ -54,6 +54,10 @@
     <input type="text" id="project-name-input" class="project-name-input" placeholder="Untitled project">
   </div>
   <button id="play-pause-btn" disabled>&#9654; Play</button>
+  <div class="loop-controls">
+    <button type="button" id="loop-toggle-btn" class="icon-btn loop-toggle-btn" disabled title="Loop: off">&#8635;</button>
+    <button type="button" id="loop-snap-toggle" class="icon-btn loop-snap-toggle" disabled title="Snap loop locators to the grid or to shot boundaries">Grid</button>
+  </div>
   <div class="readout" id="current-time-readout">00:00.000 · F0 · 1.1.0.000</div>
   <div class="zoom-control">
     <label for="zoom-slider">Zoom</label>
@@ -120,8 +124,8 @@
     </div>
   </div>
   <div class="track-row">
-    <div class="track-label">Shots <span class="info-icon" tabindex="0" title="Click a row to select the shot
-Click inside a shot to split it
+    <div class="track-label">Shots <span class="info-icon" tabindex="0" title="Click a shot (or its row below) to select it
+Ctrl+click inside a shot to split it there
 Drag on empty space to create a new shot (hold Alt = no grid snap)
 Double-click a shared boundary to merge
 Right-click a shot to delete it">&#9432;</span></div>

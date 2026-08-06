@@ -47,6 +47,7 @@
       export: {
         includeMixSnippet: false,
       },
+      loop: { enabled: false, startSeconds: null, endSeconds: null, snapMode: 'grid' }, // snapMode: 'grid' | 'events'
       savedAt: null, // stamped on every real save - see project.js's draft-recovery mechanism
     };
   }

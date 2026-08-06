@@ -12,6 +12,8 @@
     trackLabelMix: document.getElementById('track-label-mix'),
     trackLabelVocal: document.getElementById('track-label-vocal'),
     playPauseBtn: document.getElementById('play-pause-btn'),
+    loopToggleBtn: document.getElementById('loop-toggle-btn'),
+    loopSnapToggle: document.getElementById('loop-snap-toggle'),
     zoomSlider: document.getElementById('zoom-slider'),
     placeholder: document.getElementById('timeline-placeholder'),
 
@@ -90,6 +92,8 @@
       el.mixFilename.textContent = state.audio.mix.fileName;
       el.placeholder.style.display = 'none';
       el.playPauseBtn.disabled = false;
+      el.loopToggleBtn.disabled = false;
+      el.loopSnapToggle.disabled = false;
     });
     on('vocal-ready', () => {
       el.vocalFilename.textContent = state.audio.vocal.fileName;
@@ -98,6 +102,8 @@
 
   function wireTransport() {
     el.playPauseBtn.addEventListener('click', () => MSE.sync.togglePlayback());
+    el.loopToggleBtn.addEventListener('click', () => MSE.sync.toggleLoopEnabled());
+    el.loopSnapToggle.addEventListener('click', () => MSE.sync.toggleLoopSnapMode());
 
     el.trackLabelMix.addEventListener('click', () => MSE.sync.setPlaybackTrack('mix'));
     el.trackLabelVocal.addEventListener('click', () => MSE.sync.setPlaybackTrack('vocal'));
@@ -165,20 +171,42 @@
     if (el.projectStatus) el.projectStatus.textContent = text;
   }
 
+  let toastEl = null;
+  let toastHideTimer = null;
+
+  // Transient confirmation, separate from the persistent #project-status
+  // text (which stays "Saved" until the next edit) - a keyboard-triggered
+  // save has no button to visibly react, so this gives feedback wherever
+  // the user's eyes actually are.
+  function showToast(message) {
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = 'toast';
+      document.body.appendChild(toastEl);
+    }
+    toastEl.textContent = message;
+    toastEl.classList.add('visible');
+    clearTimeout(toastHideTimer);
+    toastHideTimer = setTimeout(() => toastEl.classList.remove('visible'), 2000);
+  }
+
+  async function saveProject() {
+    el.saveProjectBtn.disabled = true;
+    setProjectStatus('Saving...');
+    try {
+      await MSE.project.saveProjectToBackend();
+      setProjectStatus('Saved');
+      showToast('Project saved');
+    } catch (err) {
+      console.error(err);
+      setProjectStatus('Save failed - is the backend running?');
+    } finally {
+      el.saveProjectBtn.disabled = false;
+    }
+  }
+
   function wireProjectActions() {
-    el.saveProjectBtn.addEventListener('click', async () => {
-      el.saveProjectBtn.disabled = true;
-      setProjectStatus('Saving...');
-      try {
-        await MSE.project.saveProjectToBackend();
-        setProjectStatus('Saved');
-      } catch (err) {
-        console.error(err);
-        setProjectStatus('Save failed - is the backend running?');
-      } finally {
-        el.saveProjectBtn.disabled = false;
-      }
-    });
+    el.saveProjectBtn.addEventListener('click', () => saveProject());
 
     el.exportJsonBtn.addEventListener('click', () => MSE.project.exportShotsJson());
     el.exportCsvBtn.addEventListener('click', () => MSE.project.exportShotsCsv());
@@ -191,6 +219,16 @@
     on('project-dirty-changed', ({ detail }) => {
       if (el.saveProjectBtn.disabled) return;
       setProjectStatus(detail.dirty ? 'Unsaved changes' : 'Saved');
+    });
+
+    // Browser's native Ctrl+S opens a "Save Page As" dialog - always
+    // intercepted here (unlike the Space-bar transport shortcut, this isn't
+    // valid text input anywhere, so no focused-element guard is needed).
+    document.addEventListener('keydown', (e) => {
+      if (!e.ctrlKey || e.key.toLowerCase() !== 's') return;
+      e.preventDefault();
+      if (el.saveProjectBtn.disabled) return;
+      saveProject();
     });
   }
 

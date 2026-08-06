@@ -202,6 +202,19 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .direction-snap-toggle.active { color: var(--accent); border-color: var(--accent); }
 
+.loop-controls { display: flex; align-items: center; gap: 6px; }
+
+.loop-toggle-btn { font-size: 18px; }
+.loop-toggle-btn.active { color: var(--accent); }
+
+.loop-snap-toggle {
+  font-size: 12px;
+  padding: 3px 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
+.loop-snap-toggle.active { color: var(--accent); border-color: var(--accent); }
+
 .grid-tempo-panel {
   position: absolute;
   top: calc(100% + 6px);
@@ -382,6 +395,11 @@ input.small { width: 44px; }
 .shots-lane-content { position: relative; height: 100%; }
 
 .shot-lane-segment { border-color: rgba(255, 255, 255, 0.15); padding: 0; }
+/* .lane-segment.selected's background override (style.css, laneWidget rules)
+   never shows here - STATUS_COLOR is applied as an inline style, which beats
+   any class-based background regardless of specificity. outline+brightness
+   works on top of any status color instead. */
+.shot-lane-segment.selected { outline: 2px solid var(--accent); outline-offset: -2px; filter: brightness(1.4); }
 
 .shot-region-label {
   padding: 2px 4px;
@@ -985,6 +1003,25 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
 .lane-segment:active { cursor: grabbing; }
 .lane-segment.selected { border-color: var(--accent); background: rgba(76, 141, 255, 0.55); }
 .lane-segment.disabled { opacity: 0.4; background: rgba(255, 255, 255, 0.08); border-style: dashed; }
+
+/* The loop region spans the ruler track's full height (unlike shot
+   "clips", which sit inset with top/bottom margin) and uses an amber
+   accent distinct from the blue used for shots/direction segments, so
+   it reads as a transport control rather than another clip. */
+.loop-region-segment {
+  top: 0;
+  bottom: 0;
+  padding: 0;
+  background: rgba(255, 193, 7, 0.22);
+  border: 1px solid rgba(255, 193, 7, 0.7);
+  border-radius: 0;
+  /* Without an explicit z-index this loses hit-testing to WaveSurfer's own
+     internal DOM in #track-grid despite being a later, visually-on-top
+     sibling - same reason .playhead-segment already sets one. Below the
+     playhead's z-index:3 so the cursor line stays visible over the band. */
+  z-index: 2;
+}
+.loop-region-segment.disabled { opacity: 0.35; background: rgba(255, 193, 7, 0.1); border-style: dashed; }
 .lane-segment-handle {
   position: absolute;
   top: 0;
@@ -1161,3 +1198,22 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   margin-bottom: 4px;
 }
 #task-panel-message { margin: 6px 0 0; }
+
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translate(-50%, 8px);
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  color: var(--text);
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+  z-index: 100;
+}
+.toast.visible { opacity: 1; transform: translate(-50%, 0); }

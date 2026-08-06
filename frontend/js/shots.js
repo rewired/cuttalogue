@@ -111,6 +111,32 @@
     return snapToGrid(timeSeconds, state.tempo);
   }
 
+  // Loop locators snap asymmetrically (left locator to shot starts, right
+  // locator to shot ends) rather than to "nearest boundary of either kind" -
+  // matches the common intent of looping exactly one or more whole shots.
+  function nearestShotStart(timeSeconds) {
+    if (!state.shots.length) return timeSeconds;
+    return state.shots.reduce(
+      (best, s) => (Math.abs(s.startSeconds - timeSeconds) < Math.abs(best - timeSeconds) ? s.startSeconds : best),
+      state.shots[0].startSeconds
+    );
+  }
+
+  // Which shot (if any) the given time falls inside - end-exclusive, so a
+  // time exactly on a shared boundary belongs to the shot starting there,
+  // not the one ending there.
+  function shotAtTime(timeSeconds) {
+    return state.shots.find((s) => timeSeconds >= s.startSeconds && timeSeconds < s.endSeconds) || null;
+  }
+
+  function nearestShotEnd(timeSeconds) {
+    if (!state.shots.length) return timeSeconds;
+    return state.shots.reduce(
+      (best, s) => (Math.abs(s.endSeconds - timeSeconds) < Math.abs(best - timeSeconds) ? s.endSeconds : best),
+      state.shots[0].endSeconds
+    );
+  }
+
   function trackDuration() {
     return state.audio.mix.durationSeconds || 0;
   }
@@ -733,6 +759,9 @@
     shotDuration,
     shotStatus,
     snapSeconds,
+    shotAtTime,
+    nearestShotStart,
+    nearestShotEnd,
     gapAt,
     splitShotAt,
     createShot,

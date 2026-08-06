@@ -82,6 +82,8 @@
     els.vocalWrap = document.getElementById('track-vocal-wrap');
     els.silenceLayer = document.getElementById('silence-layer');
     els.playhead = document.getElementById('current-time-readout');
+    els.loopToggleBtn = document.getElementById('loop-toggle-btn');
+    els.loopSnapToggle = document.getElementById('loop-snap-toggle');
   }
 
   function frameAtTime(seconds) {
@@ -235,6 +237,7 @@
       });
       isSyncingScroll = false;
       updatePlayheadPosition();
+      repositionLoopOverlay();
     });
   }
 
@@ -251,6 +254,20 @@
   function wireTimeSync(ws) {
     ws.on('timeupdate', (currentTime) => {
       if (isSyncingTime) return;
+      // Loop playback: only the instance actually driving playback
+      // (activeWs()) should trigger the seek-back - gridWs/shotsWs also get
+      // wireTimeSync'd (their own timeupdate only ever fires from the cross-
+      // instance .setTime() calls below, never real playback), so without
+      // this guard the same boundary crossing could be detected 4x.
+      if (
+        state.loop.enabled &&
+        ws === activeWs() &&
+        state.loop.endSeconds != null &&
+        currentTime >= state.loop.endSeconds
+      ) {
+        ws.setTime(state.loop.startSeconds);
+        return;
+      }
       isSyncingTime = true;
       const now = performance.now();
       const syncReal = now - lastRealSync >= REAL_SYNC_INTERVAL_MS;
@@ -348,6 +365,130 @@
     return state.audio.playbackTrack === 'vocal' ? vocalWs : mixWs;
   }
 
+  // Loop locators: rendered as a single laneWidget segment ({startSeconds,
+  // endSeconds}-shaped, which state.loop already is) directly in
+  // #track-grid-wrap, mirroring the playhead overlay's mount point/scroll
+  // math (gridWs.getScroll()) rather than the Shots track's CSS-transform
+  // scroll - the two tracks scroll via different mechanisms even though
+  // they stay visually in sync.
+  let loopSegmentEl = null;
+
+  function loopMetrics() {
+    return {
+      pxPerSecond: () => pxPerSecond,
+      position(el, seg) {
+        const scroll = gridWs ? gridWs.getScroll() : 0;
+        el.style.left = `${seg.startSeconds * pxPerSecond - scroll}px`;
+        el.style.width = `${Math.max(1, (seg.endSeconds - seg.startSeconds) * pxPerSecond)}px`;
+      },
+    };
+  }
+
+  function clampLoopTime(t) {
+    return Math.max(0, Math.min(state.audio.mix.durationSeconds || 0, t));
+  }
+
+  function moveLoopEdge(side, timeValue) {
+    const t = clampLoopTime(timeValue);
+    if (side === 'start') {
+      if (t >= state.loop.endSeconds) return null;
+      state.loop.startSeconds = t;
+    } else {
+      if (t <= state.loop.startSeconds) return null;
+      state.loop.endSeconds = t;
+    }
+    return t;
+  }
+
+  function moveLoopRegion(newStart) {
+    const span = state.loop.endSeconds - state.loop.startSeconds;
+    const duration = state.audio.mix.durationSeconds || 0;
+    const clampedStart = Math.max(0, Math.min(duration - span, newStart));
+    state.loop.startSeconds = clampedStart;
+    state.loop.endSeconds = clampedStart + span;
+    return clampedStart;
+  }
+
+  // Cheap reposition-only pass (scroll/zoom) - never tears down the element
+  // mid-drag, unlike renderLoopOverlay() which fully rebuilds it.
+  function repositionLoopOverlay() {
+    if (loopSegmentEl) loopMetrics().position(loopSegmentEl, state.loop);
+  }
+
+  function renderLoopOverlay() {
+    if (loopSegmentEl) {
+      loopSegmentEl.remove();
+      loopSegmentEl = null;
+    }
+    if (!gridWs || !els.gridWrap) return;
+    if (state.loop.startSeconds == null || state.loop.endSeconds == null) return;
+    loopSegmentEl = MSE.laneWidget.buildSegment(state.loop, 0, loopMetrics(), {
+      className: 'lane-segment loop-region-segment',
+      isSelected: () => false,
+      isDisabled: () => !state.loop.enabled,
+      renderLabel: () => {},
+      moveSegment: (i, t) => moveLoopRegion(t),
+      moveSegmentEdge: (i, side, t) => moveLoopEdge(side, t),
+      onSelect: () => {},
+      onCommit: () => renderLoopOverlay(),
+      onClickOnly: () => {},
+      snapTime: (current, altKey, mode) => {
+        if (altKey) return current;
+        if (state.loop.snapMode === 'events') {
+          return mode === 'end' ? shotsApi.nearestShotEnd(current) : shotsApi.nearestShotStart(current);
+        }
+        return shotsApi.snapSeconds(current);
+      },
+    });
+    els.gridWrap.appendChild(loopSegmentEl);
+  }
+
+  // First activation with no region yet defaults to the shot under the
+  // playhead - looping the whole project by default was confusing (a very
+  // wide region fills the entire visible ruler at any zoom/scroll position,
+  // with both handles off-screen). Falls back to the next shot if the
+  // playhead is sitting in a gap, then the last shot if it's past
+  // everything, then (no shots authored at all yet) a short window starting
+  // at the playhead.
+  function defaultLoopRegion() {
+    const t = getCurrentTime();
+    const shot = shotsApi.shotAtTime(t) || state.shots.find((s) => s.startSeconds >= t) || state.shots[state.shots.length - 1];
+    if (shot) return { startSeconds: shot.startSeconds, endSeconds: shot.endSeconds };
+    const duration = state.audio.mix.durationSeconds || 0;
+    const span = state.shotLimits.minimumSeconds || 8;
+    return { startSeconds: t, endSeconds: Math.min(duration, t + span) };
+  }
+
+  function setLoopEnabled(v) {
+    state.loop.enabled = v;
+    if (v && (state.loop.startSeconds == null || state.loop.endSeconds == null)) {
+      const region = defaultLoopRegion();
+      state.loop.startSeconds = region.startSeconds;
+      state.loop.endSeconds = region.endSeconds;
+    }
+    updateLoopToggle();
+    renderLoopOverlay();
+  }
+
+  function updateLoopToggle() {
+    if (!els.loopToggleBtn) return;
+    els.loopToggleBtn.classList.toggle('active', state.loop.enabled);
+    els.loopToggleBtn.title = state.loop.enabled ? 'Loop: on' : 'Loop: off';
+  }
+
+  function setLoopSnapMode(mode) {
+    state.loop.snapMode = mode;
+    updateLoopSnapToggle();
+  }
+
+  function updateLoopSnapToggle() {
+    if (!els.loopSnapToggle) return;
+    const isEvents = state.loop.snapMode === 'events';
+    els.loopSnapToggle.textContent = isEvents ? 'Events' : 'Grid';
+    els.loopSnapToggle.title = `Loop locators snap to: ${isEvents ? 'shot boundaries' : 'the grid'} (click to switch)`;
+    els.loopSnapToggle.classList.toggle('active', isEvents);
+  }
+
   async function togglePlayback() {
     const ws = activeWs();
     if (!ws) return;
@@ -378,6 +519,7 @@
     forEachInstance((ws) => ws.zoom(pxPerSecond));
     layoutSilenceOverlay();
     updatePlayheadPosition();
+    repositionLoopOverlay();
   }
 
   function setAudioTrackHeight(px) {
@@ -452,7 +594,7 @@
       const calc = frameCalc(shotsApi.shotDuration(shot), state.video);
       const segEl = MSE.laneWidget.buildSegment(shot, index, metrics, {
         className: 'lane-segment shot-lane-segment',
-        isSelected: () => false,
+        isSelected: () => MSE.context && shot.id === MSE.context.getSelectedShotId(),
         renderLabel: (el) => el.appendChild(buildShotLabel(shot, status, calc)),
         // shot.id is closed over from this exact build - safe within a
         // single render pass, same as Direction's index-into-a-fixed-array
@@ -460,13 +602,21 @@
         // rebuild the array; nothing here re-renders mid-drag).
         moveSegment: (i, timeValue) => shotsApi.moveShot(shot.id, timeValue, { snap: false }),
         moveSegmentEdge: (i, side, timeValue) => shotsApi.moveEdge(shot.id, side, timeValue, { snap: false }),
-        onSelect: () => {},
+        // Fires on every pointerup (click or drag alike) - dragging a shot
+        // to move/resize it makes it "the" shot you're working on too, so
+        // it becomes selected the same as a plain click would.
+        onSelect: () => {
+          if (MSE.context) MSE.context.selectShot(shot.id);
+        },
         onCommit: () => shotsApi.notifyBoundaryMoved(),
-        // Only a plain click on the shot's body (not a handle) splits it -
-        // mode is 'start'/'end' for the resize handles, which should do
-        // nothing on a click-without-drag.
+        // A plain click on the shot's body now just selects it (onSelect,
+        // above, already did that) - splitting used to be the plain-click
+        // behavior, which made a stray click destructively slice a shot in
+        // two. Ctrl+click on the body still splits. mode is 'start'/'end'
+        // for the resize handles, which should do nothing on a click-
+        // without-drag either way.
         onClickOnly: (ev, mode) => {
-          if (mode !== 'move') return;
+          if (mode !== 'move' || !ev.ctrlKey) return;
           shotsApi.splitShotAt(shotsTimeAtClientX(ev.clientX));
         },
         snapTime: (current, altKey) => (altKey ? current : shotsApi.snapSeconds(current)),
@@ -802,6 +952,9 @@
     setupShotsInteraction();
     setupShotContextMenu();
     createPlayheadSegments();
+    renderLoopOverlay();
+    updateLoopToggle();
+    updateLoopSnapToggle();
 
     wireScrollSync(gridWs);
     wireTimeSync(gridWs);
@@ -871,6 +1024,15 @@
   on('video-changed', () => renderShots());
   on('limits-changed', () => renderShots());
   on('shots-changed', () => renderShots());
+  // Re-sync the loop overlay/toggles to whichever project was just loaded -
+  // loop.startSeconds/endSeconds are only meaningful against that project's
+  // own mix, and gridWs may already exist (switching projects, not the very
+  // first mix load - initTimeline()'s own renderLoopOverlay() call covers that).
+  on('project-loaded', () => {
+    renderLoopOverlay();
+    updateLoopToggle();
+    updateLoopSnapToggle();
+  });
   // Selecting a shot (from the list, or scrollToShot elsewhere) never changes
   // any row's content, so just toggle the .selected class in place - a full
   // renderShotList() rebuild here would replace the row/cell DOM nodes on
@@ -879,12 +1041,21 @@
   // making the inline shot-rename dblclick handler in buildNumberCell
   // effectively unreachable via a real double-click.
   on('shot-selected', (e) => {
-    const list = document.getElementById('shot-list');
-    if (!list) return;
     const shotId = e.detail.shotId;
-    list.querySelectorAll('tr').forEach((row) => {
-      row.classList.toggle('selected', row.dataset.shotId === String(shotId));
-    });
+    const list = document.getElementById('shot-list');
+    if (list) {
+      list.querySelectorAll('tr').forEach((row) => {
+        row.classList.toggle('selected', row.dataset.shotId === String(shotId));
+      });
+    }
+    // Same in-place toggle for the timeline clips - keeps the selection
+    // highlight in sync whichever side (list row or clip) was clicked,
+    // without rebuilding any DOM (same reasoning as the list rows above).
+    if (shotsContentEl) {
+      shotsContentEl.querySelectorAll('.lane-segment').forEach((el) => {
+        el.classList.toggle('selected', el.dataset.shotId === String(shotId));
+      });
+    }
   });
 
   wireWheelScroll();
@@ -900,5 +1071,7 @@
     isTimelineReady: () => !!gridWs,
     setAudioTrackHeight,
     getAudioTrackHeight: () => audioTrackHeight,
+    toggleLoopEnabled: () => setLoopEnabled(!state.loop.enabled),
+    toggleLoopSnapMode: () => setLoopSnapMode(state.loop.snapMode === 'events' ? 'grid' : 'events'),
   };
 })(window.MSE = window.MSE || {});

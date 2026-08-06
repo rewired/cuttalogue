@@ -65,7 +65,7 @@
         if (moved) {
           if (opts.snapTime) {
             const current = mode === 'move' || mode === 'start' ? seg.startSeconds : seg.endSeconds;
-            applyMove(opts.snapTime(current, ev.altKey));
+            applyMove(opts.snapTime(current, ev.altKey, mode));
           }
           opts.onCommit();
         } else {
@@ -178,8 +178,9 @@
   //   onDeselect() -> called on pointerdown in empty lane content
   //   onAdd() -> called when the "+" add tile is clicked
   //   addTitle -> tooltip text for the "+" add tile
-  //   snapTime(currentValue, altKey) -> snapped value (optional - omit for
-  //     no snapping)
+  //   snapTime(currentValue, altKey, mode) -> snapped value (optional - omit
+  //     for no snapping); mode is 'move'/'start'/'end', for callers that snap
+  //     each edge differently
   //   datasetAttrs -> plain object copied onto each segment's dataset
   //   overhangTitle -> tooltip text for the overhang band (optional)
   function buildLaneRow(label, segments, duration, domainDuration, opts) {

@@ -51,6 +51,7 @@
       })),
       assets: state.assets,
       export: state.export,
+      loop: state.loop,
       // Stamped by saveProjectToBackend() on every real save - the sole
       // handshake value the draft mechanism (see below) uses to tell "this
       // draft still matches what's on disk" from "the canonical file moved
@@ -126,6 +127,7 @@
     normalized.shots.forEach((s) => normalizeDirectionSegments(s.direction));
     normalized.assets = (normalized.assets || []).map((a) => ({ tags: [], description: '', ...a }));
     normalized.export = { includeMixSnippet: false, ...(normalized.export || {}) };
+    normalized.loop = { enabled: false, startSeconds: null, endSeconds: null, snapMode: 'grid', ...(normalized.loop || {}) };
     normalized.savedAt = normalized.savedAt ?? null;
     return normalized;
   }
