@@ -29,6 +29,7 @@ EMPTY_METADATA = {
     "width": None,
     "height": None,
     "fps": None,
+    "frameCount": None,
     "codec": None,
     "sampleRate": None,
     "channels": None,
@@ -71,18 +72,36 @@ def _parse_fps(rate: str | None) -> float | None:
         return None
 
 
+def _parse_frame_count(video: dict | None, duration: float | None, fps_value: float | None) -> int | None:
+    # ffprobe's nb_frames is often "N/A" for formats without an index (e.g.
+    # freshly-written mp4s) - fall back to duration * fps rather than paying
+    # for a slow -count_frames re-decode just to get an exact number.
+    raw = video.get("nb_frames") if video else None
+    if raw not in (None, "N/A"):
+        try:
+            return int(raw)
+        except ValueError:
+            pass
+    if duration and fps_value:
+        return round(duration * fps_value)
+    return None
+
+
 def extract_metadata(probe_data: dict) -> dict:
     fmt = probe_data.get("format", {})
     streams = probe_data.get("streams", [])
     video = next((s for s in streams if s.get("codec_type") == "video"), None)
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
     duration = fmt.get("duration")
+    duration_seconds = float(duration) if duration else None
+    fps_value = _parse_fps(video.get("r_frame_rate")) if video else None
     sample_rate = audio.get("sample_rate") if audio else None
     return {
-        "durationSeconds": float(duration) if duration else None,
+        "durationSeconds": duration_seconds,
         "width": video.get("width") if video else None,
         "height": video.get("height") if video else None,
-        "fps": _parse_fps(video.get("r_frame_rate")) if video else None,
+        "fps": fps_value,
+        "frameCount": _parse_frame_count(video, duration_seconds, fps_value),
         "codec": (video or audio or {}).get("codec_name"),
         "sampleRate": int(sample_rate) if sample_rate else None,
         "channels": audio.get("channels") if audio else None,

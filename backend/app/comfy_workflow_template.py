@@ -25,10 +25,23 @@ PLACEHOLDER_WORKFLOW: dict = {
 }
 
 
-def build_workflow_payload(prompt_text: str, reference_filenames: list[str], seed: int) -> dict:
+def build_workflow_payload(
+    prompt_text: str,
+    reference_filenames: list[str],
+    seed: int,
+    extend_filename: str | None = None,
+    extend_start_frame: int = 0,
+    extend_frame_count: int | None = None,
+) -> dict:
     """Returns the template with prompt/seed/reference images substituted
     in. `seed` is the already-resolved value (the caller picks a random one
     if none was given) so this function only ever deals with a concrete int.
+
+    `extend_filename` is the ComfyUI-side filename of a video already
+    uploaded via /upload/image (VHS accepts video uploads through the same
+    endpoint as images) - when given, a VHS_LoadVideo node is added carrying
+    the frame range (`skip_first_frames`/`frame_load_cap`) the caller wants
+    to continue from.
     """
     workflow = copy.deepcopy(PLACEHOLDER_WORKFLOW)
 
@@ -46,6 +59,19 @@ def build_workflow_payload(prompt_text: str, reference_filenames: list[str], see
         workflow[f"ref{index}"] = {
             "class_type": "LoadImage",
             "inputs": {"image": filename},
+        }
+
+    # Same "unwired for now" story as the LoadImage refs above - once the
+    # real extend-capable workflow exists, point its continuation input at
+    # this node instead.
+    if extend_filename:
+        workflow["extend0"] = {
+            "class_type": "VHS_LoadVideo",
+            "inputs": {
+                "video": extend_filename,
+                "skip_first_frames": extend_start_frame,
+                "frame_load_cap": extend_frame_count or 0,
+            },
         }
 
     return workflow

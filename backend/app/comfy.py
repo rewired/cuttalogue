@@ -55,6 +55,19 @@ async def _upload_reference_image(client, base_url: str, image_path: Path) -> st
     return body.get("name") or image_path.name
 
 
+async def _upload_reference_video(client, base_url: str, video_path: Path) -> str:
+    # VHS' Load Video (Upload) node uploads through the same /upload/image
+    # endpoint as images - ComfyUI's upload route just drops the file into
+    # its input folder regardless of media type.
+    with video_path.open("rb") as fh:
+        files = {"image": (video_path.name, fh, "application/octet-stream")}
+        res = await client.post(f"{base_url}/upload/image", files=files)
+    if res.status_code != 200:
+        raise RuntimeError(f"ComfyUI /upload/image returned HTTP {res.status_code}: {res.text[:300]}")
+    body = res.json()
+    return body.get("name") or video_path.name
+
+
 async def _submit_and_poll(job: jobs.Job, base_url: str, workflow: dict) -> str:
     # Submits the built workflow graph, polls /history until it has an
     # output, returns the output video's ComfyUI-side filename.
@@ -109,6 +122,9 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
         raise HTTPException(status_code=400, detail="no prompt given")
     requested_seed = body.get("seed")
     reference_asset_ids = body.get("referenceAssetIds") or []
+    extend_asset_id = body.get("extendAssetId")
+    extend_start_frame = body.get("extendStartFrame") or 0
+    extend_frame_count = body.get("extendFrameCount")
 
     comfy = settings.load_settings()["providers"]["comfy"]
     base_url = (comfy["baseUrl"] or "").rstrip("/")
@@ -125,6 +141,14 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
         if path.exists():
             reference_paths.append(path)
 
+    extend_path = None
+    if extend_asset_id:
+        extend_asset = assets_by_id.get(extend_asset_id)
+        if extend_asset:
+            candidate = directory / extend_asset["relativePath"]
+            if candidate.exists():
+                extend_path = candidate
+
     # A blank/absent seed means "surprise me" - resolved once here so the
     # same concrete value goes into both the submitted workflow and the
     # take record the frontend ends up saving (see h3Compiler-adjacent
@@ -140,8 +164,16 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
             await jobs.emit(job, {"status": "running", "phase": "uploading", "message": "Uploading reference images"})
             async with httpx.AsyncClient(timeout=60) as client:
                 uploaded = [await _upload_reference_image(client, base_url, p) for p in reference_paths]
+                extend_filename = await _upload_reference_video(client, base_url, extend_path) if extend_path else None
 
-            workflow = build_workflow_payload(prompt_text, uploaded, resolved_seed)
+            workflow = build_workflow_payload(
+                prompt_text,
+                uploaded,
+                resolved_seed,
+                extend_filename=extend_filename,
+                extend_start_frame=extend_start_frame,
+                extend_frame_count=extend_frame_count,
+            )
 
             filename = await _submit_and_poll(job, base_url, workflow)
 

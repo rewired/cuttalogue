@@ -751,6 +751,9 @@ input.small { width: 44px; }
 }
 .assigned-asset-remove:hover { background: rgba(244, 67, 54, 0.7); border-color: transparent; }
 .assigned-asset-role-select { width: 100%; margin-top: 2px; font-size: 11px; padding: 3px 4px; }
+.assigned-asset-video-range { display: flex; gap: 4px; margin-top: 4px; }
+.assigned-asset-video-range input[type="number"] { width: 0; flex: 1 1 auto; font-size: 11px; padding: 3px 4px; }
+.assigned-asset-video-preset { font-size: 10px; padding: 3px 6px; flex: 0 0 auto; }
 
 .assigned-asset-add-card {
   align-items: center;

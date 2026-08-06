@@ -147,6 +147,7 @@
     state.shots.forEach((shot) => {
       if (shot.assetIds) shot.assetIds = shot.assetIds.filter((id) => id !== assetId);
       if (shot.assetRoles) delete shot.assetRoles[assetId];
+      if (shot.videoRefs) delete shot.videoRefs[assetId];
       if (shot.direction && shot.direction.subjects) delete shot.direction.subjects[assetId];
     });
     emit('assets-changed', { reason: 'delete' });

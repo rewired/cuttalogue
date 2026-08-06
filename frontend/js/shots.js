@@ -184,6 +184,7 @@
       activeTakeId: null,
       assetIds: (shot.assetIds || []).slice(),
       assetRoles: { ...(shot.assetRoles || {}) },
+      videoRefs: { ...(shot.videoRefs || {}) },
       direction: defaultDirection(),
     };
     const right = {
@@ -198,6 +199,7 @@
       activeTakeId: null,
       assetIds: [],
       assetRoles: {},
+      videoRefs: {},
       direction: defaultDirection(),
     };
     state.shots.splice(index, 1, left, right);
@@ -229,6 +231,7 @@
       activeTakeId: null,
       assetIds: [],
       assetRoles: {},
+      videoRefs: {},
       direction: defaultDirection(),
     });
     renumber();
@@ -339,6 +342,23 @@
 
   function findShot(shotId) {
     return state.shots.find((s) => s.id === shotId) || null;
+  }
+
+  // Deliberately its own field, not assetRoles - h3Compiler treats every
+  // asset with a truthy assetRoles entry as a cast "Subject" in the
+  // compiled prompt, and a video's extend/reference mode has nothing to do
+  // with casting. Passing a falsy patch (or a patch with no mode) clears the
+  // entry instead of leaving a dangling {mode: null} around.
+  function setVideoRef(shotId, assetId, patch) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    if (!shot.videoRefs) shot.videoRefs = {};
+    if (patch && patch.mode) {
+      shot.videoRefs[assetId] = { ...(shot.videoRefs[assetId] || {}), ...patch };
+    } else {
+      delete shot.videoRefs[assetId];
+    }
+    emit('shots-changed', { reason: 'video-ref' });
   }
 
   // A role is optional - an asset can stay assigned to a shot without being a
@@ -817,6 +837,7 @@
     setShotName,
     setShotPrompt,
     setAssetRole,
+    setVideoRef,
     setShotConstraints,
     addTake,
     updateTake,

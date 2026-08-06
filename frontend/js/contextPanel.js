@@ -98,6 +98,94 @@
     return 'IMAGE';
   }
 
+  // Only "Extend" is wired up for now (see the shot-extension plan) -
+  // "Reference (motion)" will get its own option once there's a real
+  // ComfyUI graph for it to feed into.
+  const VIDEO_MODE_OPTIONS = [
+    ['', 'Not used'],
+    ['extend', 'Extend'],
+  ];
+
+  // Free start-frame + frame-count range, with a one-click "last N frames"
+  // shortcut (sets startFrame from the asset's known total and the current
+  // count) rather than a separate always-last-N mode - same two backend
+  // params either way, see comfy_workflow_template.py's VHS_LoadVideo node.
+  function buildExtendRangeControls(shot, asset, current) {
+    const wrap = document.createElement('div');
+    wrap.className = 'assigned-asset-video-range';
+    const total = (asset.metadata && asset.metadata.frameCount) || null;
+
+    const startInput = document.createElement('input');
+    startInput.type = 'number';
+    startInput.min = 0;
+    startInput.title = 'Start frame';
+    if (total) startInput.max = Math.max(0, total - 1);
+    startInput.value = current.startFrame ?? 0;
+
+    const countInput = document.createElement('input');
+    countInput.type = 'number';
+    countInput.min = 1;
+    countInput.title = 'Frame count';
+    if (total) countInput.max = total;
+    countInput.value = current.frameCount ?? (total ? Math.min(16, total) : 16);
+
+    function commit() {
+      const startFrame = parseInt(startInput.value, 10) || 0;
+      const frameCount = Math.max(1, parseInt(countInput.value, 10) || 1);
+      shotsApi.setVideoRef(shot.id, asset.id, { mode: 'extend', startFrame, frameCount });
+    }
+    startInput.addEventListener('change', commit);
+    countInput.addEventListener('change', commit);
+    wrap.appendChild(startInput);
+    wrap.appendChild(countInput);
+
+    if (total) {
+      const lastNBtn = document.createElement('button');
+      lastNBtn.type = 'button';
+      lastNBtn.className = 'assigned-asset-video-preset';
+      lastNBtn.title = 'Set start frame so the range ends at the video\'s last frame';
+      lastNBtn.textContent = 'Last N';
+      lastNBtn.addEventListener('click', () => {
+        const frameCount = Math.max(1, parseInt(countInput.value, 10) || 1);
+        startInput.value = Math.max(0, total - frameCount);
+        commit();
+      });
+      wrap.appendChild(lastNBtn);
+    }
+
+    return wrap;
+  }
+
+  function renderVideoRefControls(card, shot, asset) {
+    const current = (shot.videoRefs || {})[asset.id] || null;
+
+    const select = document.createElement('select');
+    select.className = 'assigned-asset-role-select';
+    VIDEO_MODE_OPTIONS.forEach(([value, label]) => {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      opt.selected = value === (current ? current.mode : '');
+      select.appendChild(opt);
+    });
+    select.addEventListener('change', () => {
+      if (!select.value) {
+        shotsApi.setVideoRef(shot.id, asset.id, null);
+      } else {
+        shotsApi.setVideoRef(shot.id, asset.id, {
+          mode: select.value,
+          startFrame: current ? current.startFrame : 0,
+          frameCount: current ? current.frameCount : null,
+        });
+      }
+    });
+    card.appendChild(select);
+
+    if (current && current.mode === 'extend') {
+      card.appendChild(buildExtendRangeControls(shot, asset, current));
+    }
+  }
+
   // Assigned assets render as thumbnail cards - this is also where an
   // asset's H3 role for THIS shot gets picked (only images have one; casting
   // is a per-shot fact, unlike an asset's kind which is fixed everywhere -
@@ -164,6 +252,8 @@
           note.textContent = 'Not classified';
           card.appendChild(note);
         }
+      } else if (asset.type === 'video') {
+        renderVideoRefControls(card, shot, asset);
       }
 
       el.assignedAssets.appendChild(card);
@@ -242,6 +332,28 @@
         setActiveBtn.disabled = isActive;
         setActiveBtn.addEventListener('click', () => shotsApi.setActiveTake(shot.id, take.id));
         actions.appendChild(setActiveBtn);
+
+        // Copies this take's video into the asset pool so it can be
+        // assigned to any shot (e.g. picked as the "Extend" source for a
+        // continuation) - the promoted asset survives even if this take or
+        // its shot is later deleted (see assets.py's promote-to-asset).
+        const useAsAssetBtn = document.createElement('button');
+        useAsAssetBtn.type = 'button';
+        useAsAssetBtn.textContent = 'Use as asset';
+        useAsAssetBtn.addEventListener('click', async () => {
+          useAsAssetBtn.disabled = true;
+          useAsAssetBtn.textContent = 'Adding…';
+          try {
+            const descriptor = await MSE.api.promoteTakeToAsset(projectId, shot.id, take.id);
+            MSE.assets.addAssets([descriptor]);
+          } catch (err) {
+            console.error(err);
+            window.alert(`Use as asset failed: ${err.message}`);
+            useAsAssetBtn.disabled = false;
+            useAsAssetBtn.textContent = 'Use as asset';
+          }
+        });
+        actions.appendChild(useAsAssetBtn);
       }
       const deleteBtn = document.createElement('button');
       deleteBtn.type = 'button';
@@ -268,6 +380,16 @@
         .filter((a) => a.type === 'image')
         .map((a) => a.id);
 
+      // At most one video asset can be in "extend" mode per shot - it's a
+      // single continuation source, not a list like image references.
+      const videoRefs = shot.videoRefs || {};
+      const extendAsset = MSE.assets
+        .assetsForShot(shot)
+        .find((a) => a.type === 'video' && videoRefs[a.id] && videoRefs[a.id].mode === 'extend');
+      const extendAssetId = extendAsset ? extendAsset.id : null;
+      const extendStartFrame = extendAsset ? videoRefs[extendAsset.id].startFrame || 0 : null;
+      const extendFrameCount = extendAsset ? videoRefs[extendAsset.id].frameCount || null : null;
+
       const takeId = `local-${Date.now()}`;
       shotsApi.addTake(shot.id, {
         id: takeId,
@@ -288,6 +410,9 @@
           prompt: shot.prompt || '',
           seed: shot.seed ?? null,
           referenceAssetIds,
+          extendAssetId,
+          extendStartFrame,
+          extendFrameCount,
         });
         shotsApi.updateTake(shot.id, takeId, { jobId, status: 'running' });
         el.generateStatusText.textContent = 'Generating…';

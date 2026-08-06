@@ -191,17 +191,32 @@
 
   // shot.prompt (already-compiled/edited text) and the shot's currently-cast
   // reference image asset ids - the backend doesn't re-derive either.
-  async function generateTake(projectId, shotId, { prompt, seed, referenceAssetIds }) {
+  // extendAssetId/extendStartFrame/extendFrameCount describe the single
+  // video-continuation source, if the shot has one set to "Extend" mode.
+  async function generateTake(projectId, shotId, { prompt, seed, referenceAssetIds, extendAssetId, extendStartFrame, extendFrameCount }) {
     const res = await fetch(`/api/projects/${projectId}/shots/${shotId}/generate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt, seed, referenceAssetIds }),
+      body: JSON.stringify({ prompt, seed, referenceAssetIds, extendAssetId, extendStartFrame, extendFrameCount }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => ({}));
       throw new Error(body.detail || `generate failed: ${res.status}`);
     }
     return res.json(); // { jobId }
+  }
+
+  // No FormData needed - the take's output file already lives on the
+  // server, this just tells it to copy that file into the asset pool.
+  async function promoteTakeToAsset(projectId, shotId, takeId) {
+    const res = await fetch(`/api/projects/${projectId}/shots/${shotId}/takes/${takeId}/promote-to-asset`, {
+      method: 'POST',
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `promote failed: ${res.status}`);
+    }
+    return res.json(); // asset descriptor
   }
 
   MSE.api = {
@@ -225,5 +240,6 @@
     describeAsset,
     expandDescription,
     generateTake,
+    promoteTakeToAsset,
   };
 })(window.MSE = window.MSE || {});
