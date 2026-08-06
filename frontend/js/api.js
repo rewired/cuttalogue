@@ -33,6 +33,37 @@
     return res.json(); // { assets: [...] }
   }
 
+  async function replaceAsset(id, assetId, file) {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetch(`/api/projects/${id}/assets/${assetId}/replace`, { method: 'POST', body: form });
+    if (!res.ok) throw new Error(`asset replace failed: ${res.status}`);
+    return res.json(); // { id, type, fileName, relativePath, thumbnailPath, metadata }
+  }
+
+  async function getDraft(id) {
+    const res = await fetch(`/api/projects/${id}/draft`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`get draft failed: ${res.status}`);
+    return res.json(); // { basedOnSavedAt, draftUpdatedAt, data } | null
+  }
+
+  async function putDraft(id, draft) {
+    const res = await fetch(`/api/projects/${id}/draft`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(draft),
+    });
+    if (!res.ok) throw new Error(`draft save failed: ${res.status}`);
+    return res.json();
+  }
+
+  async function deleteDraft(id) {
+    const res = await fetch(`/api/projects/${id}/draft`, { method: 'DELETE' });
+    if (!res.ok) throw new Error(`draft delete failed: ${res.status}`);
+    return res.json();
+  }
+
   async function putProject(id, data) {
     const res = await fetch(`/api/projects/${id}`, {
       method: 'PUT',
@@ -145,6 +176,10 @@
     listProjects,
     putProject,
     uploadAssets,
+    replaceAsset,
+    getDraft,
+    putDraft,
+    deleteDraft,
     uploadAudioTrack,
     exportProject,
     cancelJob,

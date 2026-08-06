@@ -30,6 +30,9 @@ body {
   flex: 1 1 auto;
   min-height: 0;
 }
+#main-view-shots[hidden] {
+  display: none;
+}
 
 h1 { font-size: 18px; margin: 0; }
 h2 { font-size: 15px; margin: 0 0 8px; }
@@ -623,6 +626,10 @@ input.small { width: 44px; }
 .asset-library-toolbar input[type="text"] { width: 200px; }
 .asset-delete-btn { font-size: 11px; padding: 4px 6px; width: 100%; border-color: #f44336; color: #f44336; }
 .asset-delete-btn:hover { background: rgba(244, 67, 54, 0.12); border-color: #f44336; }
+.asset-detail-actions { display: flex; gap: 6px; margin-top: 6px; }
+.asset-detail-actions .asset-replace-btn,
+.asset-detail-actions .asset-delete-btn { width: auto; flex: 1 1 0; }
+.asset-replace-btn { font-size: 11px; padding: 4px 6px; }
 
 .asset-library-body { display: flex; flex: 1 1 auto; min-height: 0; }
 

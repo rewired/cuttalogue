@@ -22,7 +22,7 @@
     const projectId = MSE.project.getProjectId();
     const path = asset.thumbnailPath || (asset.type === 'image' ? asset.relativePath : null);
     if (!projectId || !path) return null;
-    return `/project-files/${projectId}/${path}`;
+    return `/project-files/${projectId}/${path}?v=${asset.version || 0}`;
   }
 
   function assetTypeLabel(type) {

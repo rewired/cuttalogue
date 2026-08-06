@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 from .assets import router as assets_router
 from .audio import router as audio_router
 from .describe import router as describe_router
+from .draft import router as draft_router
 from .export import router as export_router
 from .jobs import router as jobs_router
 from .projects import DATA_DIR
@@ -45,6 +46,7 @@ app.include_router(audio_router)
 app.include_router(export_router)
 app.include_router(settings_router)
 app.include_router(describe_router)
+app.include_router(draft_router)
 
 for static_dir in ("js", "css", "vendor"):
     path = FRONTEND_DIR / static_dir

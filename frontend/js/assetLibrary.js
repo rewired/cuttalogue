@@ -31,7 +31,7 @@
     const projectId = MSE.project.getProjectId();
     const path = asset.thumbnailPath || (asset.type === 'image' ? asset.relativePath : null);
     if (!projectId || !path) return null;
-    return `/project-files/${projectId}/${path}`;
+    return `/project-files/${projectId}/${path}?v=${asset.version || 0}`;
   }
 
   function assetTypeLabel(type) {
@@ -260,6 +260,45 @@
       });
     }
 
+    const actions = document.createElement('div');
+    actions.className = 'asset-detail-actions';
+
+    const replaceInput = document.createElement('input');
+    replaceInput.type = 'file';
+    replaceInput.hidden = true;
+    replaceInput.addEventListener('change', async () => {
+      const file = replaceInput.files && replaceInput.files[0];
+      replaceInput.value = '';
+      if (!file) return;
+      const projectId = MSE.project.getProjectId();
+      if (!projectId) return;
+      replaceBtn.disabled = true;
+      replaceBtn.textContent = 'Replacing...';
+      try {
+        const descriptor = await MSE.api.replaceAsset(projectId, asset.id, file);
+        MSE.assets.replaceAssetFile(asset.id, descriptor);
+        // The backend already deleted the old file on disk as part of the
+        // replace - leaving project.json unsaved would point it at a file
+        // that no longer exists (breaking describe, exports, etc.) until
+        // the next manual save, so this one save isn't optional.
+        await MSE.project.saveProjectToBackend();
+      } catch (err) {
+        console.error(err);
+        window.alert(`Replace failed: ${err.message}`);
+      } finally {
+        replaceBtn.disabled = false;
+        replaceBtn.textContent = 'Replace file...';
+      }
+    });
+    el.detail.appendChild(replaceInput);
+
+    const replaceBtn = document.createElement('button');
+    replaceBtn.type = 'button';
+    replaceBtn.className = 'asset-replace-btn';
+    replaceBtn.textContent = 'Replace file...';
+    replaceBtn.addEventListener('click', () => replaceInput.click());
+    actions.appendChild(replaceBtn);
+
     const deleteBtn = document.createElement('button');
     deleteBtn.type = 'button';
     deleteBtn.className = 'asset-delete-btn';
@@ -268,7 +307,9 @@
       if (!window.confirm(`Delete "${asset.fileName}"? This also unassigns it from every shot.`)) return;
       MSE.assets.removeAsset(asset.id);
     });
-    el.detail.appendChild(deleteBtn);
+    actions.appendChild(deleteBtn);
+
+    el.detail.appendChild(actions);
   }
 
   function render() {

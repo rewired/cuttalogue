@@ -47,6 +47,7 @@
       export: {
         includeMixSnippet: false,
       },
+      savedAt: null, // stamped on every real save - see project.js's draft-recovery mechanism
     };
   }
 

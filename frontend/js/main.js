@@ -184,6 +184,14 @@
     el.exportCsvBtn.addEventListener('click', () => MSE.project.exportShotsCsv());
 
     on('project-loaded', syncSettingsPanelFromState);
+    // Ignored while a manual save is in flight (button disabled) - that
+    // click handler already owns the status text for "Saving..."/"Save
+    // failed", and markBaseline() inside saveProjectToBackend() fires this
+    // same event mid-await, which would otherwise race it.
+    on('project-dirty-changed', ({ detail }) => {
+      if (el.saveProjectBtn.disabled) return;
+      setProjectStatus(detail.dirty ? 'Unsaved changes' : 'Saved');
+    });
   }
 
   async function init() {

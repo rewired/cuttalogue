@@ -92,6 +92,26 @@
     emit('assets-changed', { reason: 'tags' });
   }
 
+  // Called after the backend has already swapped the file on disk (see
+  // api.replaceAsset) - only the file-derived fields get overwritten here,
+  // so tags/description/kind/assignments the user already set survive the
+  // swap.
+  function replaceAssetFile(assetId, fileDescriptor) {
+    const asset = findAsset(assetId);
+    if (!asset) return;
+    asset.type = fileDescriptor.type;
+    asset.fileName = fileDescriptor.fileName;
+    asset.relativePath = fileDescriptor.relativePath;
+    asset.thumbnailPath = fileDescriptor.thumbnailPath;
+    asset.metadata = fileDescriptor.metadata;
+    // thumbnailPath is always "assets/<id>/thumbnail.jpg" - stable across
+    // replaces - so the <img> URL alone can't force the browser to refetch.
+    // This counter rides along as a cache-busting query param wherever the
+    // preview URL gets built (assetLibrary/contextPanel/assetPicker).
+    asset.version = (asset.version || 0) + 1;
+    emit('assets-changed', { reason: 'replace-file' });
+  }
+
   function setAssetDescription(assetId, description) {
     const asset = findAsset(assetId);
     if (!asset) return;
@@ -136,6 +156,7 @@
   MSE.assets = {
     addAssets,
     findAsset,
+    replaceAssetFile,
     setAssetTags,
     setAssetDescription,
     assignAssetToShot,

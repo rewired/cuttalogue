@@ -49,14 +49,23 @@
       })),
       assets: state.assets,
       export: state.export,
+      // Stamped by saveProjectToBackend() on every real save - the sole
+      // handshake value the draft mechanism (see below) uses to tell "this
+      // draft still matches what's on disk" from "the canonical file moved
+      // on since this draft was written, don't trust it".
+      savedAt: state.savedAt ?? null,
     };
   }
 
-  function applyLoadedProject(parsed) {
-    // Older/foreign project data predates the name/prompt/notes/assetIds/
-    // assets/export fields - default them in rather than leaving things undefined.
-    parsed.name = parsed.name || '';
-    parsed.shots = (parsed.shots || []).map((s) => ({
+  // Pure: defaults in fields older/foreign project data predates (name/
+  // prompt/notes/assetIds/assets/export/savedAt) without touching `parsed`
+  // or global state - needed so both the canonical project and a draft can
+  // be normalized and diffed *before* deciding which one to actually apply
+  // (see loadProjectConsideringDraft).
+  function normalizeProjectData(parsed) {
+    const normalized = { ...parsed };
+    normalized.name = normalized.name || '';
+    normalized.shots = (normalized.shots || []).map((s) => ({
       name: '',
       prompt: '',
       notes: '',
@@ -65,15 +74,24 @@
       direction: { camera: [], subjects: {} },
       ...s,
     }));
-    parsed.assets = (parsed.assets || []).map((a) => ({ tags: [], description: '', ...a }));
-    parsed.export = { includeMixSnippet: false, ...(parsed.export || {}) };
-    resetState(parsed);
+    normalized.assets = (normalized.assets || []).map((a) => ({ tags: [], description: '', ...a }));
+    normalized.export = { includeMixSnippet: false, ...(normalized.export || {}) };
+    normalized.savedAt = normalized.savedAt ?? null;
+    return normalized;
+  }
+
+  function applyNormalizedProject(normalized) {
+    resetState(normalized);
     emit('tempo-changed');
     emit('video-changed');
     emit('limits-changed');
     emit('shots-changed');
     emit('assets-changed', { reason: 'load' });
     autoLoadAudioFromBackend();
+  }
+
+  function applyLoadedProject(parsed) {
+    applyNormalizedProject(normalizeProjectData(parsed));
   }
 
   // The backend already has a copy of the mix/vocal from whenever they were
@@ -101,6 +119,114 @@
     }
   }
 
+  // --- Draft autosave + dirty tracking -------------------------------
+  //
+  // project.json only ever changes on an explicit Save (see
+  // saveProjectToBackend). Everything typed in between - shot prompts,
+  // notes, tags, the project name - used to live only in the tab; a crash
+  // or an accidental reload lost it outright (see the heather-01 asset-
+  // replace incident: the backend had already swapped the file on disk,
+  // but the browser never got a chance to save the matching project.json).
+  //
+  // The fix is a second file, project.draft.json, continuously kept in
+  // sync with in-memory state and compared against project.json on the
+  // next load so an interrupted session can be recovered. It intentionally
+  // polls-and-diffs the whole serialized project on a timer instead of
+  // hooking every mutation site: several fields (shot prompt/notes, the
+  // project name) are deliberately mutated straight on `state` without
+  // emitting a change event, to avoid a full re-render on every keystroke
+  // - an event-driven autosave would silently miss all of them.
+  const DRAFT_POLL_MS = 2000;
+
+  let lastSavedSnapshot = null;
+  let lastDraftSnapshot = null;
+  let dirty = false;
+  let draftPollTimer = null;
+  let draftWriteInFlight = false;
+
+  function setDirty(next) {
+    if (dirty === next) return;
+    dirty = next;
+    emit('project-dirty-changed', { dirty });
+  }
+
+  function markBaseline(snapshot) {
+    lastSavedSnapshot = snapshot;
+    lastDraftSnapshot = snapshot;
+    setDirty(false);
+  }
+
+  async function pollForChanges() {
+    if (draftWriteInFlight) return;
+    const projectId = getProjectId();
+    if (!projectId) return;
+
+    const data = serializeProject();
+    const snapshot = JSON.stringify(data);
+    setDirty(snapshot !== lastSavedSnapshot);
+    if (snapshot === lastDraftSnapshot) return;
+
+    draftWriteInFlight = true;
+    try {
+      await api.putDraft(projectId, {
+        basedOnSavedAt: state.savedAt ?? null,
+        draftUpdatedAt: Date.now(),
+        data,
+      });
+      lastDraftSnapshot = snapshot;
+    } catch (err) {
+      console.warn('Draft autosave failed.', err);
+    } finally {
+      draftWriteInFlight = false;
+    }
+  }
+
+  function startDraftAutosave() {
+    if (draftPollTimer) return;
+    draftPollTimer = setInterval(pollForChanges, DRAFT_POLL_MS);
+  }
+
+  // Runs on every project load (initial page load or switching projects):
+  // checks for a draft left behind by an interrupted session and, if it
+  // still matches what's on disk (basedOnSavedAt === the canonical file's
+  // savedAt), asks the user whether to recover it before applying anything.
+  // A draft whose basedOnSavedAt no longer matches was based on a since-
+  // superseded save (e.g. saved from elsewhere, or hand-repaired) - nothing
+  // safe to recover, so it's discarded without asking (see project chat:
+  // "1: still verwerfen").
+  async function loadProjectConsideringDraft(rawProject, projectId) {
+    const normalizedCanonical = normalizeProjectData(rawProject);
+    const canonicalSnapshot = JSON.stringify(normalizedCanonical);
+
+    let draft = null;
+    try {
+      draft = await api.getDraft(projectId);
+    } catch (err) {
+      console.warn('Could not check for an unsaved draft.', err);
+    }
+
+    if (draft && draft.basedOnSavedAt !== (normalizedCanonical.savedAt ?? null)) {
+      api.deleteDraft(projectId).catch(() => {});
+      draft = null;
+    }
+
+    if (draft) {
+      const restore = await MSE.recoveryPrompt.ask(draft.draftUpdatedAt);
+      if (restore) {
+        const normalizedDraft = normalizeProjectData(draft.data);
+        applyNormalizedProject(normalizedDraft);
+        lastSavedSnapshot = canonicalSnapshot;
+        lastDraftSnapshot = JSON.stringify(normalizedDraft);
+        setDirty(lastDraftSnapshot !== lastSavedSnapshot);
+        return;
+      }
+      await api.deleteDraft(projectId).catch(() => {});
+    }
+
+    applyNormalizedProject(normalizedCanonical);
+    markBaseline(canonicalSnapshot);
+  }
+
   // Loads the project last saved to the backend (by id, kept in localStorage
   // so a full page refresh reopens the same project), or creates a fresh one
   // on the backend if there's no stored id yet, or the stored id no longer
@@ -111,7 +237,8 @@
     try {
       if (storedId) {
         const project = await api.getProject(storedId);
-        applyLoadedProject(project);
+        await loadProjectConsideringDraft(project, storedId);
+        startDraftAutosave();
         return;
       }
     } catch (err) {
@@ -120,16 +247,24 @@
     try {
       const created = await api.createProject(serializeProject());
       localStorage.setItem(PROJECT_ID_STORAGE_KEY, created.id);
+      markBaseline(JSON.stringify(normalizeProjectData(created.project)));
+      startDraftAutosave();
     } catch (err) {
       console.warn('Backend unavailable - project will not persist across reloads.', err);
     }
   }
 
+  // The backend already deletes project.draft.json as part of a successful
+  // save (see run_save_job) - once project.json itself reflects this state,
+  // there's nothing left for the draft to recover.
   async function saveProjectToBackend() {
     const id = localStorage.getItem(PROJECT_ID_STORAGE_KEY);
     if (!id) throw new Error('no project id - backend was unavailable at startup');
-    const { jobId } = await api.putProject(id, serializeProject());
+    state.savedAt = Date.now();
+    const payload = serializeProject();
+    const { jobId } = await api.putProject(id, payload);
     await api.waitForJob(jobId);
+    markBaseline(JSON.stringify(payload));
   }
 
   function getProjectId() {
@@ -143,14 +278,18 @@
     const fresh = MSE.state.createDefaultState();
     const created = await api.createProject(fresh);
     localStorage.setItem(PROJECT_ID_STORAGE_KEY, created.id);
-    applyLoadedProject(created.project);
+    const normalized = normalizeProjectData(created.project);
+    applyNormalizedProject(normalized);
+    markBaseline(JSON.stringify(normalized));
+    startDraftAutosave();
     return created.id;
   }
 
   async function openProject(id) {
     const project = await api.getProject(id);
     localStorage.setItem(PROJECT_ID_STORAGE_KEY, id);
-    applyLoadedProject(project);
+    await loadProjectConsideringDraft(project, id);
+    startDraftAutosave();
   }
 
   async function listProjects() {

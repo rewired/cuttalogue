@@ -59,6 +59,12 @@ async def run_save_job(job: Job, path: Path, payload: dict) -> None:
     try:
         await emit(job, {"status": "running", "phase": "writing", "message": f"Writing {path.name}"})
         path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+        # A successful real save supersedes any draft.draft.json sitting
+        # next to it - once project.json itself reflects this state, there's
+        # nothing left for the draft-recovery mechanism to recover.
+        draft_path = path.parent / "project.draft.json"
+        if draft_path.exists():
+            draft_path.unlink()
         job.result = {"path": str(path)}
         await emit(job, {"status": "done", "phase": "complete", "message": "Saved"})
     except Exception as exc:  # noqa: BLE001 - reported to the client as a job error, not raised

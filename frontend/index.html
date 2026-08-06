@@ -291,6 +291,25 @@ Right-click a shot to delete it">&#9432;</span></div>
   </div>
 </div>
 
+<div id="recovery-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Unsaved changes found</h2>
+    </div>
+    <div class="modal-body">
+      <p class="hint">
+        This project has changes from a previous session (autosaved
+        <span id="recovery-modal-timestamp"></span>) that were never saved.
+        Restore them, or discard and load the last saved version instead?
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button type="button" id="recovery-discard-btn">Discard</button>
+      <button type="button" id="recovery-restore-btn">Restore</button>
+    </div>
+  </div>
+</div>
+
 <div id="asset-picker-modal" class="modal-overlay" hidden>
   <div class="modal asset-picker-modal">
     <div class="modal-header">
@@ -332,6 +351,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/panelResize.js"></script>
 <script src="js/api.js"></script>
 <script src="js/project.js"></script>
+<script src="js/recoveryPrompt.js"></script>
 <script src="js/projectPicker.js"></script>
 <script src="js/appMenu.js"></script>
 <script src="js/mainTabs.js"></script>
