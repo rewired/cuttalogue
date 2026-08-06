@@ -19,6 +19,9 @@
   // movement is restricted to H3's own official vocabulary; framing/speed and
   // subject actions stay free text.
   const ASSET_ROLES = ['primary_character', 'supporting_character', 'environment'];
+  // Official H3 camera vocabulary (see h3-r2v-prompting-guide.md section 6.4
+  // and docs/deep-research-report-h3-prompting.md) - kept as the full
+  // official set now, not just the ones an early v1 happened to cover.
   const CAMERA_MOVEMENTS = [
     'zoom_in',
     'zoom_out',
@@ -26,13 +29,54 @@
     'pull_out',
     'pan',
     'truck',
+    'tilt_up',
+    'tilt_down',
+    'pedestal_up',
+    'pedestal_down',
     'tracking_shot',
     'arc_shot',
     'static_shot',
+    'shake_slightly',
+    'shake_strongly',
+    'pov',
+    'roll_cw',
+    'roll_ccw',
+  ];
+
+  // Free select, not enforced against `movement` - a small closed vocabulary
+  // still beats free text for something the compiler wants to phrase
+  // consistently ("trucks right" vs "trucks to the right" vs "truck: right").
+  const CAMERA_DIRECTIONS = ['', 'left', 'right', 'up', 'down', 'forward', 'backward'];
+
+  // Guide section 6.4: amplitude is one of three camera dimensions
+  // (movement/amplitude/speed), only mentioned in the compiled prompt when
+  // it means something - '' omits the clause entirely (see h3Compiler.js's
+  // phraseCamera).
+  const CAMERA_AMPLITUDES = ['', 'small', 'large'];
+
+  // Character action vocabulary (see direction UX discussion): a closed set
+  // for the common cases, with '' meaning "unset/custom" - `notes` (free
+  // text) always carries the full intent regardless of whether actionType is set.
+  const ACTION_TYPES = [
+    '',
+    'walk',
+    'run',
+    'stop',
+    'sit',
+    'stand',
+    'turn',
+    'reach',
+    'pick_up',
+    'put_down',
+    'drink',
+    'check_phone',
+    'look',
+    'speak',
+    'interact',
   ];
 
   function defaultDirection() {
-    return { camera: [], subjects: {} };
+    return { camera: [], subjects: {}, props: {}, beatNotes: [] };
   }
 
   function renumber() {
@@ -276,6 +320,8 @@
     if (!shot.direction) shot.direction = defaultDirection();
     if (!shot.direction.camera) shot.direction.camera = [];
     if (!shot.direction.subjects) shot.direction.subjects = {};
+    if (!shot.direction.props) shot.direction.props = {};
+    if (!shot.direction.beatNotes) shot.direction.beatNotes = [];
     return shot.direction;
   }
 
@@ -293,6 +339,11 @@
       movement: CAMERA_MOVEMENTS[0],
       framing: '',
       speed: '',
+      amplitude: '',
+      direction: '',
+      target: '',
+      transitionToNext: '',
+      enabled: true,
       ...segment,
     });
     sortSegments(direction.camera);
@@ -319,7 +370,17 @@
     if (!shot) return;
     const direction = ensureDirection(shot);
     if (!direction.subjects[assetId]) direction.subjects[assetId] = [];
-    direction.subjects[assetId].push({ startSeconds: 0, endSeconds: 0, action: '', ...segment });
+    direction.subjects[assetId].push({
+      startSeconds: 0,
+      endSeconds: 0,
+      actionType: '',
+      manner: '',
+      gaze: '',
+      expression: '',
+      notes: '',
+      enabled: true,
+      ...segment,
+    });
     sortSegments(direction.subjects[assetId]);
     emit('shots-changed', { reason: 'direction' });
   }
@@ -336,6 +397,45 @@
   function removeSubjectSegment(shotId, assetId, index) {
     const shot = findShot(shotId);
     const track = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!track || !track[index]) return;
+    track.splice(index, 1);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  // Props track: same shape as the subject track above (time-bounded state
+  // per cast prop), keyed by shot.direction.props[assetId] - a prop's
+  // adjacent segments (e.g. "on saucer" -> "held by Heather" -> "on saucer")
+  // ARE the before/after object state, no separate schema needed for it.
+  function addPropSegment(shotId, assetId, segment) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    const direction = ensureDirection(shot);
+    if (!direction.props[assetId]) direction.props[assetId] = [];
+    direction.props[assetId].push({
+      startSeconds: 0,
+      endSeconds: 0,
+      state: '',
+      ownerAssetId: null,
+      notes: '',
+      enabled: true,
+      ...segment,
+    });
+    sortSegments(direction.props[assetId]);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function updatePropSegment(shotId, assetId, index, patch) {
+    const shot = findShot(shotId);
+    const track = shot && shot.direction && shot.direction.props[assetId];
+    if (!track || !track[index]) return;
+    Object.assign(track[index], patch);
+    sortSegments(track);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function removePropSegment(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const track = shot && shot.direction && shot.direction.props[assetId];
     if (!track || !track[index]) return;
     track.splice(index, 1);
     emit('shots-changed', { reason: 'direction' });
@@ -374,6 +474,54 @@
     const min = prev ? prev.endSeconds : 0;
     const max = (next ? next.startSeconds : duration) - length;
     return Math.min(Math.max(newStart, min), max);
+  }
+
+  // Splits segments[index] into two at atTime, both keeping every field of
+  // the original except start/end - no-op (returns false) unless atTime
+  // leaves at least MIN_SEGMENT_SECONDS on each side.
+  function splitSegmentAt(segments, index, atTime) {
+    const seg = segments[index];
+    if (!seg) return false;
+    if (atTime <= seg.startSeconds + MIN_SEGMENT_SECONDS || atTime >= seg.endSeconds - MIN_SEGMENT_SECONDS) return false;
+    segments.splice(index, 1, { ...seg, endSeconds: atTime }, { ...seg, startSeconds: atTime });
+    return true;
+  }
+
+  // Clones segments[index] immediately after it, same duration, clamped
+  // against the next neighbor/shot duration - no-op if it can't fit
+  // MIN_SEGMENT_SECONDS.
+  function duplicateSegmentAfter(segments, index, duration) {
+    const seg = segments[index];
+    if (!seg) return false;
+    const length = seg.endSeconds - seg.startSeconds;
+    const next = segments[index + 1];
+    const maxEnd = next ? next.startSeconds : duration;
+    const start = seg.endSeconds;
+    const end = Math.min(start + length, maxEnd);
+    if (end - start < MIN_SEGMENT_SECONDS) return false;
+    segments.splice(index + 1, 0, { ...seg, startSeconds: start, endSeconds: end });
+    return true;
+  }
+
+  function toggleSegmentEnabled(segments, index) {
+    const seg = segments[index];
+    if (!seg) return false;
+    seg.enabled = seg.enabled === false;
+    return true;
+  }
+
+  // Merges segments[index] with segments[index + 1] if they're contiguous
+  // (no gap) - the merged segment keeps segments[index]'s own fields (same
+  // left-wins convention as removeBoundary above) and extends to the next
+  // segment's end. No-op if there's a gap.
+  function mergeSegmentWithNext(segments, index) {
+    const seg = segments[index];
+    const next = segments[index + 1];
+    if (!seg || !next) return false;
+    if (Math.abs(seg.endSeconds - next.startSeconds) > 1e-6) return false;
+    seg.endSeconds = next.endSeconds;
+    segments.splice(index + 1, 1);
+    return true;
   }
 
   function moveCameraSegmentEdge(shotId, index, side, newTime) {
@@ -418,6 +566,157 @@
     return clamped;
   }
 
+  function movePropSegmentEdge(shotId, assetId, index, side, newTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.props[assetId];
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentEdge(segments, index, side, newTime, shotDuration(shot));
+    segments[index][side === 'start' ? 'startSeconds' : 'endSeconds'] = clamped;
+    return clamped;
+  }
+
+  function movePropSegment(shotId, assetId, index, newStart) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.props[assetId];
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentMove(segments, index, newStart, shotDuration(shot));
+    const seg = segments[index];
+    const length = seg.endSeconds - seg.startSeconds;
+    seg.startSeconds = clamped;
+    seg.endSeconds = clamped + length;
+    return clamped;
+  }
+
+  function splitCameraSegment(shotId, index, atTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.camera;
+    if (!segments || !splitSegmentAt(segments, index, atTime)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function duplicateCameraSegment(shotId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.camera;
+    if (!segments || !duplicateSegmentAfter(segments, index, shotDuration(shot))) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function toggleCameraSegmentEnabled(shotId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.camera;
+    if (!segments || !toggleSegmentEnabled(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function mergeCameraSegments(shotId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.camera;
+    if (!segments || !mergeSegmentWithNext(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function splitSubjectSegment(shotId, assetId, index, atTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!segments || !splitSegmentAt(segments, index, atTime)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function duplicateSubjectSegment(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!segments || !duplicateSegmentAfter(segments, index, shotDuration(shot))) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function toggleSubjectSegmentEnabled(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!segments || !toggleSegmentEnabled(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function mergeSubjectSegments(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.subjects[assetId];
+    if (!segments || !mergeSegmentWithNext(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function splitPropSegment(shotId, assetId, index, atTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.props[assetId];
+    if (!segments || !splitSegmentAt(segments, index, atTime)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function duplicatePropSegment(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.props[assetId];
+    if (!segments || !duplicateSegmentAfter(segments, index, shotDuration(shot))) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function togglePropSegmentEnabled(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.props[assetId];
+    if (!segments || !toggleSegmentEnabled(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function mergePropSegments(shotId, assetId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.props[assetId];
+    if (!segments || !mergeSegmentWithNext(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  // Beats have no persisted array entry of their own (their boundaries are
+  // derived - see h3Compiler.js's collectBeatBoundaries), so a note is
+  // matched/created by (startSeconds, endSeconds) via the compiler's own
+  // findBeatNote rather than by index. Depends on h3Compiler.js only inside
+  // this function body (evaluated well after both modules have loaded), not
+  // at top-level, so the reverse of h3Compiler.js's own top-level
+  // `shotsApi = MSE.shots` dependency doesn't create a load-order problem.
+  function upsertBeatNote(shotId, startSeconds, endSeconds, patch) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    const direction = ensureDirection(shot);
+    const existing = MSE.h3Compiler.findBeatNote(shot, startSeconds, endSeconds);
+    if (existing) {
+      Object.assign(existing, patch);
+    } else {
+      direction.beatNotes.push({ startSeconds, endSeconds, intent: '', priority: '', endState: '', ...patch });
+    }
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function removeBeatNote(shotId, index) {
+    const shot = findShot(shotId);
+    if (!shot || !shot.direction || !shot.direction.beatNotes || !shot.direction.beatNotes[index]) return;
+    shot.direction.beatNotes.splice(index, 1);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function setShotConstraints(shotId, constraints) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    shot.constraints = constraints;
+    emit('shots-changed', { reason: 'constraints' });
+  }
+
   function notifyDirectionChanged() {
     emit('shots-changed', { reason: 'direction' });
   }
@@ -425,6 +724,9 @@
   MSE.shots = {
     ASSET_ROLES,
     CAMERA_MOVEMENTS,
+    CAMERA_DIRECTIONS,
+    CAMERA_AMPLITUDES,
+    ACTION_TYPES,
     shotDuration,
     shotStatus,
     snapSeconds,
@@ -439,16 +741,36 @@
     setShotName,
     setShotPrompt,
     setAssetRole,
+    setShotConstraints,
     addCameraSegment,
     updateCameraSegment,
     removeCameraSegment,
+    splitCameraSegment,
+    duplicateCameraSegment,
+    toggleCameraSegmentEnabled,
+    mergeCameraSegments,
     addSubjectSegment,
     updateSubjectSegment,
     removeSubjectSegment,
+    splitSubjectSegment,
+    duplicateSubjectSegment,
+    toggleSubjectSegmentEnabled,
+    mergeSubjectSegments,
+    addPropSegment,
+    updatePropSegment,
+    removePropSegment,
+    splitPropSegment,
+    duplicatePropSegment,
+    togglePropSegmentEnabled,
+    mergePropSegments,
     moveCameraSegmentEdge,
     moveCameraSegment,
     moveSubjectSegmentEdge,
     moveSubjectSegment,
+    movePropSegmentEdge,
+    movePropSegment,
+    upsertBeatNote,
+    removeBeatNote,
     notifyDirectionChanged,
   };
 })(window.MSE = window.MSE || {});

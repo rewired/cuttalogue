@@ -4,6 +4,16 @@
 # configure.
 from pathlib import Path
 
+# Some local security software (antivirus HTTPS scanning, corporate proxies)
+# intercepts TLS and re-signs traffic with a locally-generated root cert that
+# isn't in Python's bundled certifi CA list, so certifi-based verification
+# fails even though the OS/browser trusts it fine. truststore patches ssl to
+# verify against the OS certificate store instead, matching what curl/browsers
+# already trust. Must run before anything (httpx) builds an SSLContext.
+import truststore
+
+truststore.inject_into_ssl()
+
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,6 +22,7 @@ from .assets import router as assets_router
 from .audio import router as audio_router
 from .describe import router as describe_router
 from .draft import router as draft_router
+from .expand import router as expand_router
 from .export import router as export_router
 from .jobs import router as jobs_router
 from .projects import DATA_DIR
@@ -47,6 +58,7 @@ app.include_router(export_router)
 app.include_router(settings_router)
 app.include_router(describe_router)
 app.include_router(draft_router)
+app.include_router(expand_router)
 
 for static_dir in ("js", "css", "vendor"):
     path = FRONTEND_DIR / static_dir

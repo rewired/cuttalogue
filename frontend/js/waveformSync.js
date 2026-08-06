@@ -88,8 +88,21 @@
     return Math.round(seconds * fps(state.video));
   }
 
+  // Zero-padded to however many digits the loaded audio's own frame count
+  // needs, so "F375" doesn't grow/shrink a digit at a time as the playhead
+  // moves and jitter the rest of the readout - e.g. "F0375" out of "F9200"
+  // total, but plain "F5" out of "F9" total for a near-empty timeline.
+  function totalFrameDigits() {
+    const totalFrames = frameAtTime(state.audio.mix.durationSeconds || 0);
+    return String(totalFrames).length;
+  }
+
+  function formatFrame(seconds) {
+    return `F${String(frameAtTime(seconds)).padStart(totalFrameDigits(), '0')}`;
+  }
+
   function hoverLabel(seconds) {
-    return `${formatTime(seconds)} · F${frameAtTime(seconds)} · ${positionInBarsBeats(seconds, state.tempo)}`;
+    return `${formatTime(seconds)} · ${formatFrame(seconds)} · ${positionInBarsBeats(seconds, state.tempo)}`;
   }
 
   // 'second'/'frame' are grid divisions that depend on video state, not tempo, so
@@ -106,7 +119,7 @@
     const division = state.tempo.gridDivision;
     if (division === 'off') return formatTime(seconds);
     if (division === 'second') return `${Math.round(seconds)}`;
-    if (division === 'frame') return `F${frameAtTime(seconds)}`;
+    if (division === 'frame') return formatFrame(seconds);
     // The Timeline plugin accumulates notch times via repeated += rather than
     // index*step, so the `seconds` it hands back can carry tiny float drift
     // (worse at BPMs like 180 that aren't exact in binary). Snapping to the
@@ -733,12 +746,11 @@
     MSE.contextMenu.create({
       container: shotsContentEl,
       menuEl: menu,
-      deleteBtn,
+      actions: [{ btn: deleteBtn, onClick: (shotId) => shotsApi.deleteShot(shotId) }],
       resolveTarget: (e) => {
         const segEl = e.target.closest('.lane-segment');
         return segEl ? Number(segEl.dataset.shotId) : null;
       },
-      onDelete: (shotId) => shotsApi.deleteShot(shotId),
     });
   }
 

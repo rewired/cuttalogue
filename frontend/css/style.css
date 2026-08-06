@@ -504,6 +504,17 @@ input.small { width: 44px; }
   flex-direction: column;
   margin-bottom: 0;
 }
+/* #prompt-tab-detail now wraps a compile toolbar plus the <label>, instead of
+   being the <label> itself, so the label needs to be a flex child (for the
+   toolbar-then-textarea column) and a flex container in turn (so the
+   textarea's own flex: 1 1 auto below can still fill the remaining height). */
+#prompt-tab-detail .shot-detail-field {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 0;
+}
 #shot-detail-prompt,
 #shot-detail-notes {
   flex: 1 1 auto;
@@ -854,16 +865,31 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
 
 .direction-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px 12px;
   background: #0f1114;
   border: 1px solid var(--panel-border);
   border-radius: 4px;
-  padding: 6px 8px;
+  padding: 10px 12px;
 }
-.direction-text-input { flex: 1 1 auto; min-width: 0; background: #16191d; color: var(--text); border: 1px solid var(--panel-border); border-radius: 4px; padding: 4px 6px; font-size: 12px; }
-.direction-speed-input { flex: 0 1 90px; }
-.direction-action-input { flex: 1 1 auto; }
+.direction-field {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 130px;
+  min-width: 110px;
+}
+.direction-field-wide { flex: 2 1 220px; }
+.direction-field-label {
+  font-size: 10px;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.direction-field select,
+.direction-field .direction-text-input { width: 100%; }
+.direction-text-input { min-width: 0; background: #16191d; color: var(--text); border: 1px solid var(--panel-border); border-radius: 4px; padding: 5px 7px; font-size: 12px; }
 
 .direction-remove-btn {
   background: none;
@@ -875,7 +901,33 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
 }
 .direction-remove-btn:hover { color: var(--text); border-color: transparent; }
 
+.direction-constraints-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.direction-constraints-label {
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex: 0 0 auto;
+}
+.direction-constraints-list { display: flex; flex-wrap: wrap; gap: 4px; }
+.direction-constraint-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: rgba(76, 141, 255, 0.15);
+  border: 1px solid rgba(76, 141, 255, 0.4);
+  border-radius: 12px;
+  padding: 2px 4px 2px 8px;
+  font-size: 11px;
+  color: var(--text);
+}
+#direction-constraints-input { flex: 1 1 160px; min-width: 120px; }
+
 .direction-lanes-toolbar { display: flex; align-items: flex-start; justify-content: flex-end; gap: 10px; margin-bottom: 4px; }
+
+.direction-compile-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
+#direction-compile-status { display: inline-flex; align-items: center; gap: 6px; }
 
 .direction-lanes { border: 1px solid var(--panel-border); border-radius: 6px; overflow: hidden; margin-bottom: 14px; }
 .direction-lane-row {
@@ -932,6 +984,7 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
 }
 .lane-segment:active { cursor: grabbing; }
 .lane-segment.selected { border-color: var(--accent); background: rgba(76, 141, 255, 0.55); }
+.lane-segment.disabled { opacity: 0.4; background: rgba(255, 255, 255, 0.08); border-style: dashed; }
 .lane-segment-handle {
   position: absolute;
   top: 0;
@@ -1010,6 +1063,28 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   white-space: nowrap;
   transform: translateX(2px);
 }
+.direction-beat-segment {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+}
+.direction-beat-segment:hover { background: rgba(255, 255, 255, 0.05); }
+.direction-beat-segment.selected { background: rgba(76, 141, 255, 0.2); border-bottom-color: var(--accent); }
+.direction-beat-segment.has-note::after {
+  content: '';
+  position: absolute;
+  bottom: 2px;
+  left: 4px;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.direction-beat-orphans { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 4px 0 14px; }
+.direction-beat-orphans-label { color: var(--text-dim); font-size: 11px; flex: 0 0 auto; }
 
 .direction-segment-detail {
   background: var(--panel);
@@ -1054,6 +1129,7 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
 }
+.spinner[hidden] { display: none; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 .task-panel {

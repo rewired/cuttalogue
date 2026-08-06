@@ -4,9 +4,15 @@
 
   function formatTime(seconds) {
     if (!Number.isFinite(seconds) || seconds < 0) seconds = 0;
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60);
-    const ms = Math.round((seconds - Math.floor(seconds)) * 1000);
+    // Round the combined value once, then split - rounding ms separately
+    // from seconds let it round up to 1000 right at a second boundary
+    // (e.g. 14.9996 -> ms=1000), printing a stray 4-digit ".1000" for a
+    // frame instead of rolling over into the next second.
+    const totalMs = Math.round(seconds * 1000);
+    const ms = totalMs % 1000;
+    const totalSeconds = Math.floor(totalMs / 1000);
+    const m = Math.floor(totalSeconds / 60);
+    const s = totalSeconds % 60;
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}.${String(ms).padStart(3, '0')}`;
   }
 

@@ -88,6 +88,7 @@
     const segEl = document.createElement('div');
     segEl.className = opts.className || 'lane-segment';
     segEl.classList.toggle('selected', opts.isSelected(index));
+    if (opts.isDisabled) segEl.classList.toggle('disabled', opts.isDisabled(index));
     metrics.position(segEl, seg);
     if (opts.renderLabel) opts.renderLabel(segEl, seg);
     else segEl.textContent = opts.labelText(seg);
@@ -114,6 +115,18 @@
     wireSegmentDrag(endHandle, segEl, seg, 'end', index, metrics, opts);
 
     return segEl;
+  }
+
+  // Inverse of percentMetrics.position: given a raw pointer clientX and the
+  // lane content element it landed in, returns the shot-relative time it
+  // corresponds to - used for actions anchored to a click position (e.g.
+  // Direction's "split here") the same way waveformSync.js's own
+  // shotsTimeAtClientX does for the Shots track.
+  function timeAtClientX(contentEl, clientX, domainDuration) {
+    const rect = contentEl.getBoundingClientRect();
+    if (rect.width <= 0) return 0;
+    const pct = (clientX - rect.left) / rect.width;
+    return Math.max(0, Math.min(domainDuration, pct * domainDuration));
   }
 
   function nextSegmentStart(segments) {
@@ -153,6 +166,8 @@
   // opts:
   //   labelText(seg) -> string shown on the segment
   //   isSelected(index) -> bool, for the .selected style
+  //   isDisabled(index) -> bool, for the .disabled style (optional - omit if
+  //     the caller's segments have no enabled/disabled concept)
   //   moveSegment(index, timeValue) -> clamped value, or null to reject
   //   moveSegmentEdge(index, side, timeValue) -> clamped value, or null
   //   onSelect(index) -> called on release, click or drag alike
@@ -213,5 +228,6 @@
     buildSegment,
     appendOverhangBand,
     nextSegmentStart,
+    timeAtClientX,
   };
 })(window.MSE = window.MSE || {});

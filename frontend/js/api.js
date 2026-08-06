@@ -170,6 +170,22 @@
     return res.json(); // { jobId }
   }
 
+  // Stateless (no project/shot lookup) - the caller already has the
+  // deterministically-compiled detailed_description text in memory (see
+  // h3Compiler.js's compileH3Sections) and just wants it expanded.
+  async function expandDescription(text) {
+    const res = await fetch('/api/expand-description', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `expand failed: ${res.status}`);
+    }
+    return res.json(); // { jobId }
+  }
+
   MSE.api = {
     createProject,
     getProject,
@@ -189,5 +205,6 @@
     saveSettings,
     testSettings,
     describeAsset,
+    expandDescription,
   };
 })(window.MSE = window.MSE || {});

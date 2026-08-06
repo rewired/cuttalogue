@@ -54,7 +54,7 @@
     <input type="text" id="project-name-input" class="project-name-input" placeholder="Untitled project">
   </div>
   <button id="play-pause-btn" disabled>&#9654; Play</button>
-  <div class="readout" id="current-time-readout">00:00.000</div>
+  <div class="readout" id="current-time-readout">00:00.000 · F0 · 1.1.0.000</div>
   <div class="zoom-control">
     <label for="zoom-slider">Zoom</label>
     <input type="range" id="zoom-slider" min="20" max="500" value="80">
@@ -182,6 +182,12 @@ Right-click a shot to delete it">&#9432;</span></div>
       <p class="placeholder-hint" id="direction-tab-empty">Select a shot to see its details.</p>
       <div id="direction-tab-detail" style="display:none;">
         <div id="direction-lanes-root" class="direction-lanes-root">
+          <div class="direction-constraints-row">
+            <span class="direction-constraints-label" title="Continuity rules for the whole shot, not any one segment">Constraints</span>
+            <div id="direction-constraints-list" class="direction-constraints-list"></div>
+            <input type="text" id="direction-constraints-input" class="direction-text-input" placeholder="Add a constraint and press Enter...">
+          </div>
+
           <div class="direction-lanes-toolbar">
             <button type="button" id="direction-snap-toggle" class="icon-btn direction-snap-toggle">Snap: on</button>
             <button type="button" id="direction-expand-btn" class="icon-btn" title="Expand" aria-label="Expand">&#9974;</button>
@@ -190,20 +196,25 @@ Right-click a shot to delete it">&#9432;</span></div>
           <div id="direction-lanes" class="direction-lanes"></div>
 
           <div id="direction-segment-detail" class="direction-segment-detail" hidden></div>
-
-          <div class="modal-footer">
-            <button type="button" id="direction-compile-btn">Compile prompt</button>
-            <span id="direction-compile-status" class="placeholder-hint"></span>
-          </div>
         </div>
       </div>
     </div>
 
     <div class="tab-content" id="tab-prompt" hidden>
       <p class="placeholder-hint" id="prompt-tab-empty">Select a shot to see its details.</p>
-      <label class="shot-detail-field" id="prompt-tab-detail" style="display:none;">
-        <textarea id="shot-detail-prompt" rows="18" placeholder="Prompt for this shot..."></textarea>
-      </label>
+      <div id="prompt-tab-detail" style="display:none;">
+        <div class="direction-compile-toolbar">
+          <button type="button" id="direction-compile-btn">Compile prompt</button>
+          <button type="button" id="direction-expand-ai-btn" title="Expand detailed_description into H3's expected 350-500 words via AI - only that section, nothing else is touched">Expand with AI</button>
+          <span id="direction-compile-status" class="placeholder-hint">
+            <span class="spinner" id="direction-compile-spinner" hidden></span>
+            <span id="direction-compile-status-text"></span>
+          </span>
+        </div>
+        <label class="shot-detail-field">
+          <textarea id="shot-detail-prompt" rows="18" placeholder="Prompt for this shot..."></textarea>
+        </label>
+      </div>
     </div>
 
     <div class="tab-content" id="tab-notes" hidden>
@@ -243,6 +254,10 @@ Right-click a shot to delete it">&#9432;</span></div>
 </div>
 
 <div id="direction-segment-context-menu" class="context-menu">
+  <button type="button" id="direction-segment-context-split">Split here</button>
+  <button type="button" id="direction-segment-context-duplicate">Duplicate</button>
+  <button type="button" id="direction-segment-context-toggle">Toggle enabled</button>
+  <button type="button" id="direction-segment-context-merge">Merge with next</button>
   <button type="button" id="direction-segment-context-delete">Delete segment</button>
 </div>
 

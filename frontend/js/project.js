@@ -45,7 +45,8 @@
         notes: s.notes || '',
         assetIds: s.assetIds || [],
         assetRoles: s.assetRoles || {},
-        direction: s.direction || { camera: [], subjects: {} },
+        constraints: s.constraints || [],
+        direction: s.direction || { camera: [], subjects: {}, props: {}, beatNotes: [] },
       })),
       assets: state.assets,
       export: state.export,
@@ -57,11 +58,56 @@
     };
   }
 
+  // Camera/subject direction segments predating the structured-fields phase
+  // (see the Direction tab's structured-editor discussion) only had
+  // movement/framing/speed (camera) or a single free-text `action` (subject)
+  // - default-fill every new field so older segments still round-trip, and
+  // fold the one-time `action` -> `notes` rename in on the way. Mutates each
+  // segment object in place (already a fresh copy from JSON.parse or the
+  // draft/canonical fetch, never the live in-memory segment).
+  function normalizeDirectionSegments(direction) {
+    if (!direction.props) direction.props = {};
+    if (!direction.beatNotes) direction.beatNotes = [];
+    (direction.camera || []).forEach((seg) => {
+      if (seg.direction === undefined) seg.direction = '';
+      if (seg.target === undefined) seg.target = '';
+      if (seg.transitionToNext === undefined) seg.transitionToNext = '';
+      if (seg.amplitude === undefined) seg.amplitude = '';
+      if (seg.enabled === undefined) seg.enabled = true;
+    });
+    Object.values(direction.subjects || {}).forEach((track) => {
+      track.forEach((seg) => {
+        if (seg.notes === undefined) {
+          seg.notes = seg.action || '';
+          delete seg.action;
+        }
+        if (seg.actionType === undefined) seg.actionType = '';
+        if (seg.manner === undefined) seg.manner = '';
+        if (seg.gaze === undefined) seg.gaze = '';
+        if (seg.expression === undefined) seg.expression = '';
+        if (seg.enabled === undefined) seg.enabled = true;
+      });
+    });
+    Object.values(direction.props).forEach((track) => {
+      track.forEach((seg) => {
+        if (seg.state === undefined) seg.state = '';
+        if (seg.ownerAssetId === undefined) seg.ownerAssetId = null;
+        if (seg.notes === undefined) seg.notes = '';
+        if (seg.enabled === undefined) seg.enabled = true;
+      });
+    });
+    direction.beatNotes.forEach((note) => {
+      if (note.intent === undefined) note.intent = '';
+      if (note.priority === undefined) note.priority = '';
+      if (note.endState === undefined) note.endState = '';
+    });
+  }
+
   // Pure: defaults in fields older/foreign project data predates (name/
-  // prompt/notes/assetIds/assets/export/savedAt) without touching `parsed`
-  // or global state - needed so both the canonical project and a draft can
-  // be normalized and diffed *before* deciding which one to actually apply
-  // (see loadProjectConsideringDraft).
+  // prompt/notes/assetIds/assets/export/savedAt/constraints) without
+  // touching `parsed` or global state - needed so both the canonical
+  // project and a draft can be normalized and diffed *before* deciding
+  // which one to actually apply (see loadProjectConsideringDraft).
   function normalizeProjectData(parsed) {
     const normalized = { ...parsed };
     normalized.name = normalized.name || '';
@@ -71,9 +117,11 @@
       notes: '',
       assetIds: [],
       assetRoles: {},
-      direction: { camera: [], subjects: {} },
+      constraints: [],
+      direction: { camera: [], subjects: {}, props: {}, beatNotes: [] },
       ...s,
     }));
+    normalized.shots.forEach((s) => normalizeDirectionSegments(s.direction));
     normalized.assets = (normalized.assets || []).map((a) => ({ tags: [], description: '', ...a }));
     normalized.export = { includeMixSnippet: false, ...(normalized.export || {}) };
     normalized.savedAt = normalized.savedAt ?? null;
