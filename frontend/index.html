@@ -378,6 +378,41 @@ Right-click a shot to delete it">&#9432;</span></div>
   </div>
 </div>
 
+<div id="burst-beats-modal" class="modal-overlay" hidden>
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Burst beats</h2>
+      <button type="button" id="burst-beats-close-btn" class="modal-close">&times;</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint">Replaces this shot's Camera lane with evenly-spaced hard-cut beats - good for quickly exploring poses/framings against a reference set.</p>
+      <label class="modal-field">Beat length
+        <div class="burst-beats-length-row">
+          <input type="number" id="burst-beats-length-value" min="0" step="0.25" value="1">
+          <select id="burst-beats-length-unit">
+            <option value="bar-fraction">/8 bar</option>
+            <option value="seconds" selected>seconds</option>
+            <option value="frames">frames</option>
+          </select>
+        </div>
+      </label>
+      <p class="placeholder-hint" id="burst-beats-readout"></p>
+      <label class="direction-checkbox-field">
+        <input type="checkbox" id="burst-beats-randomize" checked>
+        Randomize camera per beat
+      </label>
+      <label class="direction-checkbox-field">
+        <input type="checkbox" id="burst-beats-randomize-subjects" checked>
+        Randomize subject pose per beat
+      </label>
+      <div class="modal-actions">
+        <button type="button" id="burst-beats-apply-btn">Apply</button>
+        <button type="button" id="burst-beats-cancel-btn">Cancel</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="task-panel" class="task-panel" hidden>
   <div class="task-panel-header">
     <strong id="task-panel-title">Exporting project</strong>
@@ -417,6 +452,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/direction.js"></script>
 <script src="js/assetLibrary.js"></script>
 <script src="js/assetPicker.js"></script>
+<script src="js/burstBeatsModal.js"></script>
 <script src="js/contextPanel.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>

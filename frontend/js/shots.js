@@ -747,16 +747,23 @@
   // this function body (evaluated well after both modules have loaded), not
   // at top-level, so the reverse of h3Compiler.js's own top-level
   // `shotsApi = MSE.shots` dependency doesn't create a load-order problem.
-  function upsertBeatNote(shotId, startSeconds, endSeconds, patch) {
-    const shot = findShot(shotId);
-    if (!shot) return;
+  // Shared by upsertBeatNote (one beat, emits) and applyBurstBeats (many
+  // beats in one batch, single emit at the end) - same find-or-create logic,
+  // factored out so Burst doesn't fire N redundant re-renders.
+  function upsertBeatNoteEntry(shot, startSeconds, endSeconds, patch) {
     const direction = ensureDirection(shot);
     const existing = MSE.h3Compiler.findBeatNote(shot, startSeconds, endSeconds);
     if (existing) {
       Object.assign(existing, patch);
     } else {
-      direction.beatNotes.push({ startSeconds, endSeconds, intent: '', priority: '', endState: '', ...patch });
+      direction.beatNotes.push({ startSeconds, endSeconds, intent: '', priority: '', endState: '', isCut: false, ...patch });
     }
+  }
+
+  function upsertBeatNote(shotId, startSeconds, endSeconds, patch) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    upsertBeatNoteEntry(shot, startSeconds, endSeconds, patch);
     emit('shots-changed', { reason: 'direction' });
   }
 
@@ -765,6 +772,94 @@
     if (!shot || !shot.direction || !shot.direction.beatNotes || !shot.direction.beatNotes[index]) return;
     shot.direction.beatNotes.splice(index, 1);
     emit('shots-changed', { reason: 'direction' });
+  }
+
+  function randomCameraFields() {
+    return {
+      movement: CAMERA_MOVEMENTS[Math.floor(Math.random() * CAMERA_MOVEMENTS.length)],
+      direction: CAMERA_DIRECTIONS[Math.floor(Math.random() * CAMERA_DIRECTIONS.length)],
+      amplitude: CAMERA_AMPLITUDES[Math.floor(Math.random() * CAMERA_AMPLITUDES.length)],
+    };
+  }
+
+  // '' means "unset/custom" (see ACTION_TYPES's own comment) - not a useful
+  // pick for "give this beat a distinct pose", so it's excluded here.
+  function randomActionType() {
+    const options = ACTION_TYPES.filter((t) => t);
+    return options[Math.floor(Math.random() * options.length)];
+  }
+
+  // Burst Mode: rebuilds the camera lane into evenly-spaced segments (one
+  // per beatLengthSeconds, replacing whatever was there before - confirmed
+  // with the user as the intended behavior, not a gap-fill) and marks every
+  // resulting beat boundary as a hard cut, so the compiler emits one
+  // [Shot N] block per beat (see h3Compiler.js's isCutBeat). This is a bulk
+  // convenience over the same per-beat isCut primitive the beat detail
+  // panel edits one at a time - nothing here is burst-exclusive machinery.
+  //
+  // randomizeSubjects does the same rebuild against every acting subject's
+  // (primary/supporting character) own track, picking a random actionType
+  // per beat - without this, a shot with no pre-authored subject segments
+  // compiles zero pose/action text per [Shot N] block (h3Compiler.js's
+  // phraseSubjectAction has nothing to say), so H3 has no signal to vary
+  // the subject's pose across cuts at all, defeating half of what Burst is
+  // for. gaze/expression/manner stay untouched - no closed vocabulary for
+  // those to pick from (see ACTION_TYPES vs. the free-text fields).
+  function applyBurstBeats(shotId, { beatLengthSeconds, randomizeCamera, randomizeSubjects }) {
+    const shot = findShot(shotId);
+    if (!shot || !(beatLengthSeconds >= MIN_SEGMENT_SECONDS)) return false;
+    const duration = shotDuration(shot);
+    const direction = ensureDirection(shot);
+
+    const boundaries = [];
+    for (let t = beatLengthSeconds; t < duration - MIN_SEGMENT_SECONDS; t += beatLengthSeconds) {
+      boundaries.push(t);
+    }
+    const cutPoints = [...boundaries, duration];
+
+    const base = direction.camera[0] || {
+      movement: CAMERA_MOVEMENTS[0],
+      direction: '',
+      amplitude: '',
+      speed: '',
+      framing: '',
+      target: '',
+      transitionToNext: '',
+    };
+    let start = 0;
+    direction.camera = cutPoints.map((end) => {
+      const seg = { ...base, enabled: true, startSeconds: start, endSeconds: end, ...(randomizeCamera ? randomCameraFields() : {}) };
+      start = end;
+      return seg;
+    });
+
+    if (randomizeSubjects) {
+      const actingSubjects = MSE.h3Compiler.orderedSubjects(shot).filter((s) => MSE.h3Compiler.isActingRole(s.role));
+      actingSubjects.forEach((s) => {
+        const subjectBase = (direction.subjects[s.assetId] || [])[0] || {
+          actionType: '',
+          manner: '',
+          gaze: '',
+          expression: '',
+          notes: '',
+        };
+        let subjectStart = 0;
+        direction.subjects[s.assetId] = cutPoints.map((end) => {
+          const seg = { ...subjectBase, enabled: true, startSeconds: subjectStart, endSeconds: end, actionType: randomActionType() };
+          subjectStart = end;
+          return seg;
+        });
+      });
+    }
+
+    start = 0;
+    cutPoints.forEach((end) => {
+      upsertBeatNoteEntry(shot, start, end, { isCut: true });
+      start = end;
+    });
+
+    emit('shots-changed', { reason: 'direction' });
+    return true;
   }
 
   function setShotConstraints(shotId, constraints) {
@@ -872,6 +967,7 @@
     movePropSegment,
     upsertBeatNote,
     removeBeatNote,
+    applyBurstBeats,
     notifyDirectionChanged,
   };
 })(window.MSE = window.MSE || {});

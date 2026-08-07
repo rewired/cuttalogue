@@ -58,6 +58,15 @@
   // structural element right.
   const STYLE_OPENER = 'The target video is live-action and cinematic with natural human motion and realistic body mechanics.';
 
+  // Hard-cut phrasing for a beat marked isCut (see shots.js's
+  // upsertBeatNote/applyBurstBeats) - modeled directly on the real
+  // R2V_H3_V1.json workflow's node 166 "BURST TEST 1" example
+  // (docs/deep-research-report-h3-prompting.md), which proves this exact
+  // "[Shot N]\nAt T seconds, hard cut to..." convention works for H3.
+  function hardCutIntro(shotNumber, start, body) {
+    return `[Shot ${shotNumber}]\nAt ${formatSeconds(start)} seconds, hard cut to a new composition: ${lowercaseFirst(body)}`;
+  }
+
   const ACTION_TYPE_PHRASES = {
     walk: 'walks',
     run: 'runs',
@@ -206,13 +215,27 @@
   }
 
   // Guide section 6.3: "[Shot 1] bekommt keinen Zeitstempel" - the shot's
-  // first beat gets the [Shot 1] marker instead of a time range; every beat
-  // after that is introduced with "From X to Y seconds," (lowercased into
-  // the sentence that follows, since it's mid-sentence there, not after
-  // "[Shot 1]" where a capital start reads correctly).
+  // first beat gets the [Shot 1] marker instead of a time range. Every beat
+  // after that is either a continuation of the current [Shot N] ("From X to
+  // Y seconds," - lowercased into the sentence that follows, since it's
+  // mid-sentence there) or, if the beat's own note has isCut set (see
+  // shots.js's upsertBeatNote/applyBurstBeats - individually via the beat
+  // detail panel, or in bulk via Burst Mode), the start of a brand new
+  // [Shot N] hard cut. With no isCut beats at all, this produces exactly
+  // today's single-[Shot 1]-plus-continuations output - the branch below is
+  // additive, never a behavior change for existing shots.
   function buildBeatParagraphs(shot, subjects) {
     const boundaries = collectBeatBoundaries(shot, subjects);
     const paragraphs = [];
+    let shotNumber = 0;
+    // Whenever this shot has any cut at all, [Shot 1] needs its own end
+    // boundary stated too - a single continuous shot doesn't (its [Shot 1]
+    // IS the whole duration, redundant to restate), but once there's a
+    // second [Shot N] coming, H3 needs to know how long the first one holds
+    // before the cut. Matches the real proven R2V_H3_V1.json workflow's
+    // node 166 "BURST TEST 1" example, whose own [Shot 1] reads "From 0.00
+    // to 1.00 seconds: ..." rather than a bare marker.
+    const hasAnyCutMarked = (shot.direction.beatNotes || []).some((n) => n.isCut);
     for (let i = 0; i < boundaries.length - 1; i++) {
       const start = boundaries[i];
       const end = boundaries[i + 1];
@@ -250,11 +273,20 @@
 
       if (sentences.length === 0) continue;
       const body = sentences.join(' ');
-      paragraphs.push(
-        paragraphs.length === 0
-          ? `[Shot 1] ${body}`
-          : `From ${formatSeconds(start)} to ${formatSeconds(end)} seconds, ${lowercaseFirst(body)}`
-      );
+
+      const isCut = shotNumber === 0 || !!(note && note.isCut);
+      if (isCut) {
+        shotNumber += 1;
+        if (shotNumber > 1) {
+          paragraphs.push(hardCutIntro(shotNumber, start, body));
+        } else if (hasAnyCutMarked) {
+          paragraphs.push(`[Shot 1]\nFrom ${formatSeconds(start)} to ${formatSeconds(end)} seconds: ${body}`);
+        } else {
+          paragraphs.push(`[Shot 1] ${body}`);
+        }
+      } else {
+        paragraphs.push(`From ${formatSeconds(start)} to ${formatSeconds(end)} seconds, ${lowercaseFirst(body)}`);
+      }
     }
     return paragraphs;
   }
@@ -273,7 +305,7 @@
   // hand-authored Constraints (see the Direction tab's Constraints row) -
   // those apply to the whole shot, not any one segment, so they're appended
   // here rather than threaded through buildBeatParagraphs.
-  function buildLimits(shot, subjects) {
+  function buildLimits(shot, subjects, hasCuts) {
     const actingSubjects = subjects.filter((s) => isActingRole(s.role));
     const limits = [];
     if (actingSubjects.length >= 2) {
@@ -291,14 +323,21 @@
         'Do not let one subject’s reference attributes (wardrobe, color, style, or identity) bleed into another subject, prop, or the environment.'
       );
     }
-    limits.push('No cut or scene transition - this is a single continuous shot.');
+    // hasCuts (>=1 beat marked isCut, see shots.js) means the shot compiles
+    // to more than one [Shot N] block - the literal opposite of "single
+    // continuous shot", so the limit line has to flip with it.
+    if (hasCuts) {
+      limits.push('Hard cuts only between marked shots. No morphing or visual blending across a cut.');
+      limits.push('Each new shot must already look finished from its first frame.');
+    } else {
+      limits.push('No cut or scene transition - this is a single continuous shot.');
+    }
     limits.push(...(shot.constraints || []).map(ensureSentence));
     return limits;
   }
 
-  function buildDetailedDescription(shot, subjects) {
-    const beatParagraphs = buildBeatParagraphs(shot, subjects);
-    return [STYLE_OPENER, ...beatParagraphs, buildLimits(shot, subjects).join(' ')].join('\n\n');
+  function buildDetailedDescription(beatParagraphs, limitsText) {
+    return [STYLE_OPENER, ...beatParagraphs, limitsText].join('\n\n');
   }
 
   // Raw section content (no "sectionName:\n" prefixing, no empty-section
@@ -320,25 +359,40 @@
       .map((s, i) => `<${s.label}> is ${ROLE_DESCRIPTION[s.role]} whose ${ROLE_PRESERVE[s.role]} come from <Picture ${i + 1}>.`)
       .join('\n');
 
-    // "(appears throughout [Shot 1])" is always literal - H3's own shot
-    // numbering is internal to one generation, and every one of our shots
-    // compiles to its own separate generation (same "single continuous
-    // shot" reasoning already in buildLimits).
+    // beatParagraphs is computed once here and threaded into
+    // buildDetailedDescription below, rather than each recomputing its own
+    // copy - shotCount (how many [Shot N] markers actually got emitted,
+    // see buildBeatParagraphs) is what the rest of this function branches
+    // on, and it's only knowable after walking the beats once.
+    const beatParagraphs = buildBeatParagraphs(shot, subjects);
+    const shotCount = beatParagraphs.filter((p) => p.startsWith('[Shot ')).length;
+    const hasCuts = shotCount > 1;
+
+    // "(appears throughout [Shot 1])" was always literal before Burst/cut
+    // support existed, because every shot compiled to exactly one [Shot 1]
+    // block. A shot with hard cuts spans multiple [Shot N] blocks, so the
+    // scope has to say "every shot" instead (matches the real R2V_H3_V1.json
+    // workflow's node 166 example: "<Subject 1> is fully preserved in every
+    // shot.").
+    const scopeLabel = hasCuts ? 'every shot' : '[Shot 1]';
     const retentionAnalysis = subjects
-      .map((s) => `<${s.label}> (appears throughout [Shot 1]): fully_preserved - preserve ${ROLE_PRESERVE[s.role]}.`)
+      .map((s) => `<${s.label}> (appears throughout ${scopeLabel}): fully_preserved - preserve ${ROLE_PRESERVE[s.role]}.`)
       .join('\n');
 
     const characterLabels = subjects.filter((s) => isActingRole(s.role)).map((s) => `<${s.label}>`);
-    const summary =
-      characterLabels.length > 0
-        ? `[reference generation] A single continuous shot featuring ${characterLabels.join(' and ')}.`
-        : '[reference generation] A single continuous shot.';
+    const summary = hasCuts
+      ? characterLabels.length > 0
+        ? `[reference generation] A hard-cut sequence of ${shotCount} shots featuring ${characterLabels.join(' and ')}.`
+        : `[reference generation] A hard-cut sequence of ${shotCount} shots.`
+      : characterLabels.length > 0
+      ? `[reference generation] A single continuous shot featuring ${characterLabels.join(' and ')}.`
+      : '[reference generation] A single continuous shot.';
 
     return {
       subjectDefinitions: subjects.length > 0 ? subjectDefinitions : '',
       summary,
       retentionAnalysis: subjects.length > 0 ? retentionAnalysis : '',
-      detailedDescription: buildDetailedDescription(shot, subjects),
+      detailedDescription: buildDetailedDescription(beatParagraphs, buildLimits(shot, subjects, hasCuts).join(' ')),
       overallSoundscape: 'N/A',
       nonDiegeticMusic: 'N/A',
     };

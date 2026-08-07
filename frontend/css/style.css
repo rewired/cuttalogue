@@ -884,6 +884,16 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   padding: 6px 8px;
   font-size: 13px;
 }
+.burst-beats-length-row { display: flex; gap: 6px; }
+.burst-beats-length-row input { flex: 1 1 auto; }
+.burst-beats-length-row select {
+  background: #0f1114;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  padding: 6px 8px;
+}
+
 .modal-actions { display: flex; align-items: center; gap: 10px; }
 .modal-footer {
   display: flex;
@@ -1134,6 +1144,10 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   border-radius: 50%;
   background: var(--accent);
 }
+.direction-beat-segment.is-cut { border-left: 2px solid #ffb020; }
+
+.direction-burst-toolbar { display: flex; justify-content: flex-end; margin: 2px 0 6px; }
+.direction-checkbox-field { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-dim); cursor: pointer; }
 
 .direction-beat-orphans { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 4px 0 14px; }
 .direction-beat-orphans-label { color: var(--text-dim); font-size: 11px; flex: 0 0 auto; }

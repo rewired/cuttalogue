@@ -234,6 +234,18 @@
     return input;
   }
 
+  function buildCheckboxInput(checked, labelText, onChange) {
+    const wrap = document.createElement('label');
+    wrap.className = 'direction-checkbox-field';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = !!checked;
+    input.addEventListener('change', () => onChange(input.checked));
+    wrap.appendChild(input);
+    wrap.appendChild(document.createTextNode(labelText));
+    return wrap;
+  }
+
   function buildField(label, inputEl, wide) {
     const wrap = document.createElement('div');
     wrap.className = wide ? 'direction-field direction-field-wide' : 'direction-field';
@@ -431,10 +443,12 @@
     span.classList.toggle('selected', isBeatSelected(start, end));
     const note = MSE.h3Compiler.findBeatNote(shot, start, end);
     const hasNote = !!(note && (note.intent || note.priority || note.endState));
+    const isCut = !!(note && note.isCut);
     span.classList.toggle('has-note', hasNote);
+    span.classList.toggle('is-cut', isCut);
     span.style.left = `${domainDuration > 0 ? (start / domainDuration) * 100 : 0}%`;
     span.style.width = `${domainDuration > 0 ? Math.max(0, (end - start) / domainDuration) * 100 : 0}%`;
-    span.title = `${start.toFixed(2)}s – ${end.toFixed(2)}s${hasNote ? ' (has a note - click to edit)' : ' (click to add a note)'}`;
+    span.title = `${start.toFixed(2)}s – ${end.toFixed(2)}s${isCut ? ' (hard cut)' : ''}${hasNote ? ' (has a note - click to edit)' : ' (click to add a note)'}`;
     span.addEventListener('click', () => {
       selection = { kind: 'beat', startSeconds: start, endSeconds: end };
       renderAll();
@@ -511,6 +525,23 @@
     return row;
   }
 
+  // Bulk convenience over the same per-beat isCut primitive the beat detail
+  // panel edits one at a time (see shots.js's applyBurstBeats) - shown
+  // unconditionally (unlike the beat/orphans rows below, which only appear
+  // once there's direction content to derive beats from), since Burst's own
+  // job is to create that content from scratch.
+  function buildBurstToolbarRow(shot) {
+    const row = document.createElement('div');
+    row.className = 'direction-burst-toolbar';
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Burst…';
+    btn.title = 'Populate this shot with evenly-spaced hard-cut beats (replaces the Camera lane)';
+    btn.addEventListener('click', () => MSE.burstBeatsModal.open(shot.id));
+    row.appendChild(btn);
+    return row;
+  }
+
   function renderLanes(shot) {
     el.lanes.innerHTML = '';
     directionPlayheadEls = [];
@@ -527,6 +558,7 @@
     const direction = shot.direction || { camera: [], subjects: {}, props: {}, beatNotes: [] };
 
     el.lanes.appendChild(buildGridRow(shot, duration, domainDuration));
+    el.lanes.appendChild(buildBurstToolbarRow(shot));
 
     el.lanes.appendChild(
       buildLaneRow('Camera', direction.camera || [], duration, domainDuration, {
@@ -629,6 +661,11 @@
     const note = MSE.h3Compiler.findBeatNote(shot, selection.startSeconds, selection.endSeconds) || {};
     const row = document.createElement('div');
     row.className = 'direction-row';
+    row.appendChild(
+      buildCheckboxInput(note.isCut, 'Hard cut before this beat', (v) =>
+        shotsApi.upsertBeatNote(shot.id, selection.startSeconds, selection.endSeconds, { isCut: v })
+      )
+    );
     row.appendChild(
       buildField('Intent', buildTextInput(note.intent, 'e.g. she appears determined', (v) => shotsApi.upsertBeatNote(shot.id, selection.startSeconds, selection.endSeconds, { intent: v })))
     );
