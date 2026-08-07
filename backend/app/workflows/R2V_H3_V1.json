@@ -1,0 +1,414 @@
+{
+  "92": {
+    "inputs": {
+      "filename_prefix": "video/MiniMax_H3",
+      "format": "auto",
+      "codec": "auto",
+      "video-preview": "",
+      "video": [
+        "130",
+        0
+      ]
+    },
+    "class_type": "SaveVideo",
+    "_meta": {
+      "title": "Save Video"
+    }
+  },
+  "115": {
+    "inputs": {
+      "aspect_ratio": "16:9 (Widescreen)",
+      "megapixels": 1,
+      "multiple": 32
+    },
+    "class_type": "ResolutionSelector",
+    "_meta": {
+      "title": "Resolution Selector (Size)"
+    }
+  },
+  "119": {
+    "inputs": {
+      "vae_name": "minimax_h3_video_vae_fp16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE Video"
+    }
+  },
+  "120": {
+    "inputs": {
+      "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "Load VAE Audio"
+    }
+  },
+  "121": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "120",
+        0
+      ]
+    },
+    "class_type": "VAEDecodeAudio",
+    "_meta": {
+      "title": "VAE Decode Audio"
+    }
+  },
+  "122": {
+    "inputs": {
+      "samples": [
+        "125",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE Decode Video"
+    }
+  },
+  "123": {
+    "inputs": {
+      "sampler_name": "res_multistep"
+    },
+    "class_type": "KSamplerSelect",
+    "_meta": {
+      "title": "KSamplerSelect"
+    }
+  },
+  "124": {
+    "inputs": {
+      "scheduler": "simple",
+      "steps": 20,
+      "denoise": 1,
+      "model": [
+        "170",
+        0
+      ]
+    },
+    "class_type": "BasicScheduler",
+    "_meta": {
+      "title": "BasicScheduler"
+    }
+  },
+  "125": {
+    "inputs": {
+      "noise": [
+        "129",
+        0
+      ],
+      "guider": [
+        "126",
+        0
+      ],
+      "sampler": [
+        "123",
+        0
+      ],
+      "sigmas": [
+        "124",
+        0
+      ],
+      "latent_image": [
+        "136",
+        1
+      ]
+    },
+    "class_type": "SamplerCustomAdvanced",
+    "_meta": {
+      "title": "SamplerCustomAdvanced"
+    }
+  },
+  "126": {
+    "inputs": {
+      "model": [
+        "170",
+        0
+      ],
+      "conditioning": [
+        "136",
+        0
+      ]
+    },
+    "class_type": "BasicGuider",
+    "_meta": {
+      "title": "Basic Guider"
+    }
+  },
+  "127": {
+    "inputs": {
+      "unet_name": "minimax_h3_ref2va_pruned_int8_convrot.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "Load Diffusion Model"
+    }
+  },
+  "128": {
+    "inputs": {
+      "clip_name": "qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors",
+      "type": "minimax",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "Load CLIP"
+    }
+  },
+  "129": {
+    "inputs": {
+      "noise_seed": [
+        "152",
+        0
+      ]
+    },
+    "class_type": "RandomNoise",
+    "_meta": {
+      "title": "RandomNoise"
+    }
+  },
+  "130": {
+    "inputs": {
+      "fps": [
+        "245",
+        0
+      ],
+      "bit_depth": 8,
+      "images": [
+        "122",
+        0
+      ],
+      "audio": [
+        "121",
+        0
+      ]
+    },
+    "class_type": "CreateVideo",
+    "_meta": {
+      "title": "Create Video"
+    }
+  },
+  "131": {
+    "inputs": {
+      "expression": "max(5, round(a * 24)) + (5 - (max(5, round(a * 24)) % 17)) % 17",
+      "values.a": [
+        "141",
+        1
+      ]
+    },
+    "class_type": "ComfyMathExpression",
+    "_meta": {
+      "title": "Math Expression"
+    }
+  },
+  "136": {
+    "inputs": {
+      "prompt": [
+        "171",
+        0
+      ],
+      "width": [
+        "115",
+        0
+      ],
+      "height": [
+        "115",
+        1
+      ],
+      "length": [
+        "244",
+        0
+      ],
+      "ref_image_size": "match",
+      "clip": [
+        "128",
+        0
+      ],
+      "vae": [
+        "119",
+        0
+      ],
+      "audio_vae": [
+        "120",
+        0
+      ],
+      "ref_images.ref_image_0": [
+        "177",
+        0
+      ],
+      "ref_audios.ref_audio_0": [
+        "141",
+        0
+      ]
+    },
+    "class_type": "MiniMaxH3ReferenceToVideo",
+    "_meta": {
+      "title": "MiniMax H3 Reference to Video"
+    }
+  },
+  "138": {
+    "inputs": {
+      "value": "subject_definitions:\n\n<Subject 1> is the woman from <Picture 2>. Preserve her exact identity, face, hair, body\nproportions, black oversized blazer, white shirt, black crop top, black cargo trousers,\nchain belt, and black boots.\n\n<Subject 2> is the rainy nighttime bus stop street from <Picture 1>. Preserve the wet\nurban street, the glass bus shelter, the illuminated advertising panel inside the shelter,\nthe reflective pavement, the old storefronts, the street lamps, the late-night atmosphere,\nand the overall street layout. Do not include any bus.\n\n\nsummary:\n\n[reference generation] A single 7.667-second live-action performance shot at a rainy\nnight bus stop. <Subject 1> stands inside the glass bus shelter, looking directly into\nthe camera while singing intensely with clear lip sync. She gestures expressively with\nher hands in a way that matches the lyrics.\n\nThe shot consists of exactly two camera setups:\n[Shot 1] lasts 5.333 seconds in a medium-long shot.\n[Shot 2] lasts 2.334 seconds in a dutch-angle shot.\n\nOccasional cars and a few pedestrians may appear only in the distant background, adding\nsubtle life to the street, but they must never distract from <Subject 1> or block her.\n\n\nretention_analysis:\n\n<Subject 1>: fully_preserved across [Shot 1] and [Shot 2] - preserve her exact identity,\nfacial features, hair, body proportions, black blazer, white shirt, black crop top,\ncargo trousers, chain belt, and boots.\n\n<Subject 2>: fully_preserved across [Shot 1] and [Shot 2] - preserve the rainy bus stop,\nglass shelter, illuminated interior panel, wet pavement, street reflections, storefronts,\nand night atmosphere, while keeping the street free of buses.\n\n\ndetailed_description:\n\nThe target video is cinematic live action in 16:9, rainy, moody, and realistic. It is\nlate at night. The pavement and road are wet and highly reflective. Warm street lamps and\ncool storefront light mix across the scene. The bus stop shelter is clearly visible and\nacts as the main stage-like location for the performance.\n\n<Subject 1> is positioned inside the bus shelter. She faces the camera directly and\nsings in an emotionally intense, committed way. Her lip sync is clear and readable.\nHer gestures with both hands support the lyrics naturally and expressively. She should\nfeel fully engaged in the performance, not shy or passive.\n\nShe maintains direct eye contact with the camera throughout this shot. Her expression is\nopen, intense, and emotionally present. Use realistic hand gestures, natural body weight\nshifts, and believable singing performance.\n\nIn the far background, allow subtle late-night street life: occasionally one car may pass\nthrough the street in the distance, and a few pedestrians may appear on the pavement far\nbehind her. These background elements must remain secondary, sparse, and understated.\n\n[Shot 1]\n\nFrom 0.000 to 5.333 seconds, use a medium-long shot. Frame her full body or nearly full\nbody inside the bus shelter, with the wet street and surrounding storefronts visible\naround her. She remains the clear focus of the shot.\n\nThe camera is stable and frontal, positioned outside the shelter at a natural viewing\nheight. <Subject 1> stands inside the shelter and sings directly to camera. She gestures\nwith both hands in time with the lyrics: small outward motions, chest-level emphasis,\nbrief lifting gestures, and expressive open-palmed phrasing. Her body remains mostly in\nplace, with only subtle natural movement. The illuminated shelter interior and wet street\nreflections remain visible.\n\nIn the distant background, one occasional car may move through the street, and one or two\npedestrians may pass far behind the shelter. They remain small, secondary, and never\ninterfere with the framing of <Subject 1>.\n\n[Shot 2]\n\nFrom 5.333 to 7.667 seconds, cut to a second setup with a dutch angle. The framing is\ncloser, around medium or medium-close, with a noticeable but tasteful tilted composition.\nThe dutch angle should intensify the emotional energy rather than feel random.\n\n<Subject 1> continues singing directly into the camera with the same strong emotional\ncommitment. Her lip sync remains precise and clear. Her hand gestures become slightly\nmore concentrated and intense in this closer framing, with expressive motion near her\nface, chest, and upper torso. The shelter glass, wet reflections, and night street still\nremain visible in the background.\n\nA few distant pedestrians and an occasional passing car may still exist in the background,\nbut only as soft, secondary environmental activity. They must never draw attention away\nfrom her face or hands.\n\nThe shot ends while she is still fully engaged in the performance.\n\nUse realistic blinking, breathing, subtle hair movement, and natural fabric motion.\nThe glass shelter and rainy street should feel believable and grounded, not stylized into\nfantasy. The atmosphere is dramatic and nocturnal, but still urban and real.\n\n\nLimits:\n\nExactly 7.667 seconds total.\nExactly two camera setups.\n[Shot 1] duration: 5.333 seconds.\n[Shot 2] duration: 2.334 seconds.\n[Shot 1] is a medium-long shot.\n[Shot 2] is a dutch-angle shot.\n<Subject 1> remains at the bus stop shelter throughout.\nShe looks directly into the camera throughout.\nShe sings intensely throughout with clear lip sync.\nShe gestures with both hands in a lyric-matched expressive way.\nOnly occasional cars in the background.\nOnly a few pedestrians in the background.\nBackground activity remains sparse and secondary.\nNo bus appears at any point.\nNo crowd.\nNo background person blocks her.\nNo vehicle passes directly between the camera and <Subject 1>.\nNo camera shake.\nNo extra cut beyond the one transition between [Shot 1] and [Shot 2].\nNo identity drift.\nNo wardrobe change.\nNo location change.\nDo not turn the scene into a tunnel, stairwell, or different location.\n\n\noverall_soundscape:\n\nN/A\n\n\nnon_diegetic_music:\n\nN/A"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Input Text (Prompt)"
+    }
+  },
+  "141": {
+    "inputs": {
+      "audio": "airtone-dnb-banger-08-video-vocal-slicer-04-voxonly.wav",
+      "start_time": 54,
+      "end_time": 69,
+      "duration": 15,
+      "audio_ui": ""
+    },
+    "class_type": "LoadAudioUI",
+    "_meta": {
+      "title": "Load Audio UI"
+    }
+  },
+  "152": {
+    "inputs": {
+      "seed": 586114278454887
+    },
+    "class_type": "easy seed",
+    "_meta": {
+      "title": "EasySeed"
+    }
+  },
+  "165": {
+    "inputs": {
+      "source": [
+        "131",
+        1
+      ]
+    },
+    "class_type": "PreviewAny",
+    "_meta": {
+      "title": "Preview as Text"
+    }
+  },
+  "166": {
+    "inputs": {
+      "value": "subject_definitions:\n\n<Subject 1> is the woman from <Picture 2>. Preserve her exact identity, face, hair, body proportions, black oversized blazer, white shirt, black crop top, black cargo trousers, chain belt, and black boots.\n\n<Subject 2> is the old narrow pub interior from <Picture 1>. Preserve the cramped booth by the front window, the worn dark wood, aged walls, tiny table, red leather benches, warm pendant lighting, and the intimate, old-fashioned atmosphere.\n\nsummary:\n\n[reference generation] A ten-second live-action burst sequence made of ten distinct one-second shots. Each shot is an independent still-like composition of the same woman in the same pub booth at night during rain. The woman sits directly beside the window on the right-hand bench, close to the glass, often with her head lightly leaned against the rainy window. The sequence is designed to generate ten different usable cinematic frames.\n\nretention_analysis:\n\n<Subject 1> is fully preserved in every shot. Keep her identity, outfit, proportions, and styling unchanged across the entire burst.\n\n<Subject 2> is fully preserved in every shot. Keep the same pub architecture, same booth, same worn textures, same rainy night atmosphere, and same warm interior versus cold exterior contrast.\n\ndetailed_description:\n\nThe target video is cinematic live action in 16:9. It is night outside. Rain streaks down the pub window. The interior is dim and warm, while the street outside is dark, wet, and softly illuminated by streetlights and passing car reflections.\n\nThis video is a burst-frame sequence intended for extracting ten individual still frames. Each shot must begin immediately in a new finished composition. Use hard cuts only. No morphing, no visual blending, no continuous camera travel between shots, and no transition effects. Every shot should feel like a clean, strong photographic composition that holds long enough to capture a usable frame.\n\nThe woman remains seated on the right-hand booth bench throughout the entire sequence. She stays very close to the window. In several shots, the side of her head rests lightly against the rainy glass. She may check her phone, hold it in one hand, rest near the cup, sip from the cup, or glance outside. Keep all actions minimal and natural.\n\n[Shot 1]\nFrom 0.00 to 1.00 seconds: Wide view from near the bar, looking toward the booth and front window. The woman sits on the right-hand bench with her head lightly leaned against the rainy window, phone in her left hand on the table side. At the very beginning, a car passes outside the window from left to right. The wet street catches a brief sweep of headlights.\n\n[Shot 2]\nAt 00:01.000, hard cut to a medium-wide oblique angle from inside the pub. The woman remains seated close against the window, looking down at her phone. The cup and saucer sit clearly on the tiny table.\n\n[Shot 3]\nAt 00:02.000, hard cut to a profile composition from the booth side. Her head rests gently against the rain-streaked glass. She looks outward into the dark street, reflective and withdrawn.\n\n[Shot 4]\nAt 00:03.000, hard cut to a closer medium shot through soft foreground bar elements. She lowers her gaze to the phone again. Warm practical light shapes her face while cool rain light fills the window side.\n\n[Shot 5]\nAt 00:04.000, hard cut to a table-height angle. She reaches for the cup with her right hand while still holding the phone with her left. The shot should emphasize the small table, cup, and cramped booth.\n\n[Shot 6]\nAt 00:05.000, hard cut to a medium shot as she takes one quiet sip from the cup. Her posture remains compact and natural. The rainy night window is still visible behind her.\n\n[Shot 7]\nAt 00:06.000, hard cut to an exterior-looking-in composition through the wet window. The woman is seen inside the pub, warmly lit, seated with the cup lowered again. Rain and reflections dominate the foreground glass.\n\n[Shot 8]\nAt 00:07.000, hard cut to a slightly symmetrical front-facing composition across the booth. She has placed the cup back onto the saucer and now rests lightly near the window again, glancing outside as a pedestrian passes by.\n\n[Shot 9]\nAt 00:08.000, hard cut to an intimate close medium profile. Her head lightly touches the rainy glass again. She looks thoughtful, tired, and distant, with the phone relaxed in her hand.\n\n[Shot 10]\nAt 00:09.000, hard cut to a final wide composition framed by dark pub foreground elements. She remains seated by the window, close to the glass, phone in hand, as the rainy night street glows outside.\n\nPreserve strong shot-to-shot variety in framing and angle, but keep the same identity, wardrobe, booth, cup, phone, and rainy-night pub atmosphere. Each shot must already look finished from its first frame.\n\nLimits:\n\nTen shots in ten seconds.\nEach shot lasts about one second.\nHard cuts only.\nNo morphing between shots.\nNo camera transition between compositions.\nThe woman remains seated on the right-hand bench throughout.\nOne woman only.\nOne phone only.\nOne cup and one saucer only.\nThe pub remains small, old, dark, and cramped.\nNight outside throughout.\nRain on the window throughout.\nOnly one passing car, at the very beginning.\nOccasional pedestrians outside only.\nNo bus.\nNo one enters the pub.\nNo identity drift, no wardrobe change, no furniture change, no architectural change.\n\noverall_soundscape:\n\nSteady rain on the window, subdued pub room tone, faint nighttime street ambience, one passing car at the beginning, occasional distant footsteps outside, very subtle ceramic handling, no dialogue.\n\nnon_diegetic_music:\n\nN/A"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "BURST TEST 1"
+    }
+  },
+  "167": {
+    "inputs": {
+      "sage_attention": "auto",
+      "allow_compile": false,
+      "model": [
+        "127",
+        0
+      ]
+    },
+    "class_type": "PathchSageAttentionKJ",
+    "_meta": {
+      "title": "Patch Sage Attention KJ"
+    }
+  },
+  "169": {
+    "inputs": {
+      "video": "MiniMax_H3_00040_.mp4",
+      "force_rate": 0,
+      "custom_width": 0,
+      "custom_height": 0,
+      "frame_load_cap": 0,
+      "skip_first_frames": 150,
+      "select_every_nth": 1,
+      "format": "AnimateDiff"
+    },
+    "class_type": "VHS_LoadVideo",
+    "_meta": {
+      "title": "Load Video (Upload) 🎥🅥🅗🅢"
+    }
+  },
+  "170": {
+    "inputs": {
+      "enabled": true,
+      "blend_weight": 0.5,
+      "degree": 4,
+      "ridge_lambda": 0.1,
+      "window_size": 2,
+      "flex_window": 0.75,
+      "warmup_steps": 5,
+      "tail_actual_steps": 1,
+      "max_history": 8,
+      "debug": false,
+      "history_storage": "system_ram",
+      "model": [
+        "167",
+        0
+      ]
+    },
+    "class_type": "SpectrumApplyMiniMaxH3",
+    "_meta": {
+      "title": "Spectrum Apply MiniMax H3"
+    }
+  },
+  "171": {
+    "inputs": {
+      "value": "subject_definitions:\n\n<Subject 1> is the London underground club environment from <Picture 1>. Preserve its\nexact architecture, spatial layout, low ceiling, walls, floor, lighting fixtures, bar or\nDJ area if visible, entrances, dark corners, worn materials, and cramped scale.\n\nThe target video takes place entirely inside <Subject 1>. Keep the venue dark, smoky,\nsweaty, intimate, raw, and slightly improvised. Do not enlarge, renovate, modernize, or\ntransform it into a polished commercial nightclub.\n\nThe dancers are a freely generated crowd of diverse adult clubgoers. They are not based\non character references. No individual person is the protagonist, singer, performer, or\nrecurring featured subject.\n\n\nsummary:\n\n[reference generation] A 15.000-second live-action club montage inside <Subject 1>,\ngenerated at 24 fps and edited for music at 180 BPM in 4/4 time.\n\nA dense crowd of adult clubgoers dances intensely throughout the club. Every new musical\nbar introduces a completely new camera setup. Each full bar lasts exactly 32 frames,\nequivalent to 1.333 seconds at 24 fps.\n\nCamera cuts are precisely synchronized to the musical bar boundaries.\n\nThe club lighting follows a separate, much faster, irregular rhythm. It changes\nhectically and unpredictably several times within most shots, without synchronizing to\nthe beat, downbeats, bars, or camera cuts.\n\nThere is no protagonist, singer, solo dancer, stage performer, or narrative action. The\nentire sequence is about collective crowd energy inside a dark, smoky London underground\nclub.\n\n\nretention_analysis:\n\n<Subject 1>: fully_preserved throughout all shots - preserve the exact club architecture,\nroom proportions, ceiling height, walls, floor, entrances, lighting fixtures, worn\nmaterials, dark corners, and spatial layout from <Picture 1>.\n\nThe freely generated crowd does not require exact individual identity continuity.\nPreserve the overall crowd density, adult age range, clothing style, physical intensity,\nand underground-club atmosphere across all shots.\n\nIndividual faces may appear briefly, but no single person repeatedly dominates the\nsequence.\n\nThe lighting design may change rapidly in colour, intensity, direction, and visibility,\nbut the underlying club architecture and spatial layout remain unchanged.\n\n\ndetailed_description:\n\nThe target video is cinematic live action in 16:9. It takes place entirely inside\n<Subject 1>.\n\nThe club is extremely dark, smoky, hot, cramped, and crowded. Dense haze hangs beneath\nthe low ceiling and catches the practical lighting. The dance floor is packed from\nforeground to background.\n\nThe generated adult clubgoers dance continuously with believable collective motion:\nbouncing, swaying, stomping, twisting shoulders, nodding heads, raising hands, shifting\nweight, brushing past one another, briefly embracing, and reacting physically to the\nmusic.\n\nThe dancing feels uninhibited, sweaty, euphoric, messy, and real. Nobody performs for\nthe camera. Nobody sings. Nobody deliberately poses. Nobody becomes the central hero.\n\nThis is a rhythmically edited montage. Every shot begins immediately with a completed\nnew camera composition. Use hard cuts only.\n\nNo camera move or visual transition connects one setup to the next. Do not animate,\nmorph, dissolve, smear, or blend one composition into another.\n\n\nTIMING AND EDITING:\n\nThe music tempo is 180 BPM in 4/4 time.\n\nOne beat lasts 0.333 seconds.\nOne musical bar lasts 1.333 seconds.\nOne full bar lasts exactly 32 frames at 24 fps.\n\nUse hard cuts at these exact frame boundaries:\n\n0.000 seconds / frame 000\n1.333 seconds / frame 032\n2.667 seconds / frame 064\n4.000 seconds / frame 096\n5.333 seconds / frame 128\n6.667 seconds / frame 160\n8.000 seconds / frame 192\n9.333 seconds / frame 224\n10.667 seconds / frame 256\n12.000 seconds / frame 288\n13.333 seconds / frame 320\n14.667 seconds / frame 352\n15.000 seconds / frame 360\n\n\nLIGHTING BEHAVIOR:\n\nThe camera editing and the lighting are deliberately asynchronous.\n\nCamera setups change exactly once per musical bar. The lighting changes much more\nfrequently and follows no musical grid.\n\nWithin most 1.333-second shots, use several abrupt and irregular lighting events:\nintensity drops, short flashes, uneven colour changes, moving beams, partial blackouts,\nand practical lights flickering independently.\n\nThe lighting must not pulse regularly at 180 BPM. It must not systematically hit the\nbeats, downbeats, bar boundaries, or camera cuts.\n\nDo not reset the lighting when a camera cut occurs. A lighting event may begin before a\ncut and continue briefly into the next camera setup. Another lighting event may change\nsuddenly between beats without relation to the edit.\n\nUse an unstable mixture of deep red, dirty amber, dim cold blue, harsh white, and\nnear-black shadow. Avoid clean or predictable colour sequences.\n\nSome lighting states last only 0.15 to 0.40 seconds. Others hold irregularly for 0.50 to\n1.00 seconds. Never establish a repeating cycle.\n\nDifferent parts of the room may be illuminated independently. One area may suddenly\ndrop into darkness while another receives a brief hard burst of light.\n\nFaces, hands, shoulders, and bodies flash briefly into visibility and then disappear\nagain into darkness. Smoke continuously reshapes the light into moving volumes,\nsilhouettes, partial faces, and layers of depth.\n\nOccasional near-black moments are allowed, but retain enough residual light and haze to\npreserve readable crowd movement and the club environment.\n\nThe lighting feels nervous, improvised, hectic, partially malfunctioning, and slightly\ndangerous rather than professionally programmed.\n\n\n[Shot 1]\n\nFrom 0.000 to 1.333 seconds, use a wide establishing view of <Subject 1>. Show the exact\nclub architecture, low ceiling, dark walls, dense haze, and a dance floor completely\nfilled with moving bodies.\n\nThe crowd pulses as one dense mass. Irregular light bursts reveal different layers of\nthe room independently.\n\n\n[Shot 2]\n\nAt 1.333 seconds, hard cut to a very low floor-level composition.\n\nBoots and shoes stomp, slide, and shift across the dirty reflective floor. Legs and\nlower bodies move close to the camera while the packed crowd remains visible above.\n\nFast, uneven colour changes and brief white flashes move across the floor without\nfollowing the beat.\n\n\n[Shot 3]\n\nAt 2.667 seconds, hard cut to a shoulder-height handheld composition from inside the\ncrowd.\n\nBodies pass close to the lens. Moving shoulders, hair, arms, and partially visible faces\ncreate the sensation of being physically trapped inside the dancing mass.\n\nFaces appear only briefly as independent lights flicker through the smoke.\n\n\n[Shot 4]\n\nAt 4.000 seconds, hard cut to a medium-wide side angle across the dance floor.\n\nSeveral layers of dancers move in different directions while remaining part of the same\ncollective energy. Dark silhouettes cross the foreground.\n\nLighting changes rapidly across separate areas of the room rather than illuminating the\nwhole club at once.\n\n\n[Shot 5]\n\nAt 5.333 seconds, hard cut to a tight close-medium composition among the crowd.\n\nSeveral sweaty faces and upper bodies emerge briefly through the haze. Their expressions\nare euphoric, concentrated, and absorbed in the music. Nobody looks deliberately into\nthe camera.\n\nA sequence of irregular red, near-black, dirty white, and amber states briefly reveals\ndifferent faces.\n\n\n[Shot 6]\n\nAt 6.667 seconds, hard cut to a slightly elevated view over the packed dance floor.\n\nRaised hands, moving heads, shoulders, and tightly grouped bodies form a dense physical\npattern beneath the smoky ceiling.\n\nNarrow beams sweep unpredictably through the haze while other fixtures drop out\nindependently.\n\n\n[Shot 7]\n\nAt 8.000 seconds, hard cut to an oblique composition from behind dark foreground\ndancers.\n\nTheir silhouettes partially frame a brighter pocket of clubgoers deeper inside the\nroom. The club feels cramped and layered.\n\nThe brighter area flickers and collapses into darkness while another side of the room\nbriefly illuminates.\n\n\n[Shot 8]\n\nAt 9.333 seconds, hard cut to an extremely tight kinetic composition of raised hands,\ntwisting torsos, moving shoulders, hair, sweat, and clothing.\n\nFaces appear only momentarily between moving bodies. Lighting flashes across individual\nbody parts rather than revealing the entire scene cleanly.\n\n\n[Shot 9]\n\nAt 10.667 seconds, hard cut to a frontal medium-wide view of the crowd.\n\nBacklighting through the haze turns some dancers into silhouettes while others emerge\nbriefly into small unstable pools of warm light.\n\nThe light changes frequently and irregularly throughout the shot, without matching the\nmusic.\n\n\n[Shot 10]\n\nAt 12.000 seconds, hard cut to a handheld camera position inside a narrow gap in the\ncrowd.\n\nBodies move past close to the lens, creating strong foreground parallax and an intense\nclaustrophobic sense of depth.\n\nUneven white, red, and blue practical lights flash independently through the smoke.\n\n\n[Shot 11]\n\nAt 13.333 seconds, hard cut to a wide rear three-quarter composition from a dark corner\nof <Subject 1>.\n\nShow the preserved club architecture while the entire room appears to breathe, surge,\nbounce, and sway beneath the low ceiling.\n\nLighting continues changing rapidly and asynchronously across the crowd and ceiling.\n\n\n[Shot 12]\n\nAt 14.667 seconds, hard cut to a very short eight-frame final stinger.\n\nUse a strong but controlled dutch angle from inside the crowd. Show smoke, raised hands,\nsharply readable central dancers, and fast movement near the image edges.\n\nUse one abrupt irregular lighting event during this final eight-frame shot, but do not\nsynchronize it deliberately to the final cut.\n\nEnd abruptly at exactly 15.000 seconds.\n\n\nLimits:\n\nUse only <Picture 1> as the visual reference.\n<Picture 1> defines the club environment only.\nDo not invent a referenced character.\n\nExactly 15.000 seconds.\nExactly 24 fps.\nMusic tempo is 180 BPM in 4/4 time.\nOne new camera setup at every musical bar boundary.\nEach full-bar shot lasts exactly 32 frames.\nThe final shot lasts exactly 8 frames.\n\nHard cuts only.\nNo dissolve.\nNo morphing.\nNo visual blending between shots.\nNo continuous camera transition connecting separate shots.\n\nLighting is not synchronized to the beat.\nLighting is not synchronized to the downbeats.\nLighting is not synchronized to the bar boundaries.\nLighting is not synchronized to the camera cuts.\nNo regular four-on-the-floor light pulse.\nNo repeating lighting cycle.\nNo predictable colour sequence.\nNo static lighting for an entire shot.\nUse several irregular lighting changes within most shots.\nDo not reset the lighting state at each hard cut.\n\nPreserve the exact club architecture from <Picture 1>.\nKeep the same club location throughout.\nKeep the crowd dense throughout.\n\nNo protagonist.\nNo singer.\nNo featured woman or man.\nNo solo dancer.\nNo recurring hero face.\nNo staged performance.\nNo band.\nNo performer addressing the crowd.\nNo crowd watching a stage.\nNo deliberate posing for the camera.\n\nNo empty or sparse dance floor.\nNo daylight.\nNo exterior scene.\nNo polished luxury nightclub.\nNo festival arena.\nNo giant commercial LED wall.\nNo clean symmetrical light show.\nNo giant festival lasers.\nNo location change.\nNo text overlays.\nNo slow motion.\n\nKeep the club dark, smoky, cramped, sweaty, gritty, hectic, and densely crowded\nthroughout.\n\n\noverall_soundscape:\n\nN/A\n\n\nnon_diegetic_music:\n\nN/A"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "Input Text (Prompt)"
+    }
+  },
+  "176": {
+    "inputs": {
+      "image": "club-the_crypt.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "Image0"
+    }
+  },
+  "177": {
+    "inputs": {
+      "size": 2048,
+      "mode": true,
+      "images": [
+        "176",
+        0
+      ]
+    },
+    "class_type": "ImageScaleDownToSize",
+    "_meta": {
+      "title": "Scale Image0"
+    }
+  },
+  "244": {
+    "inputs": {
+      "value": 121
+    },
+    "class_type": "INTConstant",
+    "_meta": {
+      "title": "NUM_FRAMES"
+    }
+  },
+  "245": {
+    "inputs": {
+      "value": 24
+    },
+    "class_type": "FloatConstant",
+    "_meta": {
+      "title": "Float Constant"
+    }
+  }
+}

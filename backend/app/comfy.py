@@ -18,7 +18,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import JSONResponse
 
-from . import jobs, settings
+from . import frames, jobs, settings
 from .comfy_workflow_template import build_workflow_payload
 from .projects import project_dir
 
@@ -149,6 +149,19 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
             if candidate.exists():
                 extend_path = candidate
 
+    # Same H3 render-length math the shot table/export already use (see
+    # frames.py, export.py) - computed server-side from the project's own
+    # video/frame-rule settings rather than trusted from the client, same
+    # reasoning as export.py's own comment on this.
+    shot = next((s for s in data.get("shots", []) if s.get("id") == shot_id), None)
+    video = data.get("video") or {}
+    frame_count = None
+    fps_value = None
+    if shot and video:
+        cut_duration = shot["endSeconds"] - shot["startSeconds"]
+        frame_count = frames.frame_calc(cut_duration, video)["renderFrames"]
+        fps_value = frames.fps(video)
+
     # A blank/absent seed means "surprise me" - resolved once here so the
     # same concrete value goes into both the submitted workflow and the
     # take record the frontend ends up saving (see h3Compiler-adjacent
@@ -170,6 +183,8 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
                 prompt_text,
                 uploaded,
                 resolved_seed,
+                frame_count=frame_count,
+                fps=fps_value,
                 extend_filename=extend_filename,
                 extend_start_frame=extend_start_frame,
                 extend_frame_count=extend_frame_count,

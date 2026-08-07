@@ -1,77 +1,73 @@
-# Placeholder ComfyUI workflow (API format) and the substitution logic that
-# turns it into a submittable /prompt payload. The user's real workflow is
-# still a draft - this targets generic, common node types (CLIPTextEncode
-# for the positive prompt, LoadImage per reference, KSampler.seed) so the
-# rest of the generation pipeline (comfy.py) can be built and tested against
-# *a* workflow shape now, without waiting on the real one. Once the real
-# workflow JSON is ready: replace PLACEHOLDER_WORKFLOW below (or point the
-# loader at the real file) and fix the node-ID lookups in
-# build_workflow_payload to match its actual node IDs - this file is
-# deliberately the only place those IDs are hardcoded.
+# Loads the real ComfyUI workflow (API format, exported from the user's own
+# graph) and substitutes per-request values into it. Node IDs below are
+# hardcoded to match backend/app/workflows/R2V_H3_V1.json specifically - this
+# file is deliberately the only place those IDs are hardcoded, so a
+# re-export with renumbered nodes only needs updating here.
 import copy
+import json
+from pathlib import Path
 
-# Node IDs below ("6" for the positive prompt, "3" for KSampler) are
-# ComfyUI's typical default IDs for a basic txt2img/txt2vid-style graph -
-# NOT guaranteed to match the user's real workflow once it exists.
-PLACEHOLDER_WORKFLOW: dict = {
-    "6": {
-        "class_type": "CLIPTextEncode",
-        "inputs": {"text": "", "clip": ["4", 1]},
-    },
-    "3": {
-        "class_type": "KSampler",
-        "inputs": {"seed": 0},
-    },
-}
+WORKFLOW_PATH = Path(__file__).parent / "workflows" / "R2V_H3_V1.json"
+BASE_WORKFLOW: dict = json.loads(WORKFLOW_PATH.read_text(encoding="utf-8"))
+
+PROMPT_NODE_ID = "171"  # PrimitiveStringMultiline -> MiniMaxH3ReferenceToVideo.prompt
+SEED_NODE_ID = "152"  # easy seed
+FRAME_COUNT_NODE_ID = "244"  # INTConstant "NUM_FRAMES" -> MiniMaxH3ReferenceToVideo.length
+FPS_NODE_ID = "245"  # FloatConstant -> CreateVideo.fps
+REFERENCE_NODE_ID = "136"  # MiniMaxH3ReferenceToVideo - ref_images.ref_image_N inputs live here
+FIRST_REF_IMAGE_NODE_ID = "176"  # LoadImage already wired to ref_images.ref_image_0 via node "177"
+
+# The exported graph also contains a VHS_LoadVideo node (id "169", a video-
+# continuation source) that isn't wired into anything - this MiniMax H3
+# "Reference to Video" model has no continuation input for it to feed. The
+# app's Extend feature (comfy.py uploads extend_filename) is kept generic for
+# a future workflow that does support it, but this function intentionally
+# ignores it for R2V_H3_V1.
 
 
 def build_workflow_payload(
     prompt_text: str,
     reference_filenames: list[str],
     seed: int,
+    frame_count: int | None = None,
+    fps: float | None = None,
     extend_filename: str | None = None,
     extend_start_frame: int = 0,
     extend_frame_count: int | None = None,
 ) -> dict:
-    """Returns the template with prompt/seed/reference images substituted
-    in. `seed` is the already-resolved value (the caller picks a random one
-    if none was given) so this function only ever deals with a concrete int.
-
-    `extend_filename` is the ComfyUI-side filename of a video already
-    uploaded via /upload/image (VHS accepts video uploads through the same
-    endpoint as images) - when given, a VHS_LoadVideo node is added carrying
-    the frame range (`skip_first_frames`/`frame_load_cap`) the caller wants
-    to continue from.
+    """Returns the real workflow with prompt/seed/reference images/frame
+    count/fps substituted in. `seed` is the already-resolved value (the
+    caller picks a random one if none was given) so this function only ever
+    deals with a concrete int. `extend_filename`/`extend_start_frame`/
+    `extend_frame_count` are accepted for signature compatibility with the
+    app's Extend feature but not wired into R2V_H3_V1 - see module docstring.
     """
-    workflow = copy.deepcopy(PLACEHOLDER_WORKFLOW)
+    workflow = copy.deepcopy(BASE_WORKFLOW)
 
-    if "6" in workflow:
-        workflow["6"]["inputs"]["text"] = prompt_text
+    workflow[PROMPT_NODE_ID]["inputs"]["value"] = prompt_text
+    workflow[SEED_NODE_ID]["inputs"]["seed"] = seed
+    if frame_count is not None:
+        workflow[FRAME_COUNT_NODE_ID]["inputs"]["value"] = frame_count
+    if fps is not None:
+        workflow[FPS_NODE_ID]["inputs"]["value"] = fps
 
-    if "3" in workflow:
-        workflow["3"]["inputs"]["seed"] = seed
-
-    # One LoadImage node per reference, node IDs "ref0", "ref1", ... - the
-    # placeholder graph doesn't wire these into anything downstream since
-    # there's nothing to wire them to yet; once the real workflow exists,
-    # point its own reference-image inputs at these instead.
+    # One LoadImage + ImageScaleDownToSize pair per reference, wired into
+    # MiniMaxH3ReferenceToVideo's ref_images.ref_image_N inputs. The first
+    # reference reuses the pair already in the exported graph (node "176"/
+    # "177", already wired to ref_image_0); further references duplicate
+    # that same two-node shape under new IDs.
+    ref_node = workflow[REFERENCE_NODE_ID]
     for index, filename in enumerate(reference_filenames):
-        workflow[f"ref{index}"] = {
-            "class_type": "LoadImage",
-            "inputs": {"image": filename},
+        if index == 0:
+            workflow[FIRST_REF_IMAGE_NODE_ID]["inputs"]["image"] = filename
+            continue
+        load_id = f"ref_load_{index}"
+        scale_id = f"ref_scale_{index}"
+        workflow[load_id] = {"class_type": "LoadImage", "inputs": {"image": filename}}
+        workflow[scale_id] = {
+            "class_type": "ImageScaleDownToSize",
+            "inputs": {"size": 2048, "mode": True, "images": [load_id, 0]},
         }
-
-    # Same "unwired for now" story as the LoadImage refs above - once the
-    # real extend-capable workflow exists, point its continuation input at
-    # this node instead.
-    if extend_filename:
-        workflow["extend0"] = {
-            "class_type": "VHS_LoadVideo",
-            "inputs": {
-                "video": extend_filename,
-                "skip_first_frames": extend_start_frame,
-                "frame_load_cap": extend_frame_count or 0,
-            },
-        }
+        ref_node["inputs"][f"ref_images.ref_image_{index}"] = [scale_id, 0]
 
     return workflow
