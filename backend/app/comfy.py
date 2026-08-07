@@ -149,18 +149,18 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
             if candidate.exists():
                 extend_path = candidate
 
-    # Same H3 render-length math the shot table/export already use (see
-    # frames.py, export.py) - computed server-side from the project's own
-    # video/frame-rule settings rather than trusted from the client, same
-    # reasoning as export.py's own comment on this.
+    # H3's own frame-count grid (see frames.h3_frame_count) - fixed to the
+    # model itself, not the project's configurable frameRule/fps (that's a
+    # separate axis used by the shot table/export, see export.py). Computed
+    # server-side rather than trusted from the client, same reasoning as
+    # export.py's own comment on this.
     shot = next((s for s in data.get("shots", []) if s.get("id") == shot_id), None)
-    video = data.get("video") or {}
     frame_count = None
     fps_value = None
-    if shot and video:
+    if shot:
         cut_duration = shot["endSeconds"] - shot["startSeconds"]
-        frame_count = frames.frame_calc(cut_duration, video)["renderFrames"]
-        fps_value = frames.fps(video)
+        frame_count = frames.h3_frame_count(cut_duration)
+        fps_value = frames.H3_FPS
 
     # A blank/absent seed means "surprise me" - resolved once here so the
     # same concrete value goes into both the submitted workflow and the

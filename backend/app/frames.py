@@ -40,3 +40,19 @@ def frame_rule_label(stride: int | None) -> str:
     if stride == 8:
         return "8n+1"
     return "free"
+
+
+# MiniMax H3's own frame-count grid - fixed to the model itself (see upstream
+# comfy_extras/nodes_minimax_h3.py: FPS=24, align_frame_count() requires
+# n % 17 == 5), not the project's configurable frameRule/fps above. A project
+# can run at any timeline fps; H3 always generates at 24fps internally
+# regardless, so this must never read video.fpsNumerator/frameRule.
+H3_FPS = 24
+H3_STRIDE = 17
+H3_REMAINDER = 5
+H3_MIN_FRAMES = 5
+
+
+def h3_frame_count(duration_seconds: float) -> int:
+    desired = max(H3_MIN_FRAMES, round(duration_seconds * H3_FPS))
+    return desired + (H3_REMAINDER - desired % H3_STRIDE) % H3_STRIDE
