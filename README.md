@@ -1,16 +1,28 @@
-# Musical Shot Editor
+# CUTTAlogue
 
-A lean, local editor for planning video shots against a song: listen to the mix and vocal stem in sync, lock shot boundaries to the musical grid, and see the matching H3 render length (`4n+1` / `8n+1`) right away.
+A lean, local editor for planning *and generating* video shots against a song: listen to the mix and vocal stem in sync, lock shot boundaries to the musical grid, direct each shot with structured camera/character/prop tracks, compile that into a MiniMax H3 prompt, and generate the actual clip through a connected ComfyUI Pod - all from one project.
 
-Local first - everything runs on your machine, no cloud.
+Local first - everything runs on your machine, no cloud, no lock-in to a single generation backend beyond the ComfyUI workflow you point it at.
 
-For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md) and the [implementation roadmap](docs/cuttalogue-roadmap.md).
+For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md), the [implementation roadmap](docs/cuttalogue-roadmap.md), and the [Direction-tab roadmap](docs/h3-shot-direction-roadmap.md).
+
+---
+
+## Features
+
+- **Musical timeline** - four synced tracks (Grid/Shots/Mix/Vocal), a configurable BPM/time-signature/offset grid, and manually-placed shot boundaries with live cut/render/overhang frame counts.
+- **Asset library** - import images, video, and audio; each gets probed (FFprobe), thumbnailed, tagged, and classified (Location/Character/Prop, Full mix/Lip-sync, Motion guide) once for the whole project.
+- **Structured Direction tab** - per shot, a Camera lane plus one lane per cast character (and per prop), each with real fields (movement/direction/amplitude/framing/target for camera; action/manner/gaze/expression for characters; before/after state for props) instead of a single free-text prompt.
+- **Beats, cuts & Burst Mode** - segment boundaries across all lanes auto-derive a beat timeline; any beat can be marked a hard cut, splitting the shot into multiple `[Shot N]` compositions in the compiled prompt. **Burst Mode** bulk-populates a shot with evenly-spaced hard-cut beats and randomizes camera framing (and optionally subject pose) per beat - a fast way to explore poses/angles against a reference set.
+- **Deterministic H3 compiler + optional AI expansion** - one click turns a shot's Direction data into MiniMax H3's six-section reference-generation prompt (`subject_definitions` / `summary` / `retention_analysis` / `detailed_description` / `overall_soundscape` / `non_diegetic_music`), with an optional "Expand with AI" pass that only elaborates the deterministic `detailed_description` - never inventing subjects, actions, or cuts that weren't authored.
+- **Real generation, kept as takes** - each shot generates through a configured ComfyUI Pod running the actual `R2V_H3_V1` MiniMax H3 reference-to-video workflow; every run is kept as a new take (seed, status, video), never overwritten, with a one-click "promote to asset" to copy a take's video into the reusable asset pool.
+- **Whole-project export** - a per-shot package (`lip_sync.flac`, `shot.json`, `prompt.txt`, `notes.md`, copied assets) ready to hand off to further production steps.
 
 ---
 
 ## Getting started
 
-A small Python/FastAPI backend now serves the app and persists projects to disk (see [Backend](#backend) below):
+A small Python/FastAPI backend serves the app and persists projects to disk (see [Backend](#backend) below):
 
 ```bash
 cd backend
@@ -68,8 +80,8 @@ In the **Tempo** panel:
 
 In the **Video** panel:
 
-- **FPS** of the target video.
-- **Frame rule**: free, `4n+1`, or `8n+1` - determines which frame count H3 rounds up to when rendering.
+- **FPS** of the target video (the project's own timeline fps - independent of MiniMax H3's own internal 24fps, see [Setup](#setup)).
+- **Frame rule**: free, `4n+1`, or `8n+1` - used for the shot table/export's render-length math, not H3 generation itself.
 
 In the **Shot length** panel:
 
@@ -102,7 +114,7 @@ Each shot's row in the table below shows: start, end, duration, status (too shor
 Save, export, and project-switching controls all live in the **☰** menu (top left of the header).
 
 - The text field in the header is the project's **name** - type into it and hit **"Save project"** to persist it (same as tempo/shots, not saved until you click Save).
-- **"Save project"** (or **Ctrl+S** anywhere): writes tempo, video and shot settings plus all shot boundaries to the project folder on disk via the backend, with a brief confirmation toast. The audio files themselves are **not** saved - when reloading the project, the mix and vocal may need to be reselected.
+- **"Save project"** (or **Ctrl+S** anywhere): writes tempo, video, shot settings, all shots (including their Direction data), and asset metadata to the project folder on disk via the backend, with a brief confirmation toast. The audio files themselves are **not** saved - when reloading the project, the mix and vocal may need to be reselected. If a browser tab has unsaved edits when a project is (re)loaded, a prompt offers to restore or discard them (see the draft-autosave note in [Backend](#backend)).
 - **"Projects ▾"** opens a list of every project on the backend (name, shot count, last saved) - click one to switch to it, or **"+ New project"** to start a blank one. The browser remembers whichever project it last opened and reloads it automatically on the next page visit.
 - **"Export shots (JSON / CSV)"**: exports just the shot list with calculated frame counts, e.g. for further use in H3 or an editing tool. Still a plain client-side download, unrelated to the project save above.
 
@@ -117,7 +129,7 @@ The top-level **Assets** tab (next to **Shots**, above the timeline) is the proj
 - Selecting a card opens the detail panel on the right with its tags (comma-separated; the filter box above the grid matches on tags) and, for images, a description field plus a **"Describe image"** button (see [Setup](#setup) below).
 - Tags, kind, and descriptions live in the same project state as prompt/notes, so they only become durable once you hit **"Save project"**; imported files themselves land on disk immediately.
 
-Assigning an asset to a specific shot happens per-shot instead, in that shot's **Cast & Locations** tab (see below) - the library has no concept of "the selected shot".
+Assigning an asset to a specific shot happens per-shot instead, in that shot's **Cast & Locations** tab (see below) - the library has no concept of "the selected shot". A generated take can also be promoted straight into this same pool (see **Generate**, below) - once promoted, it behaves like any imported file, including being usable as a reference image/video for other shots.
 
 ---
 
@@ -125,19 +137,51 @@ Assigning an asset to a specific shot happens per-shot instead, in that shot's *
 
 Selecting a shot (click its row in the table, or the shot itself in the timeline - either stays in sync with the other) exposes five tabs to its right:
 
-- **Cast & Locations** - the shot's assigned assets as chips. Click the trailing **"+"** tile to open the asset picker: a grid of every classified asset where clicking an unassigned tile assigns it and closes the picker immediately (unclassified assets show as unavailable until given a kind in the Assets tab). Click a chip's **×** to unassign it. Character assets also get a per-shot **role** (primary / supporting character) and locations get an environment role - these are per-shot, since the same character can lead one shot and support the next, unlike kind which is fixed for the asset everywhere.
-- **Direction** - a small draggable/resizable lane timeline scoped to the shot's own duration - one **Camera** lane plus one lane per cast subject with an acting role. Drag a segment to move it, drag its edges to resize, click it to edit its fields (movement/framing/speed for camera, free-text action for subjects) in the panel below. A beat/time ruler above the lanes and a beat-boundary preview row below them show the musical grid and the semantic beats the compiler will actually merge segments into. The **Snap: on/off** toggle in the toolbar controls whether dragging a segment (or its edges) snaps to that ruler on release, same free-during-drag/snap-on-release behavior as the Shots track. The expand icon moves the same lanes into a large modal for more room - no separate view, just a reparent.
-- **Prompt** - free-text prompt for that shot, round-tripped through the project JSON, plus a **Seed** field: the seed to use for the *next* generation in the Generate tab (leave it blank for a random one each time). A completed take keeps a record of whichever seed it actually used, independent of whatever this field holds later.
-- **Notes** - free-text notes for that shot, same round-trip.
-- **Generate** - triggers video generation for this shot against a configured ComfyUI Pod (see [Setup](#setup) below) and keeps every take rather than overwriting: each entry shows its seed, status, and (once done) an inline video player, with **Set active** / **Delete** actions. Generating always adds a new take, even re-running with the same prompt.
+### Cast & Locations
 
-**"Compile prompt"** (in the Direction tab) feeds the Direction data into MiniMax H3's structured reference-generation prompt (see [docs/h3-shot-direction-roadmap.md](docs/h3-shot-direction-roadmap.md)) and writes the result into the **Prompt** tab. Keep segments coarse - a handful of large beats compiles far more reliably than many tiny ones.
+The shot's assigned assets as chips. Click the trailing **"+"** tile to open the asset picker: a grid of every classified asset where clicking an unassigned tile assigns it and closes the picker immediately (unclassified assets show as unavailable until given a kind in the Assets tab). Click a chip's **×** to unassign it. Character assets also get a per-shot **role** (primary / supporting character) and locations get an environment role - these are per-shot, since the same character can lead one shot and support the next, unlike kind which is fixed for the asset everywhere.
+
+### Direction
+
+A structured, model-neutral director's timeline scoped to the shot's own duration - not a free-text prompt box. One draggable/resizable lane per track:
+
+- **Camera** - each segment carries H3's real camera vocabulary: movement (zoom/pan/tilt/truck/track/arc/static/shake/roll/POV, etc.), direction, amplitude, framing, a target, and an optional transition into the next segment.
+- **One lane per cast character** with an acting role (primary/supporting) - each segment has a structured action (walk/run/stop/sit/reach/drink/check phone/...), manner, gaze, and expression, plus a free-text notes field that always carries through regardless of whether the structured fields are set.
+- **One lane per prop** - a prop's state over time (e.g. "on the table" → "held by Heather" → "on the table") *is* its before/after object state; holding is expressed by referencing the holding character directly rather than in prose.
+- **Constraints** - short, chip-style continuity rules for the whole shot (e.g. "no bus", "same lighting throughout"), fed into the compiled prompt's limits section.
+
+Drag a segment to move it, drag its edges to resize, click it to edit its fields in the panel below, or right-click it for **Split / Duplicate / Toggle enabled / Merge with next / Delete**. The **Snap: on/off** toggle controls whether dragging (or resizing) snaps to the grid ruler on release - same free-during-drag/snap-on-release behavior as the Shots track. The expand icon moves the same lanes into a large modal for more room - no separate view, just a reparent.
+
+**Beats** are read-only ticks below the lanes, auto-derived as the union of every segment boundary across all tracks - not something you author directly. Click a beat to open its panel:
+
+- **Hard cut before this beat** - marks this beat as the start of a brand-new `[Shot N]` composition in the compiled prompt (a hard cut) rather than a continuous evolution of the current one. A shot with no cuts marked compiles as one continuous `[Shot 1]`, exactly as before; marking any beat splits the compiled description into multiple hard-cut blocks, each stating its own duration, with matching "hard cuts only, no morphing" limits.
+- **Intent / Priority / End state** - an optional note on what should be true by the end of that beat; woven into the compiled description, with priority stored for a future conflict/warning engine.
+
+**Burst Mode** ("Burst…" button, above the Camera lane) is a bulk shortcut over the same hard-cut/beat mechanism: pick a beat length (as a fraction of a musical bar, seconds, or frames), and it replaces the shot's Camera lane with N evenly-spaced segments, each marked a hard cut - with checkboxes to also randomize the camera framing and/or (for any attached acting character) the pose per beat. Useful for quickly generating a burst of distinct, cleanly-cut compositions to explore poses/angles/framings against a reference set, or to pull a still frame from afterward.
+
+### Prompt
+
+**"Compile prompt"** deterministically serializes the shot's Direction data (camera/character/prop tracks, beats, cuts, constraints) into MiniMax H3's six-section reference-generation prompt format and writes the result here - nothing is invented, only what was explicitly authored is included. **"Expand with AI"** (needs the AI provider configured, see [Setup](#setup)) re-compiles the same five sections deterministically but sends only `detailed_description` to the configured chat model to elaborate toward H3's recommended 350-500 words, streaming the result in live; it's instructed never to invent new subjects, actions, or cuts beyond what's already stated. A word/character-count readout next to both buttons flags the 350-word gap either way. A **Seed** field holds the seed for the *next* generation in the Generate tab (leave it blank for a random one each time) - a completed take keeps a record of whichever seed it actually used, independent of whatever this field holds later.
+
+### Notes
+
+Free-text notes for that shot, round-tripped through the project JSON.
+
+### Generate
+
+Triggers video generation for this shot against a configured ComfyUI Pod (see [Setup](#setup)) and keeps every take rather than overwriting: each entry shows its seed, status, and (once done) an inline video player, with:
+
+- **Set active** - marks which take represents this shot going forward (e.g. for export).
+- **Use as asset** - copies that take's video into the project's asset pool (see [Assets](#assets)) so it can be assigned to any shot like an imported file, survives even if the take/shot it came from is later deleted, and can be picked as an **Extend** source (see below).
+- **Delete** - removes the take.
+
+Generating always adds a new take, even re-running with the same prompt. A video asset assigned to a shot can be put into **Extend** mode with a start-frame/frame-count range (a "last N frames" shortcut included) to continue from it - the UI and backend plumbing for this exist today, but the currently-wired `R2V_H3_V1` workflow (see [Setup](#setup)) doesn't yet have a continuation input to feed it, so Extend is inert until a workflow that supports it is wired in.
 
 ---
 
 ## Export
 
-- **Whole project** - the **☰** menu has an **"Export project"** button (plus an **"Include mix snippet"** checkbox). It builds the full per-shot export package from the product doc: `export/shot-XXX/` folders, each with `lip_sync.flac`, `shot.json` (the render manifest - frame counts, frame rule, assigned asset paths), `prompt.txt`, `notes.md`, copied assigned assets, and optionally `mix.flac`. A floating task panel (bottom-right) tracks aggregate progress ("Shot 12 of 37") with a **Cancel** button; cancelling stops between shots (and mid-encode on the current one) without leaving a corrupted or partially-written shot folder behind.
+**Whole project** - the **☰** menu has an **"Export project"** button (plus an **"Include mix snippet"** checkbox). It builds the full per-shot export package from the product doc: `export/shot-XXX/` folders, each with `lip_sync.flac`, `shot.json` (the render manifest - frame counts, frame rule, assigned asset paths), `prompt.txt`, `notes.md`, copied assigned assets, and optionally `mix.flac`. A floating task panel (bottom-right) tracks aggregate progress ("Shot 12 of 37") with a **Cancel** button; cancelling stops between shots (and mid-encode on the current one) without leaving a corrupted or partially-written shot folder behind.
 
 Both need a vocal track already loaded (see above), and the mix track too if "Include mix snippet" is checked; the project must have been saved at least once since.
 
@@ -153,7 +197,7 @@ The **"Setup"** button in the **☰** menu opens an application-wide connection 
 - **Default model**: used whenever a per-image request doesn't override it.
 - **Test connection**: a quick round trip (`GET {base URL}/models`, then a tiny real completion if a default model is set) to confirm the key/URL/model work before relying on them.
 
-With nothing configured, the rest of the app behaves exactly as before. Once configured, each **image** asset's card in the Assets tab gets a **Description** field plus a **"Describe image"** button (with an optional per-request model override). Clicking it sends that one image to the configured provider and streams the response straight into the description field as it arrives - one explicit action per image, never automatic or batched. Like export, this needs the project to have been saved at least once since the image was imported (asset import copies the file to disk right away, but it only becomes part of `project.json` - and therefore visible to the backend - once "Save project" runs).
+With nothing configured, the rest of the app behaves exactly as before. Once configured, each **image** asset's card in the Assets tab gets a **Description** field plus a **"Describe image"** button (with an optional per-request model override). Clicking it sends that one image to the configured provider and streams the response straight into the description field as it arrives - one explicit action per image, never automatic or batched. Like export, this needs the project to have been saved at least once since the image was imported (asset import copies the file to disk right away, but it only becomes part of `project.json` - and therefore visible to the backend - once "Save project" runs). The same provider also powers the Direction tab's **"Expand with AI"**.
 
 **ComfyUI (Pod)** (per-shot video generation, see the **Generate** tab described above):
 
@@ -161,7 +205,7 @@ With nothing configured, the rest of the app behaves exactly as before. Once con
 - **API key** - stored, but not wired into any request yet. RunPod's HTTP proxy has no authentication of its own; how to secure it (a basic-auth sidecar, an SSH tunnel, or something else) is still an open decision.
 - **Test connection**: checks that the Pod responds to `GET {base URL}/system_stats`.
 
-The workflow itself (which ComfyUI nodes receive the prompt / reference images / seed) is a separate, still-in-progress piece on the backend (`backend/app/comfy_workflow_template.py`), independent of this connection setup.
+The workflow actually submitted (`backend/app/workflows/R2V_H3_V1.json`, substituted per-request by `backend/app/comfy_workflow_template.py`) is the real MiniMax H3 "Reference to Video" ComfyUI graph - it takes the compiled prompt plus every reference image assigned to the shot and generates a clip through the model directly, not a placeholder. H3 has its own fixed frame-count grid (`n % 17 == 5`, always at an internal 24fps, independent of the project's own timeline fps above) - `backend/app/frames.py`'s `h3_frame_count` computes it server-side from the shot's duration rather than trusting the client.
 
 ---
 
@@ -171,16 +215,18 @@ A minimal FastAPI backend (`backend/`) replaces the old "download a JSON file" s
 
 - `POST /api/projects` creates a new project folder + `project.json`. `GET /api/projects` lists every project (id, name, shot count, last-saved time) for the **Projects** picker.
 - `GET /api/projects/{id}` / `PUT /api/projects/{id}` read/write it.
-- `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape export and AI description reuse.
+- `PUT` runs as a job (`GET /api/jobs/{jobId}` + `/events` for SSE progress) - the same job/SSE shape export, AI description, prompt expansion, and generation all reuse.
 - `POST /api/projects/{id}/assets` imports one or more files into that project's `assets/` folder and returns their metadata/thumbnail descriptors (no project.json write - that's still "Save project").
+- `POST /api/projects/{id}/shots/{shotId}/takes/{takeId}/promote-to-asset` copies a finished take's video into the asset pool the same way, under a new asset id, independent of the take/shot it came from.
 - `POST /api/projects/{id}/audio/{track}` (`track` = `mix` or `vocal`) uploads the raw audio file itself to `audio/<track>.<ext>`.
 - `POST /api/projects/{id}/export` runs the whole-project export as a job with aggregate SSE progress; `POST /api/jobs/{jobId}/cancel` requests cancellation, checked between shots and mid-`ffmpeg`-encode.
 - `GET /api/settings` / `PUT /api/settings` read/write the application-level provider connections - `providers.ai` (chat API) and `providers.comfy` (ComfyUI Pod) - in `backend/data/settings.json` (gitignored). API keys are never echoed back in the `GET` response, only whether one is saved.
 - `POST /api/settings/test` makes a lightweight request against whichever provider (`ai` or `comfy`) is specified and reports whether it succeeded.
 - `POST /api/projects/{id}/assets/{assetId}/describe` streams one image to the configured AI provider's chat completions endpoint (`stream: true`) and re-emits each token as a job event's `delta` field over the same SSE job shape, so the frontend can pour the response into the description field as it arrives.
-- `POST /api/projects/{id}/shots/{shotId}/generate` submits a generation job to the configured ComfyUI Pod (upload reference images, submit the workflow, poll for completion, download the result) over the same job/SSE shape; the resulting file lands under `shots/<shotId>/takes/<takeId>/output.mp4` in the project folder. Like the endpoints above, it never writes `project.json` itself - the frontend records the take and persists it via the normal Save.
+- `POST /api/expand-description` streams the same way for the Direction tab's "Expand with AI" - stateless (text in, expanded text out), no project/asset lookup involved.
+- `POST /api/projects/{id}/shots/{shotId}/generate` submits a generation job to the configured ComfyUI Pod (upload reference images, submit the real `R2V_H3_V1` workflow, poll for completion, download the result) over the same job/SSE shape; the resulting file lands under `shots/<shotId>/takes/<takeId>/output.mp4` in the project folder. Like the endpoints above, it never writes `project.json` itself - the frontend records the take and persists it via the normal Save.
 
-Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `shots/<shotId>/takes/<takeId>/` (generated videos), `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage` and switches it via the **Projects** picker in the **☰** menu.
+Projects are stored under `backend/data/projects/<id>/` (gitignored) - `project.json`, `audio/`, `assets/<assetId>/`, `shots/<shotId>/takes/<takeId>/` (generated videos), `exports/scratch/` (single-shot export), and `export/` (whole-project export, rebuilt fresh on every run). Files are served straight off disk at `/project-files/<projectId>/<relativePath>`. The frontend keeps its current project id in the browser's `localStorage`, switches it via the **Projects** picker in the **☰** menu, and periodically autosaves an in-progress draft it can offer to restore if a tab is closed (or crashes) before an explicit Save.
 
 Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export. `ffmpeg` calls all run via a plain synchronous `subprocess.Popen` in a background thread rather than `asyncio.create_subprocess_exec` - the latter needs the Proactor event loop on Windows and raises `NotImplementedError` on Selector, which some `uvicorn --reload` worker processes end up on regardless of the policy set at startup.
 
@@ -191,5 +237,9 @@ Requires `ffprobe`/`ffmpeg` on `PATH` for asset metadata, thumbnails, and export
 - No automatic shot or cut detection - all boundaries are set manually.
 - No audio mixing (no gain, solo, mute, fades).
 - No local rendering - video generation happens via a configured ComfyUI Pod (see [Setup](#setup)), not inside the app itself.
+
+## Status
+
+Early and actively evolving - the Direction tab, H3 compiler, and generation pipeline described above are real and working end-to-end against a configured ComfyUI Pod, but expect rough edges, missing validation, and design still settling in places (see the roadmap docs linked above for what's deliberately deferred).
 
 Full details and roadmap: [docs/musical-shot-editor.md](docs/musical-shot-editor.md).
