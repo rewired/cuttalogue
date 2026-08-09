@@ -14,6 +14,7 @@
     playPauseBtn: document.getElementById('play-pause-btn'),
     loopToggleBtn: document.getElementById('loop-toggle-btn'),
     loopSnapToggle: document.getElementById('loop-snap-toggle'),
+    shotTimeFormatToggle: document.getElementById('shot-time-format-toggle'),
     zoomSlider: document.getElementById('zoom-slider'),
     placeholder: document.getElementById('timeline-placeholder'),
 
@@ -104,6 +105,7 @@
     el.playPauseBtn.addEventListener('click', () => MSE.sync.togglePlayback());
     el.loopToggleBtn.addEventListener('click', () => MSE.sync.toggleLoopEnabled());
     el.loopSnapToggle.addEventListener('click', () => MSE.sync.toggleLoopSnapMode());
+    el.shotTimeFormatToggle.addEventListener('click', () => MSE.sync.toggleShotTimeFormat());
 
     el.trackLabelMix.addEventListener('click', () => MSE.sync.setPlaybackTrack('mix'));
     el.trackLabelVocal.addEventListener('click', () => MSE.sync.setPlaybackTrack('vocal'));

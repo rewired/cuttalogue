@@ -16,7 +16,7 @@
 
   const { state, emit, on } = MSE.state;
   const { gridStepSeconds, barDuration, barBeatAt, snapToGrid, durationInBarsBeats, positionInBarsBeats } = MSE.grid;
-  const { formatTime } = MSE.format;
+  const { formatTime, formatSeconds } = MSE.format;
   const { frameCalc, fps } = MSE.frames;
   const shotsApi = MSE.shots;
   const silenceApi = MSE.silence;
@@ -56,6 +56,15 @@
   // project.json or affect what a collaborator opening the same project sees.
   let audioTrackHeight = loadAudioTrackHeight();
 
+  // Standing viewing preference for the shot list's Start/End columns, same
+  // reasoning/persistence shape as direction.js's GRID_MODE_KEY/SNAP_KEY.
+  const SHOT_TIME_FORMAT_KEY = 'cuttalogue.shotTimeFormat';
+  let shotTimeFormat = localStorage.getItem(SHOT_TIME_FORMAT_KEY) === 'seconds' ? 'seconds' : 'clock';
+
+  function formatShotTime(seconds) {
+    return shotTimeFormat === 'seconds' ? `${formatSeconds(seconds)}s` : formatTime(seconds);
+  }
+
   // Holding Alt during a shot create/resize drag bypasses the selected grid
   // snap for that one drag. The Regions plugin's update-end event doesn't carry
   // modifier-key state, so it's tracked independently here.
@@ -84,6 +93,7 @@
     els.playhead = document.getElementById('current-time-readout');
     els.loopToggleBtn = document.getElementById('loop-toggle-btn');
     els.loopSnapToggle = document.getElementById('loop-snap-toggle');
+    els.shotTimeFormatToggle = document.getElementById('shot-time-format-toggle');
   }
 
   function frameAtTime(seconds) {
@@ -499,6 +509,21 @@
     els.loopSnapToggle.classList.toggle('active', isEvents);
   }
 
+  function setShotTimeFormat(format) {
+    shotTimeFormat = format;
+    localStorage.setItem(SHOT_TIME_FORMAT_KEY, format);
+    updateShotTimeFormatToggle();
+    renderShotList();
+  }
+
+  function updateShotTimeFormatToggle() {
+    if (!els.shotTimeFormatToggle) return;
+    const isSeconds = shotTimeFormat === 'seconds';
+    els.shotTimeFormatToggle.textContent = isSeconds ? 'sec.msec' : 'min:sec';
+    els.shotTimeFormatToggle.title = `Shot start/end format: ${isSeconds ? 'seconds.msec' : 'min:sec.msec'} (click to switch)`;
+    els.shotTimeFormatToggle.classList.toggle('active', isSeconds);
+  }
+
   async function togglePlayback() {
     const ws = activeWs();
     if (!ws) return;
@@ -756,12 +781,12 @@
 
       const startCell = document.createElement('td');
       startCell.className = 'numeric-col';
-      startCell.textContent = formatTime(shot.startSeconds);
+      startCell.textContent = formatShotTime(shot.startSeconds);
       row.appendChild(startCell);
 
       const endCell = document.createElement('td');
       endCell.className = 'numeric-col';
-      endCell.textContent = formatTime(shot.endSeconds);
+      endCell.textContent = formatShotTime(shot.endSeconds);
       row.appendChild(endCell);
 
       const durCell = document.createElement('td');
@@ -965,6 +990,7 @@
     renderLoopOverlay();
     updateLoopToggle();
     updateLoopSnapToggle();
+    updateShotTimeFormatToggle();
 
     wireScrollSync(gridWs);
     wireTimeSync(gridWs);
@@ -1084,5 +1110,6 @@
     getAudioTrackHeight: () => audioTrackHeight,
     toggleLoopEnabled: () => setLoopEnabled(!state.loop.enabled),
     toggleLoopSnapMode: () => setLoopSnapMode(state.loop.snapMode === 'events' ? 'grid' : 'events'),
+    toggleShotTimeFormat: () => setShotTimeFormat(shotTimeFormat === 'seconds' ? 'clock' : 'seconds'),
   };
 })(window.MSE = window.MSE || {});

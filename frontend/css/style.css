@@ -215,6 +215,16 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .loop-snap-toggle.active { color: var(--accent); border-color: var(--accent); }
 
+.shot-time-format-toggle {
+  font-size: 12px;
+  padding: 3px 8px;
+  margin-left: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  vertical-align: middle;
+}
+.shot-time-format-toggle.active { color: var(--accent); border-color: var(--accent); }
+
 .grid-tempo-panel {
   position: absolute;
   top: calc(100% + 6px);
