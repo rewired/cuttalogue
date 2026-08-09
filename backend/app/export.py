@@ -1,5 +1,6 @@
 # Whole-project export: per-shot folders, shot.json manifest, copied assets,
-# prompt/notes, optional mix.flac, aggregate progress, and cancellation
+# prompt/notes, optional per-shot mix.flac snippet, the full mix track
+# copied once to the export root, aggregate progress, and cancellation
 # (checked between shots and mid-encode via media.py's should_cancel).
 import asyncio
 import json
@@ -68,6 +69,14 @@ def _require_track(data: dict, directory: Path, track: str) -> Path:
     return path
 
 
+def _optional_track(data: dict, directory: Path, track: str) -> Path | None:
+    rel = ((data.get("audio") or {}).get(track) or {}).get("relativePath")
+    if not rel:
+        return None
+    path = directory / rel
+    return path if path.exists() else None
+
+
 @router.post("/api/projects/{project_id}/export")
 async def export_project(project_id: str, options: dict = Body(default={})):
     include_mix = bool(options.get("includeMixSnippet"))
@@ -78,7 +87,12 @@ async def export_project(project_id: str, options: dict = Body(default={})):
         raise HTTPException(status_code=400, detail="project has no shots to export")
 
     vocal_path = _require_track(data, directory, "vocal")
-    mix_path = _require_track(data, directory, "mix") if include_mix else None
+    # Full-mix copy (below) is best-effort - a project without a mix track
+    # still exports fine. The per-shot mix.flac snippet is opt-in, so *that*
+    # still errors like before when requested without a mix uploaded.
+    mix_path = _optional_track(data, directory, "mix")
+    if include_mix and mix_path is None:
+        raise HTTPException(status_code=400, detail="no mix track uploaded for this project yet")
 
     assets_by_id = {a["id"]: a for a in data.get("assets", [])}
     video = data["video"]
@@ -99,6 +113,19 @@ async def export_project(project_id: str, options: dict = Body(default={})):
                 shutil.rmtree(export_dir)
             export_dir.mkdir(parents=True)
             (export_dir / "project.json").write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+            if mix_path is not None:
+                await jobs.emit(
+                    job,
+                    {
+                        "status": "running",
+                        "phase": "mix",
+                        "shotCount": shot_count,
+                        "message": "Copying full mix",
+                        "progressFraction": 0.0,
+                    },
+                )
+                shutil.copyfile(mix_path, export_dir / f"mix{mix_path.suffix}")
 
             for index, shot in enumerate(shots):
                 if should_cancel():

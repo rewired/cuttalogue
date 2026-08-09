@@ -154,15 +154,17 @@ Right-click a shot to delete it">&#9432;</span></div>
     <h2>Shots
       <button type="button" id="shot-time-format-toggle" class="icon-btn shot-time-format-toggle" title="Shot start/end format: min:sec.msec (click to switch to sec.msec)">min:sec</button>
     </h2>
-    <table>
-      <thead>
-        <tr>
-          <th>#</th><th class="status-col">Status</th><th class="numeric-col">Start</th><th class="numeric-col">End</th><th class="numeric-col">Duration</th>
-          <th class="numeric-col">Render</th>
-        </tr>
-      </thead>
-      <tbody id="shot-list"></tbody>
-    </table>
+    <div class="shot-list-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>#</th><th class="status-col">Status</th><th class="numeric-col">Start</th><th class="numeric-col">End</th><th class="numeric-col">Duration</th>
+            <th class="numeric-col">Render</th>
+          </tr>
+        </thead>
+        <tbody id="shot-list"></tbody>
+      </table>
+    </div>
   </div>
 
   <div id="panel-resize-handle" class="panel-resize-handle" title="Drag to resize">

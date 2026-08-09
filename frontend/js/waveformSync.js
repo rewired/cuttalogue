@@ -94,6 +94,23 @@
     els.loopToggleBtn = document.getElementById('loop-toggle-btn');
     els.loopSnapToggle = document.getElementById('loop-snap-toggle');
     els.shotTimeFormatToggle = document.getElementById('shot-time-format-toggle');
+    els.shotListWrap = document.querySelector('.shot-list-table-wrap');
+  }
+
+  // Pushes the given shot's row as far up the (independently-scrolling,
+  // see style.css) shot list as it'll go - all the way under the sticky
+  // thead if there's room to scroll that far, less than that if the row is
+  // already near the bottom of the list. getBoundingClientRect deltas
+  // (rather than row.offsetTop) sidestep offsetParent - the row's nearest
+  // positioned ancestor isn't necessarily els.shotListWrap.
+  function scrollShotRowIntoView(shotId) {
+    const wrap = els.shotListWrap;
+    const row = wrap && wrap.querySelector(`tr[data-shot-id="${CSS.escape(String(shotId))}"]`);
+    if (!wrap || !row) return;
+    const thead = wrap.querySelector('thead');
+    const headerHeight = thead ? thead.getBoundingClientRect().height : 0;
+    const delta = row.getBoundingClientRect().top - wrap.getBoundingClientRect().top - headerHeight;
+    wrap.scrollTop += delta;
   }
 
   function frameAtTime(seconds) {
@@ -939,6 +956,24 @@
     });
   }
 
+  // Ctrl+click on a shot body splits it (see onClickOnly in renderShots) -
+  // swap in a razor-blade cursor (style.css) the whole time Ctrl is held so
+  // that intent is visible before the click, not just after. Scoped via the
+  // body class + CSS selector to #track-shots, not tracked per pointer-
+  // enter/leave, so this is just two module-lifetime listeners.
+  function wireCutCursor() {
+    const setHeld = (held) => document.body.classList.toggle('ctrl-cut-cursor', held);
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Control') setHeld(true);
+    });
+    window.addEventListener('keyup', (e) => {
+      if (e.key === 'Control') setHeld(false);
+    });
+    // Alt-tabbing away while Ctrl is physically held never fires keyup -
+    // without this the blade cursor would stick until the next keydown.
+    window.addEventListener('blur', () => setHeld(false));
+  }
+
   // WaveSurfer hides its native scrollbar (hideScrollbar:true) and the grid/shots
   // tracks have interact:false, so there is no built-in way to pan horizontally.
   // Translate wheel input (vertical wheel or trackpad horizontal swipe) into a
@@ -1084,6 +1119,7 @@
         row.classList.toggle('selected', row.dataset.shotId === String(shotId));
       });
     }
+    scrollShotRowIntoView(shotId);
     // Same in-place toggle for the timeline clips - keeps the selection
     // highlight in sync whichever side (list row or clip) was clicked,
     // without rebuilding any DOM (same reasoning as the list rows above).
@@ -1095,6 +1131,7 @@
   });
 
   wireWheelScroll();
+  wireCutCursor();
 
   MSE.sync = {
     loadMix,

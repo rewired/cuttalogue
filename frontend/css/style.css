@@ -11,11 +11,36 @@
 
 * { box-sizing: border-box; }
 
-html { height: 100%; }
+/* The app is pinned to exactly the viewport, never the page - only
+   shot-list-table-wrap/.tab-content (Shots tab) and asset-library-list-col/
+   asset-library-detail (Assets tab) grow their own scrollbars internally
+   when their content overflows. Everything from here down the flex chain
+   (#main-view-shots/#main-view-assets -> .work-area/.assets-view -> the
+   scrolling panels) needs min-height:0 at every level, or a child's
+   content-based size would push past its flex-basis and inflate an
+   ancestor instead of clipping+scrolling right where it's declared. */
+html, body { height: 100%; overflow: hidden; }
+
+/* Thin scrollbars in the app's own dark palette instead of the OS default -
+   Firefox via scrollbar-width/-color, Chrome/Edge/Electron via the
+   ::-webkit-scrollbar pseudo-elements (there's no standard property that
+   covers both, hence both blocks). */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--panel-border) transparent;
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background-color: var(--panel-border);
+  border-radius: 6px;
+  border: 2px solid var(--bg);
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--accent); }
 
 body {
   margin: 0;
-  min-height: 100%;
   display: flex;
   flex-direction: column;
   font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -24,13 +49,15 @@ body {
   font-size: 14px;
 }
 
-#main-view-shots {
+#main-view-shots,
+#main-view-assets {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
 }
-#main-view-shots[hidden] {
+#main-view-shots[hidden],
+#main-view-assets[hidden] {
   display: none;
 }
 
@@ -423,6 +450,21 @@ input.small { width: 44px; }
    works on top of any status color instead. */
 .shot-lane-segment.selected { outline: 2px solid var(--accent); outline-offset: -2px; filter: brightness(1.4); }
 
+/* Ctrl+click on a shot body splits it (waveformSync.js onClickOnly, wired
+   only for .shot-lane-segment - not the generic .lane-segment Direction
+   also uses) - swapping the cursor for a razor blade while Ctrl is held
+   hints that a click here cuts rather than drags/selects. body.ctrl-cut-
+   cursor is toggled by wireCutCursor()'s keydown/keyup/blur listeners; the
+   .lane-segment-handle rule below still wins on the resize handles
+   themselves since an element's own explicit cursor always beats an
+   ancestor's, so dragging the edges still shows ew-resize. */
+body.ctrl-cut-cursor #track-shots .shot-lane-segment {
+  cursor:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 32 32'%3E%3Cg transform='rotate(-45 16 16)'%3E%3Crect x='4' y='13' width='24' height='6' rx='1.5' fill='%23e8e8e8' stroke='%23111111' stroke-width='1'/%3E%3Crect x='9' y='15' width='4' height='2' rx='1' fill='%23111111'/%3E%3Crect x='19' y='15' width='4' height='2' rx='1' fill='%23111111'/%3E%3Cline x1='4' y1='13' x2='28' y2='13' stroke='%23ff5252' stroke-width='1.2'/%3E%3C/g%3E%3C/svg%3E")
+    10 26,
+    crosshair;
+}
+
 .shot-region-label {
   padding: 2px 4px;
   font-size: 11px;
@@ -497,7 +539,27 @@ input.small { width: 44px; }
 .shot-list-panel {
   flex: 0 0 500px;
   min-width: 0;
-  overflow-x: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Only this wrapper scrolls - the "Shots" heading above stays put, same as
+   the context-panel's tabs staying fixed while .tab-content scrolls below
+   them. thead is sticky so the column headers stay visible while rows
+   scroll underneath, matching --bg (the panel's own background) so rows
+   don't show through it. */
+.shot-list-table-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scroll-behavior: smooth;
+}
+.shot-list-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 1;
 }
 
 .panel-resize-handle {
@@ -534,6 +596,7 @@ input.small { width: 44px; }
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
+  overflow-y: auto;
 }
 
 #prompt-tab-detail,
@@ -712,7 +775,17 @@ input.small { width: 44px; }
 .asset-card-pick.selected { border-color: var(--accent); background: rgba(76, 141, 255, 0.1); }
 .asset-card-pick.needs-classification { border-color: #ffc107; }
 
-.assets-view { padding: 12px 16px; }
+/* section's own overflow:visible default would let .asset-library-body's
+   content push this taller instead of scrolling - flex+min-height:0 here is
+   what makes that child's flex:1 1 auto/min-height:0 (above) actually bound
+   its height instead of being a no-op. */
+.assets-view {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
 
 .modal.asset-picker-modal {
   width: min(900px, 92vw);
