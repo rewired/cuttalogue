@@ -116,19 +116,31 @@ def _split_words(lyrics_text: str) -> list[str]:
     return [word for word, _ in _split_words_with_positions(lyrics_text)]
 
 
-# MMS_FA's dictionary only covers lowercase a-z, apostrophe, and space (it's
-# designed to work with uroman-romanized text for non-Latin scripts, which
-# this module doesn't attempt - see the module docstring/completion report
-# for that as a deferred limitation). This ONLY produces the token fed to the
-# model; the original word - "clooooose", "you're", any capitalization or
-# punctuation - is what's returned as `text` and what the caller displays/
-# stores. A word that normalizes to nothing (pure punctuation, or a script
-# this can't tokenize) has no target to align against, so it's excluded from
-# the model call entirely rather than guessed at.
+# MMS_FA's dictionary only covers lowercase a-z and apostrophe (it's designed
+# to work with uroman-romanized text for non-Latin scripts, which this module
+# doesn't attempt - see the module docstring/completion report for that as a
+# deferred limitation). This ONLY produces the token fed to the model; the
+# original word - "clooooose", "you're", any capitalization or punctuation -
+# is what's returned as `text` and what the caller displays/stores. A word
+# that normalizes to nothing (pure punctuation, or a script this can't
+# tokenize) has no target to align against, so it's excluded from the model
+# call entirely rather than guessed at.
+#
+# Disallowed characters are DELETED, never replaced with a space: every
+# element of _split_words()/_split_words_with_positions() is already a
+# single whitespace-free token (split on \S+), and torchaudio's aligner
+# expects each normalized target to stay exactly one word with no internal
+# whitespace. A hyphenated/dashed compound written as one token - "in-
+# between.", or this project's own "[Pre-Chorus]"-style bracketed section
+# markers - used to normalize to "in between"/"pre chorus" (the internal
+# punctuation became a space instead of disappearing), silently turning one
+# aligner target into a string containing a literal space character, which
+# crashes deep inside torchaudio's per-character dictionary lookup
+# (KeyError: ' ') since space was never actually in that dictionary. Deleting
+# instead of substituting keeps every normalized target a single token.
 def _normalize_for_alignment(word: str) -> str:
     text = word.lower().replace("’", "'")
-    text = re.sub(r"[^a-z' ]", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
+    text = re.sub(r"[^a-z']", "", text)
     return text
 
 
