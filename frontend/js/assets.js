@@ -149,6 +149,7 @@
       if (shot.assetRoles) delete shot.assetRoles[assetId];
       if (shot.videoRefs) delete shot.videoRefs[assetId];
       if (shot.direction && shot.direction.subjects) delete shot.direction.subjects[assetId];
+      if (shot.direction && shot.direction.props) delete shot.direction.props[assetId];
     });
     emit('assets-changed', { reason: 'delete' });
     emit('shots-changed', { reason: 'delete-asset' });

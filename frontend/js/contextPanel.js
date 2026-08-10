@@ -375,10 +375,10 @@
       const projectId = MSE.project.getProjectId();
       if (!shot || !projectId) return;
 
-      const referenceAssetIds = MSE.assets
-        .assetsForShot(shot)
-        .filter((a) => a.type === 'image')
-        .map((a) => a.id);
+      // Canonical binding (references.js) - the exact same order the H3
+      // compiler used for <Picture N>, so an assigned-but-uncast asset (no
+      // H3 role) never sneaks into the reference list and shifts numbering.
+      const referenceAssetIds = MSE.references.referenceAssetIds(shot);
 
       // At most one video asset can be in "extend" mode per shot - it's a
       // single continuation source, not a list like image references.

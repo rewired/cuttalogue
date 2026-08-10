@@ -14,8 +14,6 @@
 
   const shotsApi = MSE.shots;
 
-  const ROLE_ORDER = ['primary_character', 'supporting_character', 'environment', 'prop'];
-
   const ROLE_PRESERVE = {
     primary_character: 'identity, face, hair, wardrobe, and body proportions',
     supporting_character: 'identity, face, hair, wardrobe, and body proportions',
@@ -88,18 +86,16 @@
     return value.toFixed(2);
   }
 
-  // Stable Subject N ordering: character roles before environment, otherwise
-  // the order assets were assigned to the shot in - this order must stay
-  // identical across repeated compiles of the same input (determinism).
+  // Subject N / Picture N ordering now comes from the canonical reference
+  // binding (references.js) - the same binding Generate uses for
+  // referenceAssetIds - so the two can never diverge. See references.js for
+  // the role-order/stability rules.
   function orderedSubjects(shot) {
-    const roles = shot.assetRoles || {};
-    const roledIds = (shot.assetIds || []).filter((id) => roles[id]);
-    roledIds.sort((a, b) => ROLE_ORDER.indexOf(roles[a]) - ROLE_ORDER.indexOf(roles[b]));
-    return roledIds.map((assetId, index) => ({
-      assetId,
-      role: roles[assetId],
-      label: `Subject ${index + 1}`,
-      asset: MSE.assets.findAsset(assetId),
+    return MSE.references.forShot(shot).map((ref) => ({
+      assetId: ref.assetId,
+      role: ref.role,
+      label: ref.subjectLabel,
+      asset: ref.asset,
     }));
   }
 
