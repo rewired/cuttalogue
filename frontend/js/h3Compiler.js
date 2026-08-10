@@ -80,6 +80,32 @@
     look: 'looks',
     speak: 'speaks',
     interact: 'interacts',
+    sing: 'sings',
+  };
+
+  // Phase 4a: vocal-performance sync requirement (see shots.js's
+  // VOCAL_PERFORMANCES) - a clause distinct from actionType's own verb.
+  // 'lip_sync' is folded into the action clause itself (see
+  // phraseSubjectAction) rather than used standalone here, except when no
+  // actionType is set at all.
+  const VOCAL_PERFORMANCE_CLAUSE = 'with precise, natural lip sync';
+  const VOCAL_PERFORMANCE_STANDALONE_CLAUSES = {
+    lip_sync: `performing ${VOCAL_PERFORMANCE_CLAUSE}`,
+    sing: 'singing',
+    speak: 'speaking',
+  };
+  const VOCAL_PERFORMANCE_CLAUSES = {
+    sing: 'singing',
+    speak: 'speaking',
+  };
+
+  // Physical eye state (see shots.js's EYE_STATES) - deliberately distinct
+  // wording from `gaze` (a directional clause, "looking at...") so the two
+  // never read as duplicates of each other.
+  const EYES_PHRASES = {
+    open: 'open',
+    closed: 'closed',
+    half_closed: 'half-closed',
   };
 
   function formatSeconds(value) {
@@ -121,25 +147,53 @@
     return sentence;
   }
 
-  // Composes a character segment's structured fields (actionType/manner/
-  // gaze/expression) into a sentence, then appends the free-text `notes` as
-  // its own trailing sentence - append-if-present throughout, so a segment
-  // carrying only `notes` (the common case right after the actionType/
-  // manner/gaze/expression fields were introduced) still compiles exactly
-  // as the old single-field `action` string used to.
+  // Composes a character segment's structured fields into a sentence, then
+  // appends gesture/bodyMotion/notes as their own trailing sentences -
+  // append-if-present throughout, so a segment carrying only a subset of
+  // fields (including the pre-Phase-4a shape with none of vocalPerformance/
+  // eyes/gesture/bodyMotion set) still compiles exactly as before. Field
+  // ownership (see docs/h3-shot-direction-roadmap.md Phase 4a):
+  //   actionType        -> core action verb
+  //   vocalPerformance  -> sync/performance requirement (folded into the
+  //                        action clause for lip_sync, its own clause
+  //                        otherwise - never repeated if it would just
+  //                        restate actionType, e.g. actionType: 'sing' +
+  //                        vocalPerformance: 'sing')
+  //   manner            -> how the action is performed
+  //   expression        -> facial emotion
+  //   eyes              -> physical eye state (distinct from gaze)
+  //   gaze              -> looking direction/target
+  //   gesture           -> specific hand/arm gesture, own sentence (already
+  //                        a full free-text clause, not comma-joined)
+  //   bodyMotion        -> overall movement quality, own sentence
+  //   notes             -> fallback exceptional instruction, never repeats
+  //                        the structured fields above
   function phraseSubjectAction(label, segment) {
     if (!segment) return '';
     const clauses = [];
     if (segment.actionType) {
       let clause = ACTION_TYPE_PHRASES[segment.actionType] || segment.actionType;
       if (segment.manner) clause += `, ${segment.manner}`;
+      if (segment.vocalPerformance === 'lip_sync') clause += `, ${VOCAL_PERFORMANCE_CLAUSE}`;
       clauses.push(clause);
     }
-    if (segment.gaze) clauses.push(`looking ${segment.gaze}`);
+    if (segment.vocalPerformance && segment.vocalPerformance !== segment.actionType) {
+      if (segment.vocalPerformance === 'lip_sync') {
+        if (!segment.actionType) clauses.push(VOCAL_PERFORMANCE_STANDALONE_CLAUSES.lip_sync);
+        // else already folded into the action clause above.
+      } else {
+        clauses.push(VOCAL_PERFORMANCE_CLAUSES[segment.vocalPerformance]);
+      }
+    }
     if (segment.expression) clauses.push(`with a ${segment.expression} expression`);
+    if (segment.eyes) clauses.push(`eyes ${EYES_PHRASES[segment.eyes] || segment.eyes}`);
+    if (segment.gaze) clauses.push(`looking ${segment.gaze}`);
+
     const sentences = [];
     if (clauses.length > 0) sentences.push(`<${label}> ${clauses.join(', ')}.`);
-    if (segment.notes) sentences.push(clauses.length > 0 ? segment.notes : `<${label}> ${segment.notes}.`);
+    if (segment.gesture) sentences.push(ensureSentence(capitalizeFirst(segment.gesture)));
+    if (segment.bodyMotion) sentences.push(`<${label}>'s overall body movement is ${segment.bodyMotion.replace(/\.$/, '')}.`);
+    if (segment.notes) sentences.push(sentences.length > 0 ? segment.notes : `<${label}> ${segment.notes}.`);
     return sentences.join(' ');
   }
 
@@ -208,6 +262,10 @@
 
   function lowercaseFirst(text) {
     return text.charAt(0).toLowerCase() + text.slice(1);
+  }
+
+  function capitalizeFirst(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
   // Guide section 6.3: "[Shot 1] bekommt keinen Zeitstempel" - the shot's

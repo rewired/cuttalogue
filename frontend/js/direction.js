@@ -84,7 +84,36 @@
     look: 'Look',
     speak: 'Speak',
     interact: 'Interact',
+    sing: 'Sing',
   };
+
+  // Phase 4a: vocal/performance sync requirement, kept distinct from
+  // actionType (see shots.js's VOCAL_PERFORMANCES for the split rationale).
+  const VOCAL_PERFORMANCE_LABELS = {
+    '': 'No vocal performance set',
+    lip_sync: 'Lip sync',
+    sing: 'Sing (unsynced)',
+    speak: 'Speak',
+  };
+
+  // Physical eye state - distinct from `gaze` (directional intent).
+  const EYES_LABELS = {
+    '': 'No eye state set',
+    open: 'Open',
+    closed: 'Closed',
+    half_closed: 'Half-closed',
+  };
+
+  // Suggestions only, same reasoning as SPEED_SUGGESTIONS - bodyMotion stays
+  // free text (see docs/h3-shot-direction-roadmap.md Phase 4a).
+  const BODY_MOTION_SUGGESTIONS = [
+    'still',
+    'restrained',
+    'subtle sway',
+    'tense',
+    'slowly rocking',
+    'energetic',
+  ];
 
   // Suggestions only, same reasoning as SPEED_SUGGESTIONS - a small closed
   // vocabulary for the common continuity rules, but never the only option.
@@ -167,17 +196,46 @@
     return Math.max(0, origin + snappedRel - shot.startSeconds);
   }
 
-  // Snap targets are the union of the musical grid and this shot's vocal
-  // cues (MSE.vocalCues.forShot - never anything in H3's render overhang) -
-  // whichever single candidate lands closest to relativeTime wins, via the
-  // same nearestOf() union rule the regression tests exercise directly. A
-  // vocal cue is a timing guide only: this can move where a segment edge
-  // LANDS when Snap is on, but never feeds the H3 compiler or creates a
-  // semantic beat boundary by itself - only an authored segment edge does.
+  // Phase 4a: the current transient Phrase/Hold analysis result (see
+  // lyricsAlign.js's getCurrentRegions) - read fresh on every call, never
+  // cached locally, same convention as MSE.vocalCues.forShot() calls
+  // elsewhere in this file. Falls back to empty when the Lyrics tab module
+  // hasn't loaded (defensive only; both modules always load together in the
+  // real app).
+  function currentRegions() {
+    return MSE.lyricsAlign ? MSE.lyricsAlign.getCurrentRegions() : { phrases: [], holds: [] };
+  }
+
+  // This shot's visible phrase/hold boundaries, shot-relative - both the
+  // start AND end of each region are valid snap targets. Reuses Phase-3b's
+  // own canonical regionsForShot() projection (never a second shot-overlap
+  // implementation) purely to read off relativeStartSeconds/
+  // relativeEndSeconds.
+  function regionSnapTimes(shot) {
+    const regions = currentRegions();
+    const times = [];
+    MSE.vocalRegions.regionsForShot(regions.phrases, shot).forEach((r) => {
+      times.push(r.relativeStartSeconds, r.relativeEndSeconds);
+    });
+    MSE.vocalRegions.regionsForShot(regions.holds, shot).forEach((r) => {
+      times.push(r.relativeStartSeconds, r.relativeEndSeconds);
+    });
+    return times;
+  }
+
+  // Snap targets are the union of the musical grid, this shot's vocal cues
+  // (MSE.vocalCues.forShot - never anything in H3's render overhang), and
+  // its visible Phrase/Hold region boundaries (Phase 4a) - whichever single
+  // candidate lands closest to relativeTime wins, via the same nearestOf()
+  // union rule the regression tests exercise directly. None of these feed
+  // the H3 compiler or create a semantic beat boundary by themselves - only
+  // an authored segment edge does; they only ever influence where that edge
+  // LANDS when Snap is on.
   function snapToDirectionGrid(relativeTime, shot) {
     const gridTime = nearestGridTime(relativeTime, shot);
     const cueTimes = MSE.vocalCues.forShot(shot).map((cue) => cue.relativeTimeSeconds);
-    const snapped = MSE.vocalCues.nearestOf([gridTime, ...cueTimes], relativeTime);
+    const candidates = [gridTime, ...cueTimes, ...regionSnapTimes(shot)];
+    const snapped = MSE.vocalCues.nearestOf(candidates, relativeTime);
     return snapped === null ? relativeTime : snapped;
   }
 
@@ -214,6 +272,10 @@
     el.segmentContextToggle = document.getElementById('direction-segment-context-toggle');
     el.segmentContextMerge = document.getElementById('direction-segment-context-merge');
     el.segmentContextDelete = document.getElementById('direction-segment-context-delete');
+    el.regionContextMenu = document.getElementById('direction-region-context-menu');
+    el.regionContextCamera = document.getElementById('direction-region-context-camera');
+    el.regionContextCharacterList = document.getElementById('direction-region-context-character-list');
+    el.regionContextFit = document.getElementById('direction-region-context-fit');
     el.snapToggle = document.getElementById('direction-snap-toggle');
     el.constraintsList = document.getElementById('direction-constraints-list');
     el.constraintsInput = document.getElementById('direction-constraints-input');
@@ -590,6 +652,49 @@
     return row;
   }
 
+  // Phase 4a: read-only reference rows for the current transient Phrase/
+  // Hold analysis result (see lyricsAlign.js's getCurrentRegions) - same
+  // non-laneWidget, click-through-only convention as buildCueRow above (a
+  // region is authored on the Lyrics tab, never dragged/resized/renamed
+  // from here). Always rendered, even with zero regions for this shot (or
+  // no analysis result at all) - an empty row, never a broken placeholder,
+  // matches buildCueRow's own behavior when a shot has no cues. Right-click
+  // a span to create a Camera/Character segment from it, or fit the
+  // currently selected segment to it - see setupRegionContextMenu().
+  function buildVocalRegionRow(shot, label, regions, kind, duration, domainDuration) {
+    const row = document.createElement('div');
+    row.className = 'direction-lane-row direction-region-row';
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'direction-lane-label';
+    labelEl.textContent = label;
+    labelEl.title = `${label} - transient timing analysis from the Lyrics tab; right-click a span to create or fit a Direction segment from it`;
+    row.appendChild(labelEl);
+
+    const content = document.createElement('div');
+    content.className = 'direction-lane-content';
+    row.appendChild(content);
+
+    MSE.vocalRegions.regionsForShot(regions, shot).forEach((region) => {
+      const pct = domainDuration > 0 ? (region.relativeStartSeconds / domainDuration) * 100 : 0;
+      const widthPct = domainDuration > 0 ? Math.max(0, (region.relativeEndSeconds - region.relativeStartSeconds) / domainDuration) * 100 : 0;
+
+      const span = document.createElement('div');
+      span.className = `direction-region-segment direction-region-segment-${kind}`;
+      span.style.left = `${pct}%`;
+      span.style.width = `${widthPct}%`;
+      span.textContent = region.text;
+      span.title = `${region.text} · ${region.relativeStartSeconds.toFixed(2)}s – ${region.relativeEndSeconds.toFixed(2)}s (right-click to create/fit a Direction segment)`;
+      span.dataset.regionKind = kind;
+      span.dataset.regionId = region.id;
+      content.appendChild(span);
+    });
+
+    MSE.laneWidget.appendOverhangBand(content, duration, domainDuration, OVERHANG_TITLE);
+
+    return row;
+  }
+
   // Bulk convenience over the same per-beat isCut primitive the beat detail
   // panel edits one at a time (see shots.js's applyBurstBeats) - shown
   // unconditionally (unlike the beat/orphans rows below, which only appear
@@ -624,6 +729,9 @@
 
     el.lanes.appendChild(buildGridRow(shot, duration, domainDuration));
     el.lanes.appendChild(buildCueRow(shot, duration, domainDuration));
+    const regions = currentRegions();
+    el.lanes.appendChild(buildVocalRegionRow(shot, 'Vocal Phrases', regions.phrases, 'phrase', duration, domainDuration));
+    el.lanes.appendChild(buildVocalRegionRow(shot, 'Vocal Holds', regions.holds, 'hold', duration, domainDuration));
     el.lanes.appendChild(buildBurstToolbarRow(shot));
 
     el.lanes.appendChild(
@@ -825,10 +933,24 @@
       );
     } else {
       const actionTypeOptions = shotsApi.ACTION_TYPES.map((t) => [t, ACTION_TYPE_LABELS[t] || t]);
-      row.appendChild(buildField('Action type', buildSelect(actionTypeOptions, seg.actionType, (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { actionType: v }))));
+      row.appendChild(buildField('Action', buildSelect(actionTypeOptions, seg.actionType, (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { actionType: v }))));
+      const vocalPerformanceOptions = shotsApi.VOCAL_PERFORMANCES.map((v) => [v, VOCAL_PERFORMANCE_LABELS[v] || v]);
+      row.appendChild(buildField('Vocal performance', buildSelect(vocalPerformanceOptions, seg.vocalPerformance, (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { vocalPerformance: v }))));
       row.appendChild(buildField('Manner', buildTextInput(seg.manner, 'e.g. confident', (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { manner: v }))));
       row.appendChild(buildField('Gaze', buildTextInput(seg.gaze, 'gaze target', (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { gaze: v }))));
+      const eyesOptions = shotsApi.EYE_STATES.map((v) => [v, EYES_LABELS[v] || v]);
+      row.appendChild(buildField('Eyes', buildSelect(eyesOptions, seg.eyes, (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { eyes: v }))));
       row.appendChild(buildField('Expression', buildTextInput(seg.expression, 'expression', (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { expression: v }))));
+      row.appendChild(
+        buildField(
+          'Gesture',
+          buildTextInput(seg.gesture, 'e.g. both hands grip microphone', (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { gesture: v })),
+          true
+        )
+      );
+      const bodyMotionInput = buildTextInput(seg.bodyMotion, 'e.g. restrained', (v) => shotsApi.updateSubjectSegment(shot.id, selection.assetId, selection.index, { bodyMotion: v }));
+      bodyMotionInput.setAttribute('list', 'direction-body-motion-suggestions');
+      row.appendChild(buildField('Body motion', bodyMotionInput));
       row.appendChild(
         buildField(
           'Director’s notes',
@@ -997,6 +1119,120 @@
     });
   }
 
+  // Phase 4a region -> segment creation/fit. All three read only a
+  // projected region's relativeStartSeconds/relativeEndSeconds (Phase 3b's
+  // own canonical shot-relative clip, see vocalRegions.js's regionsForShot)
+  // and never store the region's id anywhere - once created, the resulting
+  // Direction segment is ordinary numeric timing indistinguishable from one
+  // typed in by hand. See the module doc comment at the top of this file's
+  // region-authoring section in docs/h3-shot-direction-roadmap.md.
+  //
+  // Camera gets no inferred fields beyond the timing - addCameraSegment's
+  // own defaults (same ones the '+' add tile already uses) apply as-is;
+  // "WHEN", never "WHAT".
+  function createCameraSegmentFromRegion(shot, region) {
+    const start = region.relativeStartSeconds;
+    const end = region.relativeEndSeconds;
+    if (end - start <= 0) return;
+    shotsApi.addCameraSegment(shot.id, { startSeconds: start, endSeconds: end });
+  }
+
+  // A Hold (a sustained vocal note) gets a conservative actionType/
+  // vocalPerformance default (sing/lip_sync) since that's the one inference
+  // directly implied by "this word was held" - never eyes/gesture/
+  // expression/bodyMotion, which are directorial choices left blank for the
+  // user. A Phrase carries no such implication (a sung phrase's overall
+  // performance style isn't determinable from timing alone), so it starts
+  // fully blank.
+  function createCharacterSegmentFromRegion(shot, assetId, region, regionKind) {
+    const start = region.relativeStartSeconds;
+    const end = region.relativeEndSeconds;
+    if (end - start <= 0) return;
+    const defaults = regionKind === 'hold' ? { actionType: 'sing', vocalPerformance: 'lip_sync' } : {};
+    shotsApi.addSubjectSegment(shot.id, assetId, { startSeconds: start, endSeconds: end, ...defaults });
+  }
+
+  // Replaces the currently selected Camera/Character segment's timing with
+  // the region's shot-relative visible bounds - a plain numeric edit, same
+  // as any other drag/resize, via the existing clamped edge movers (never
+  // shotsApi.updateXSegment, which resorts the array and would strand
+  // `selection.index` if the new timing crosses a neighbor). Moves
+  // whichever edge shrinks the segment first so the intermediate state
+  // (after only one edge has moved) never has start > end.
+  function fitSelectedSegmentToRegion(shot, region) {
+    if (!selection || (selection.kind !== 'camera' && selection.kind !== 'subject')) return;
+    const start = region.relativeStartSeconds;
+    const end = region.relativeEndSeconds;
+    if (end - start <= 0) return;
+    const segments = selection.kind === 'camera' ? shot.direction.camera : (shot.direction.subjects || {})[selection.assetId];
+    const seg = segments && segments[selection.index];
+    if (!seg) return;
+    const moveEdge = (side, time) => (
+      selection.kind === 'camera'
+        ? shotsApi.moveCameraSegmentEdge(shot.id, selection.index, side, time)
+        : shotsApi.moveSubjectSegmentEdge(shot.id, selection.assetId, selection.index, side, time)
+    );
+    if (end >= seg.startSeconds) {
+      moveEdge('end', end);
+      moveEdge('start', start);
+    } else {
+      moveEdge('start', start);
+      moveEdge('end', end);
+    }
+    shotsApi.notifyDirectionChanged();
+  }
+
+  // Right-click menu on a Vocal Phrase/Hold span: create a Camera segment,
+  // create a Character segment (one button per acting subject, built fresh
+  // on every open since the cast can change between shots), or fit the
+  // currently selected segment to this region. Delegated on el.lanes via
+  // the shared contextMenu.js implementation, same as
+  // setupSegmentContextMenu - a second, purpose-built menu rather than
+  // trying to fold dynamic per-character buttons into that one's fixed
+  // action list.
+  function setupRegionContextMenu() {
+    if (!el.regionContextMenu || !el.regionContextCamera || !el.regionContextCharacterList || !el.regionContextFit) return;
+
+    let menu = null;
+    menu = MSE.contextMenu.create({
+      container: el.lanes,
+      menuEl: el.regionContextMenu,
+      resolveTarget: (e) => {
+        const segEl = e.target.closest('.direction-region-segment');
+        if (!segEl) return null;
+        const shot = findShot(currentShotId);
+        if (!shot) return null;
+        const kind = segEl.dataset.regionKind;
+        const regions = kind === 'hold' ? currentRegions().holds : currentRegions().phrases;
+        const region = MSE.vocalRegions.regionsForShot(regions, shot).find((r) => r.id === segEl.dataset.regionId);
+        if (!region) return null;
+
+        // Built fresh here (before the menu becomes visible) rather than
+        // once at init - the acting cast can differ per shot.
+        el.regionContextCharacterList.innerHTML = '';
+        const actingSubjects = MSE.h3Compiler.orderedSubjects(shot).filter((s) => MSE.h3Compiler.isActingRole(s.role));
+        actingSubjects.forEach((s) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = `Create Character segment (${s.asset ? MSE.format.stripFileExtension(s.asset.fileName) : s.assetId})`;
+          btn.addEventListener('click', () => {
+            createCharacterSegmentFromRegion(shot, s.assetId, region, kind);
+            if (menu) menu.hide();
+          });
+          el.regionContextCharacterList.appendChild(btn);
+        });
+
+        el.regionContextFit.hidden = !(selection && (selection.kind === 'camera' || selection.kind === 'subject'));
+
+        return { shot, region };
+      },
+      actions: [
+        { btn: el.regionContextCamera, onClick: (target) => createCameraSegmentFromRegion(target.shot, target.region) },
+        { btn: el.regionContextFit, onClick: (target) => fitSelectedSegmentToRegion(target.shot, target.region) },
+      ],
+    });
+  }
+
   const H3_RECOMMENDED_MIN_WORDS = 350;
 
   function wordCount(text) {
@@ -1099,6 +1335,10 @@
     // this shot's Vocal Cues row shows and what its segments snap to - both
     // are read fresh from MSE.vocalCues on every renderAll(), no local copy.
     on('vocal-cues-changed', () => renderAll());
+    // Same reasoning for the Lyrics tab's transient Phrase/Hold analysis
+    // result (re-aligned, threshold changed, or discarded on project load) -
+    // read fresh via currentRegions() on every renderAll(), never cached.
+    on('vocal-regions-changed', () => renderAll());
 
     el.constraintsInput.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;
@@ -1111,12 +1351,24 @@
     });
 
     setupSegmentContextMenu();
+    setupRegionContextMenu();
   }
 
   function buildSpeedDatalist() {
     const list = document.createElement('datalist');
     list.id = 'direction-speed-suggestions';
     SPEED_SUGGESTIONS.forEach((suggestion) => {
+      const opt = document.createElement('option');
+      opt.value = suggestion;
+      list.appendChild(opt);
+    });
+    document.body.appendChild(list);
+  }
+
+  function buildBodyMotionDatalist() {
+    const list = document.createElement('datalist');
+    list.id = 'direction-body-motion-suggestions';
+    BODY_MOTION_SUGGESTIONS.forEach((suggestion) => {
       const opt = document.createElement('option');
       opt.value = suggestion;
       list.appendChild(opt);
@@ -1138,6 +1390,7 @@
   function init() {
     cacheElements();
     buildSpeedDatalist();
+    buildBodyMotionDatalist();
     buildConstraintSuggestionsDatalist();
     el.constraintsInput.setAttribute('list', 'direction-constraint-suggestions');
     wire();
@@ -1147,5 +1400,8 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  MSE.direction = { expand, collapse };
+  // snapToDirectionGrid is exposed purely for the regression tests (see
+  // frontend/tests/directionSnap.test.js) to exercise the grid+cue+region
+  // snap union directly, the same way vocalCues.js's own nearestOf is.
+  MSE.direction = { expand, collapse, snapToDirectionGrid };
 })(window.MSE = window.MSE || {});

@@ -73,7 +73,22 @@
     'look',
     'speak',
     'interact',
+    'sing',
   ];
+
+  // Phase 4a: vocal/performance sync requirement, orthogonal to actionType
+  // (what the body is doing) - e.g. {actionType: 'stand', vocalPerformance:
+  // 'sing'} for a character singing while standing still, or
+  // {actionType: 'sing', vocalPerformance: 'lip_sync'} when the compiled
+  // prompt should call out precise audio-synced mouth movement specifically.
+  // '' means unset, same convention as ACTION_TYPES/CAMERA_AMPLITUDES.
+  const VOCAL_PERFORMANCES = ['', 'lip_sync', 'sing', 'speak'];
+
+  // Physical eye state, distinct from `gaze` (directional intent, e.g.
+  // "camera"/"left"/"microphone") - a character can gaze at the microphone
+  // with eyes closed, both fields are independent and neither validates
+  // against the other.
+  const EYE_STATES = ['', 'open', 'closed', 'half_closed'];
 
   function defaultDirection() {
     return { camera: [], subjects: {}, props: {}, beatNotes: [] };
@@ -431,9 +446,13 @@
       startSeconds: 0,
       endSeconds: 0,
       actionType: '',
+      vocalPerformance: '',
       manner: '',
       gaze: '',
+      eyes: '',
       expression: '',
+      gesture: '',
+      bodyMotion: '',
       notes: '',
       enabled: true,
       ...segment,
@@ -915,6 +934,8 @@
     CAMERA_DIRECTIONS,
     CAMERA_AMPLITUDES,
     ACTION_TYPES,
+    VOCAL_PERFORMANCES,
+    EYE_STATES,
     shotDuration,
     shotStatus,
     snapSeconds,

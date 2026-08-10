@@ -9,7 +9,7 @@
 (function (MSE) {
   'use strict';
 
-  const { state, on } = MSE.state;
+  const { state, on, emit } = MSE.state;
 
   const el = {};
   let isVisible = false;
@@ -231,6 +231,23 @@
     renderPhrases();
     renderHolds();
     renderRegionViz();
+    // Phase 4a: the Direction editor's read-only Vocal Phrases/Holds rows
+    // and its region-boundary snap candidates both read the current result
+    // fresh via getCurrentRegions() below (never a local copy) - this is
+    // the one place that result actually changes, so it's the one place
+    // that needs to say so.
+    emit('vocal-regions-changed');
+  }
+
+  // Phase 4a: the Direction editor consumes the *current* transient
+  // analysis result for authoring assistance (read-only reference rows,
+  // region -> segment creation, region-boundary snapping) - this is the
+  // one accessor for that, returning the same arrays renderPhrases/
+  // renderHolds already render from. Never a second derivation: Direction
+  // calls MSE.vocalRegions.regionsForShot() itself against whatever this
+  // returns, exactly like it already does for MSE.vocalCues.forShot().
+  function getCurrentRegions() {
+    return { phrases: previewPhrases, holds: previewHolds };
   }
 
   function setAlignStatus(text, spinning) {
@@ -345,5 +362,5 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  MSE.lyricsAlign = { applyAlignmentWords };
+  MSE.lyricsAlign = { applyAlignmentWords, getCurrentRegions };
 })(window.MSE = window.MSE || {});

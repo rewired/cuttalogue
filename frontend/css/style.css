@@ -1368,6 +1368,27 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   color: #ffb84c;
 }
 
+/* Phase 4a read-only Vocal Phrases/Holds reference rows (see direction.js's
+   buildVocalRegionRow) - same non-draggable, click-through convention as
+   .direction-cue-marker above; right-click for the create/fit actions
+   (#direction-region-context-menu). */
+.direction-region-row .direction-lane-content { height: 22px; background: transparent; }
+.direction-region-segment {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  border-radius: 3px;
+  font-size: 10px;
+  padding: 1px 4px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--text);
+  cursor: context-menu;
+}
+.direction-region-segment-phrase { background: rgba(76, 141, 255, 0.28); border: 1px solid rgba(76, 141, 255, 0.55); }
+.direction-region-segment-hold { background: rgba(255, 184, 76, 0.3); border: 1px solid rgba(255, 184, 76, 0.6); }
+
 .direction-beat-segment:hover { background: rgba(255, 255, 255, 0.05); }
 .direction-beat-segment.selected { background: rgba(76, 141, 255, 0.2); border-bottom-color: var(--accent); }
 .direction-beat-segment.has-note::after {

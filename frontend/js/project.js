@@ -89,9 +89,13 @@
           delete seg.action;
         }
         if (seg.actionType === undefined) seg.actionType = '';
+        if (seg.vocalPerformance === undefined) seg.vocalPerformance = '';
         if (seg.manner === undefined) seg.manner = '';
         if (seg.gaze === undefined) seg.gaze = '';
+        if (seg.eyes === undefined) seg.eyes = '';
         if (seg.expression === undefined) seg.expression = '';
+        if (seg.gesture === undefined) seg.gesture = '';
+        if (seg.bodyMotion === undefined) seg.bodyMotion = '';
         if (seg.enabled === undefined) seg.enabled = true;
       });
     });
