@@ -69,6 +69,7 @@
 <div class="main-tabs">
   <button type="button" id="main-tab-btn-shots" class="tab-btn active">Shots</button>
   <button type="button" id="main-tab-btn-assets" class="tab-btn">Assets</button>
+  <button type="button" id="main-tab-btn-lyrics" class="tab-btn">Lyrics</button>
 </div>
 
 <div id="main-view-shots">
@@ -276,6 +277,74 @@ Right-click a shot to delete it">&#9432;</span></div>
   </section>
 </div>
 
+<div id="main-view-lyrics" hidden>
+  <section class="lyrics-view">
+    <h2>Lyrics</h2>
+    <div class="lyrics-body">
+      <div class="lyrics-input-col">
+        <textarea id="lyrics-text" rows="20" placeholder="Paste lyrics here..."></textarea>
+        <div class="direction-compile-toolbar">
+          <button type="button" id="align-lyrics-btn" title="Align these lyrics to the project's vocal track">Align to Vocal</button>
+          <span id="align-status" class="placeholder-hint">
+            <span class="spinner" id="align-spinner" hidden></span>
+            <span id="align-status-text"></span>
+          </span>
+        </div>
+      </div>
+      <div class="lyrics-preview-col">
+        <p class="placeholder-hint" id="align-preview-empty">Align to see word-level timing here before applying it as vocal cues.</p>
+        <div id="align-preview-detail" style="display:none;">
+          <div class="lyrics-region-viz" id="lyrics-region-viz" hidden></div>
+
+          <div class="lyrics-preview-section">
+            <h3 class="lyrics-preview-heading">Words</h3>
+            <div class="lyrics-preview-table-wrap">
+              <table>
+                <thead><tr><th>Start</th><th>End</th><th>Word</th></tr></thead>
+                <tbody id="align-preview-list"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="lyrics-preview-section">
+            <h3 class="lyrics-preview-heading">Phrases</h3>
+            <div class="lyrics-preview-table-wrap">
+              <table>
+                <thead><tr><th>Start</th><th>End</th><th>Text</th><th></th></tr></thead>
+                <tbody id="align-preview-phrases"></tbody>
+              </table>
+            </div>
+            <p class="placeholder-hint" id="align-preview-phrases-empty" hidden>No phrases could be derived - no lyric line has an aligned word yet.</p>
+          </div>
+
+          <div class="lyrics-preview-section">
+            <h3 class="lyrics-preview-heading">
+              Holds
+              <label class="lyrics-hold-threshold" title="A word whose aligned duration meets or exceeds this is treated as a sustained vocal hold. Changing it only re-derives from the existing alignment - it never re-runs alignment.">
+                Threshold <input type="number" id="hold-threshold-input" min="0" step="0.05"> s
+              </label>
+            </h3>
+            <div class="lyrics-preview-table-wrap">
+              <table>
+                <thead><tr><th>Start</th><th>End</th><th>Text</th><th></th></tr></thead>
+                <tbody id="align-preview-holds"></tbody>
+              </table>
+            </div>
+            <p class="placeholder-hint" id="align-preview-holds-empty" hidden>No words currently meet the hold threshold.</p>
+          </div>
+
+          <div class="lyrics-apply-toolbar">
+            <label class="checkbox-label"><input type="radio" name="align-apply-mode" id="align-apply-mode-add" value="add" checked> Add to existing vocal cues</label>
+            <label class="checkbox-label"><input type="radio" name="align-apply-mode" id="align-apply-mode-replace" value="replace"> Replace existing vocal cues</label>
+            <button type="button" id="apply-alignment-btn">Apply as Vocal Cues</button>
+            <span id="apply-status-text" class="placeholder-hint"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
 <div id="shot-context-menu" class="context-menu">
   <button type="button" id="shot-context-delete">Delete shot</button>
 </div>
@@ -448,6 +517,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/assets.js"></script>
 <script src="js/references.js"></script>
 <script src="js/vocalCues.js"></script>
+<script src="js/vocalRegions.js"></script>
 <script src="js/silence.js"></script>
 <script src="js/waveformSync.js"></script>
 <script src="js/trackHeightResize.js"></script>
@@ -467,6 +537,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/assetPicker.js"></script>
 <script src="js/burstBeatsModal.js"></script>
 <script src="js/contextPanel.js"></script>
+<script src="js/lyricsAlign.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>
 </body>

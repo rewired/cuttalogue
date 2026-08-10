@@ -48,6 +48,11 @@
       // roadmap.md) - { id, timeSeconds, label }, sorted ascending by timeSeconds.
       // Manually authored only; NOT duplicated per-shot - see vocalCues.js.
       vocalCues: [],
+      // Phase 3a: the user's pasted lyrics, kept verbatim (line breaks and
+      // all) as project data - see lyrics.js. Alignment results derived from
+      // this are transient (never persisted) until explicitly applied as
+      // vocalCues above.
+      lyrics: { text: '' },
       export: {
         includeMixSnippet: false,
       },

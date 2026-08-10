@@ -54,6 +54,7 @@
       })),
       assets: state.assets,
       vocalCues: (state.vocalCues || []).map((c) => ({ id: c.id, timeSeconds: c.timeSeconds, label: c.label || '' })),
+      lyrics: { text: (state.lyrics && state.lyrics.text) || '' },
       export: state.export,
       loop: state.loop,
       // Stamped by saveProjectToBackend() on every real save - the sole
@@ -139,6 +140,10 @@
     normalized.vocalCues = (normalized.vocalCues || [])
       .map((c) => ({ label: '', ...c }))
       .sort((a, b) => a.timeSeconds - b.timeSeconds);
+    // Older projects predate lyrics entirely -> ''. Text is preserved
+    // verbatim (line breaks and all) - never re-derived or normalized here,
+    // that only ever happens transiently inside the alignment call itself.
+    normalized.lyrics = { text: '', ...(normalized.lyrics || {}) };
     normalized.export = { includeMixSnippet: false, ...(normalized.export || {}) };
     normalized.loop = { enabled: false, startSeconds: null, endSeconds: null, snapMode: 'grid', ...(normalized.loop || {}) };
     normalized.savedAt = normalized.savedAt ?? null;

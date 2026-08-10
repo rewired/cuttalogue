@@ -18,6 +18,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from .alignment import router as alignment_router
 from .assets import router as assets_router
 from .audio import router as audio_router
 from .comfy import router as comfy_router
@@ -61,6 +62,7 @@ app.include_router(describe_router)
 app.include_router(draft_router)
 app.include_router(expand_router)
 app.include_router(comfy_router)
+app.include_router(alignment_router)
 
 for static_dir in ("js", "css", "vendor"):
     path = FRONTEND_DIR / static_dir

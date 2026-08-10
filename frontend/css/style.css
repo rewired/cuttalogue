@@ -50,14 +50,16 @@ body {
 }
 
 #main-view-shots,
-#main-view-assets {
+#main-view-assets,
+#main-view-lyrics {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
   min-height: 0;
 }
 #main-view-shots[hidden],
-#main-view-assets[hidden] {
+#main-view-assets[hidden],
+#main-view-lyrics[hidden] {
   display: none;
 }
 
@@ -835,6 +837,80 @@ body.ctrl-cut-cursor #track-shots .shot-lane-segment {
   flex: 1 1 auto;
   min-height: 0;
 }
+
+/* Phase 3a: lyrics input + alignment preview, same two-column/scroll-
+   contained shape as .assets-view/.asset-library-body above. */
+.lyrics-view {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+.lyrics-body { display: flex; flex: 1 1 auto; min-height: 0; gap: 20px; }
+.lyrics-input-col {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#lyrics-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  resize: none;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 10px;
+  background: #0f1114;
+  color: var(--text);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+}
+.lyrics-preview-col {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-y: auto;
+  border-left: 1px solid var(--panel-border);
+  padding-left: 20px;
+}
+.lyrics-preview-table-wrap { max-height: 180px; overflow-y: auto; }
+.lyrics-preview-table-wrap table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.lyrics-preview-table-wrap th { text-align: left; padding: 4px 8px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--panel-border); position: sticky; top: 0; background: var(--bg); }
+.lyrics-preview-table-wrap td { padding: 3px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.lyrics-preview-row.unaligned td { color: var(--text-dim); font-style: italic; }
+.lyrics-apply-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
+
+/* Phase 3b: phrase/hold sections stacked below the Words table, same table
+   styling as .lyrics-preview-table-wrap above. */
+.lyrics-preview-section { margin-top: 16px; }
+.lyrics-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-dim);
+  margin: 0 0 4px;
+}
+.lyrics-hold-threshold { display: flex; align-items: center; gap: 4px; font-size: 11px; text-transform: none; letter-spacing: normal; font-weight: 400; }
+.lyrics-hold-threshold input { width: 56px; background: #0f1114; color: var(--text); border: 1px solid var(--panel-border); border-radius: 4px; padding: 2px 4px; font-size: 12px; }
+.lyrics-region-cue-btn { font-size: 11px; padding: 2px 6px; }
+.lyrics-elongated-hint { text-decoration: underline dotted var(--text-dim); cursor: help; }
+
+/* Compact proportional strip (word dots / phrase bars / hold bars) scoped
+   entirely to this preview column - not the main WaveSurfer timeline, see
+   lyricsAlign.js's renderRegionViz(). */
+.lyrics-region-viz { margin-bottom: 16px; }
+.lyrics-viz-row { display: flex; align-items: center; gap: 8px; height: 20px; }
+.lyrics-viz-row-label { flex: 0 0 52px; font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.lyrics-viz-track { position: relative; flex: 1 1 auto; height: 10px; background: #0f1114; border-radius: 4px; border: 1px solid var(--panel-border); }
+.lyrics-viz-dot { position: absolute; top: 50%; width: 5px; height: 5px; margin-top: -2.5px; margin-left: -2.5px; border-radius: 50%; background: var(--accent); }
+.lyrics-viz-bar { position: absolute; top: 1px; bottom: 1px; min-width: 2px; border-radius: 3px; }
+.lyrics-viz-bar-phrase { background: rgba(76, 141, 255, 0.4); border: 1px solid rgba(76, 141, 255, 0.7); }
+.lyrics-viz-bar-hold { background: rgba(255, 184, 76, 0.45); border: 1px solid rgba(255, 184, 76, 0.8); }
 
 .modal.asset-picker-modal {
   width: min(900px, 92vw);

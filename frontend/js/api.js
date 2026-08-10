@@ -206,6 +206,23 @@
     return res.json(); // { jobId }
   }
 
+  // Phase 3a: local word-level lyrics-to-vocal alignment (see
+  // backend/app/alignment.py). lyricsText is sent as-is - the backend never
+  // reads/writes project.json for this, so aligning never requires a prior
+  // Save of in-progress lyrics edits.
+  async function alignLyrics(projectId, lyricsText) {
+    const res = await fetch(`/api/projects/${projectId}/align-lyrics`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lyricsText }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `alignment failed: ${res.status}`);
+    }
+    return res.json(); // { jobId }
+  }
+
   // No FormData needed - the take's output file already lives on the
   // server, this just tells it to copy that file into the asset pool.
   async function promoteTakeToAsset(projectId, shotId, takeId) {
@@ -239,6 +256,7 @@
     testSettings,
     describeAsset,
     expandDescription,
+    alignLyrics,
     generateTake,
     promoteTakeToAsset,
   };

@@ -12,16 +12,19 @@
   function cacheElements() {
     el.shotsBtn = document.getElementById('main-tab-btn-shots');
     el.assetsBtn = document.getElementById('main-tab-btn-assets');
+    el.lyricsBtn = document.getElementById('main-tab-btn-lyrics');
     el.shotsView = document.getElementById('main-view-shots');
     el.assetsView = document.getElementById('main-view-assets');
+    el.lyricsView = document.getElementById('main-view-lyrics');
   }
 
   function activate(view) {
-    const isAssets = view === 'assets';
-    el.shotsBtn.classList.toggle('active', !isAssets);
-    el.assetsBtn.classList.toggle('active', isAssets);
-    el.shotsView.hidden = isAssets;
-    el.assetsView.hidden = !isAssets;
+    el.shotsBtn.classList.toggle('active', view === 'shots');
+    el.assetsBtn.classList.toggle('active', view === 'assets');
+    el.lyricsBtn.classList.toggle('active', view === 'lyrics');
+    el.shotsView.hidden = view !== 'shots';
+    el.assetsView.hidden = view !== 'assets';
+    el.lyricsView.hidden = view !== 'lyrics';
     emit('main-view-changed', { view });
   }
 
@@ -29,6 +32,7 @@
     cacheElements();
     el.shotsBtn.addEventListener('click', () => activate('shots'));
     el.assetsBtn.addEventListener('click', () => activate('assets'));
+    el.lyricsBtn.addEventListener('click', () => activate('lyrics'));
   }
 
   document.addEventListener('DOMContentLoaded', init);
