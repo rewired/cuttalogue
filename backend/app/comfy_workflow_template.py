@@ -16,6 +16,11 @@ FRAME_COUNT_NODE_ID = "244"  # INTConstant "NUM_FRAMES" -> MiniMaxH3ReferenceToV
 FPS_NODE_ID = "245"  # FloatConstant -> CreateVideo.fps
 REFERENCE_NODE_ID = "136"  # MiniMaxH3ReferenceToVideo - ref_images.ref_image_N inputs live here
 FIRST_REF_IMAGE_NODE_ID = "176"  # LoadImage already wired to ref_images.ref_image_0 via node "177"
+AUDIO_NODE_ID = "141"  # LoadAudioUI, wired to MiniMaxH3ReferenceToVideo.ref_audios.ref_audio_0.
+# The exported graph has this hardcoded to a leftover manual test - an
+# unrelated "audio": "some-old-vocal-file.wav" with start_time/end_time/
+# duration carved out of a completely different source file. That must
+# never reach ComfyUI once CUTTAlogue is driving generation (see comfy.py).
 
 # The exported graph also contains a VHS_LoadVideo node (id "169", a video-
 # continuation source) that isn't wired into anything - this MiniMax H3
@@ -34,13 +39,20 @@ def build_workflow_payload(
     extend_filename: str | None = None,
     extend_start_frame: int = 0,
     extend_frame_count: int | None = None,
+    lip_sync_filename: str | None = None,
+    lip_sync_duration: float | None = None,
 ) -> dict:
     """Returns the real workflow with prompt/seed/reference images/frame
-    count/fps substituted in. `seed` is the already-resolved value (the
-    caller picks a random one if none was given) so this function only ever
-    deals with a concrete int. `extend_filename`/`extend_start_frame`/
+    count/fps/lip-sync audio substituted in. `seed` is the already-resolved
+    value (the caller picks a random one if none was given) so this function
+    only ever deals with a concrete int. `extend_filename`/`extend_start_frame`/
     `extend_frame_count` are accepted for signature compatibility with the
     app's Extend feature but not wired into R2V_H3_V1 - see module docstring.
+    `lip_sync_filename` is the ComfyUI-side filename of an already-uploaded
+    audio file that comfy.py has rendered to exactly `lip_sync_duration`
+    seconds (H3's own render duration, not the editorial cut duration) - the
+    loader is pointed at that whole file from its own start rather than
+    re-slicing it with a stale time range.
     """
     workflow = copy.deepcopy(BASE_WORKFLOW)
 
@@ -50,6 +62,13 @@ def build_workflow_payload(
         workflow[FRAME_COUNT_NODE_ID]["inputs"]["value"] = frame_count
     if fps is not None:
         workflow[FPS_NODE_ID]["inputs"]["value"] = fps
+    if lip_sync_filename is not None:
+        audio_inputs = workflow[AUDIO_NODE_ID]["inputs"]
+        audio_inputs["audio"] = lip_sync_filename
+        audio_inputs["start_time"] = 0.0
+        if lip_sync_duration is not None:
+            audio_inputs["end_time"] = lip_sync_duration
+            audio_inputs["duration"] = lip_sync_duration
 
     # One LoadImage + ImageScaleDownToSize pair per reference, wired into
     # MiniMaxH3ReferenceToVideo's ref_images.ref_image_N inputs. The first

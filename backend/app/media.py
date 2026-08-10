@@ -24,6 +24,42 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
 
+# Shared "shot lip-sync audio" definition - export.py's lip_sync.flac and
+# comfy.py's Generate-time H3 reference audio both need the exact same
+# format, and both need the output to last exactly `duration_seconds` even
+# when the source track ends first (H3's own frame-grid overhang can push
+# the required window past the end of the vocal take). One definition here
+# rather than two slightly different ffmpeg invocations.
+LIP_SYNC_SAMPLE_RATE = "32000"
+LIP_SYNC_CHANNELS = "1"
+
+
+def audio_snippet_cmd(source_path: Path, start_seconds: float, duration_seconds: float, output_path: Path) -> list[str]:
+    return [
+        "ffmpeg",
+        "-y",
+        "-ss",
+        f"{start_seconds:.6f}",
+        "-i",
+        str(source_path),
+        "-t",
+        f"{duration_seconds:.6f}",
+        # apad extends the stream with silence indefinitely; the -t above
+        # then caps it at exactly duration_seconds regardless of whether the
+        # source was long enough on its own - so the output is always
+        # exactly duration_seconds long, silence-padded rather than failing
+        # or looping when the source runs out first.
+        "-af",
+        "apad",
+        "-ar",
+        LIP_SYNC_SAMPLE_RATE,
+        "-ac",
+        LIP_SYNC_CHANNELS,
+        "-c:a",
+        "flac",
+        str(output_path),
+    ]
+
 EMPTY_METADATA = {
     "durationSeconds": None,
     "width": None,

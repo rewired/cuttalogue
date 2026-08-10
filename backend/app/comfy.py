@@ -11,6 +11,7 @@ import asyncio
 import json
 import logging
 import random
+import shutil
 import traceback
 import uuid
 from pathlib import Path
@@ -18,7 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import JSONResponse
 
-from . import frames, jobs, settings
+from . import audio, frames, jobs, media, settings
 from .comfy_workflow_template import build_workflow_payload
 from .projects import project_dir
 
@@ -43,29 +44,26 @@ def _load_project(project_id: str) -> tuple[dict, Path]:
     return data, directory
 
 
-async def _upload_reference_image(client, base_url: str, image_path: Path) -> str:
-    # Uploads one image onto ComfyUI's own filesystem, returns the filename
-    # ComfyUI assigned it - what a LoadImage node references by name.
-    with image_path.open("rb") as fh:
-        files = {"image": (image_path.name, fh, "application/octet-stream")}
+async def _upload_input_file(client, base_url: str, path: Path) -> str:
+    # ComfyUI's /upload/image endpoint just drops whatever bytes are posted
+    # under the "image" form field into its own input folder, regardless of
+    # actual media type - already relied on for the VHS Load Video (Upload)
+    # node (see comfy_workflow_template.py's VHS_LoadVideo comment) and, per
+    # the real LoadAudioUI node's implementation (folder_paths.
+    # get_annotated_filepath against the input dir), true for audio too. One
+    # upload helper for reference images, the extend-video source, and
+    # generated lip-sync audio.
+    with path.open("rb") as fh:
+        files = {"image": (path.name, fh, "application/octet-stream")}
         res = await client.post(f"{base_url}/upload/image", files=files)
     if res.status_code != 200:
         raise RuntimeError(f"ComfyUI /upload/image returned HTTP {res.status_code}: {res.text[:300]}")
     body = res.json()
-    return body.get("name") or image_path.name
+    return body.get("name") or path.name
 
 
-async def _upload_reference_video(client, base_url: str, video_path: Path) -> str:
-    # VHS' Load Video (Upload) node uploads through the same /upload/image
-    # endpoint as images - ComfyUI's upload route just drops the file into
-    # its input folder regardless of media type.
-    with video_path.open("rb") as fh:
-        files = {"image": (video_path.name, fh, "application/octet-stream")}
-        res = await client.post(f"{base_url}/upload/image", files=files)
-    if res.status_code != 200:
-        raise RuntimeError(f"ComfyUI /upload/image returned HTTP {res.status_code}: {res.text[:300]}")
-    body = res.json()
-    return body.get("name") or video_path.name
+async def _noop_progress(_fraction: float) -> None:
+    return None
 
 
 async def _submit_and_poll(job: jobs.Job, base_url: str, workflow: dict) -> str:
@@ -131,6 +129,21 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
     if not base_url:
         raise HTTPException(status_code=400, detail="ComfyUI provider not configured - set it up on the Setup page first")
 
+    # The shot must exist before we can derive H3 render duration or the
+    # lip-sync audio window below - fail synchronously (like the checks
+    # above) rather than inside the job, where "shot not found" would only
+    # surface as an opaque job error after a job was already created.
+    shot = next((s for s in data.get("shots", []) if s.get("id") == shot_id), None)
+    if not shot:
+        raise HTTPException(status_code=404, detail="shot not found")
+
+    # The H3 reference audio must come from the project's own stored vocal
+    # track - never the full mix, never whatever audio happens to still be
+    # baked into the workflow template from an earlier manual test. Resolved
+    # synchronously so a missing vocal track fails cleanly before anything is
+    # uploaded to ComfyUI, same as the prompt/base_url checks above.
+    vocal_path = audio.require_track(data, directory, "vocal")
+
     assets_by_id = {a["id"]: a for a in data.get("assets", [])}
     reference_paths = []
     for asset_id in reference_asset_ids:
@@ -153,14 +166,14 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
     # model itself, not the project's configurable frameRule/fps (that's a
     # separate axis used by the shot table/export, see export.py). Computed
     # server-side rather than trusted from the client, same reasoning as
-    # export.py's own comment on this.
-    shot = next((s for s in data.get("shots", []) if s.get("id") == shot_id), None)
-    frame_count = None
-    fps_value = None
-    if shot:
-        cut_duration = shot["endSeconds"] - shot["startSeconds"]
-        frame_count = frames.h3_frame_count(cut_duration)
-        fps_value = frames.H3_FPS
+    # export.py's own comment on this. The lip-sync reference audio must
+    # cover this same render duration (which can run slightly past the
+    # editorial cut via frame-grid overhang), not just the cut itself - see
+    # media.audio_snippet_cmd below.
+    cut_duration = shot["endSeconds"] - shot["startSeconds"]
+    frame_count = frames.h3_frame_count(cut_duration)
+    fps_value = frames.H3_FPS
+    h3_duration = frame_count / fps_value
 
     # A blank/absent seed means "surprise me" - resolved once here so the
     # same concrete value goes into both the submitted workflow and the
@@ -172,12 +185,29 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
     take_id = uuid.uuid4().hex[:8]
     job = jobs.create_job()
 
+    # Scratch location for the rendered lip-sync clip - scoped to this job id
+    # (unique per generate call) so repeated/simultaneous generations for the
+    # same shot never collide, and cleaned up once the job ends regardless of
+    # outcome. Never touches the project's own stored vocal file or the
+    # export/ directory.
+    generation_dir = directory / "shots" / str(shot_id) / "generation" / job.id
+    lip_sync_path = generation_dir / "lip_sync.flac"
+
     async def run():
         try:
-            await jobs.emit(job, {"status": "running", "phase": "uploading", "message": "Uploading reference images"})
+            generation_dir.mkdir(parents=True, exist_ok=True)
+            await jobs.emit(job, {"status": "running", "phase": "audio", "message": "Preparing lip-sync audio"})
+            await media.run_ffmpeg_with_progress(
+                media.audio_snippet_cmd(vocal_path, shot["startSeconds"], h3_duration, lip_sync_path),
+                h3_duration,
+                _noop_progress,
+            )
+
+            await jobs.emit(job, {"status": "running", "phase": "uploading", "message": "Uploading references"})
             async with httpx.AsyncClient(timeout=60) as client:
-                uploaded = [await _upload_reference_image(client, base_url, p) for p in reference_paths]
-                extend_filename = await _upload_reference_video(client, base_url, extend_path) if extend_path else None
+                uploaded = [await _upload_input_file(client, base_url, p) for p in reference_paths]
+                extend_filename = await _upload_input_file(client, base_url, extend_path) if extend_path else None
+                lip_sync_filename = await _upload_input_file(client, base_url, lip_sync_path)
 
             workflow = build_workflow_payload(
                 prompt_text,
@@ -188,8 +218,11 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
                 extend_filename=extend_filename,
                 extend_start_frame=extend_start_frame,
                 extend_frame_count=extend_frame_count,
+                lip_sync_filename=lip_sync_filename,
+                lip_sync_duration=h3_duration,
             )
 
+            await jobs.emit(job, {"status": "running", "phase": "submitting", "message": "Submitting to ComfyUI"})
             filename = await _submit_and_poll(job, base_url, workflow)
 
             await jobs.emit(job, {"status": "running", "phase": "downloading", "message": "Downloading result"})
@@ -214,6 +247,7 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
             job.error = _error_message(exc)
             await jobs.emit(job, {"status": "error", "message": job.error})
         finally:
+            shutil.rmtree(generation_dir, ignore_errors=True)
             await jobs.close(job)
 
     asyncio.create_task(run())

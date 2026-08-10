@@ -1,7 +1,8 @@
 # Uploads the mix/vocal track itself into the project folder. Separate from
 # assets.py because there are exactly two well-known slots (mix, vocal), not
 # an open pool - this is what export (frames.py math against real audio
-# bytes) reads from, not something the user tags or assigns.
+# bytes) and comfy.py (H3 lip-sync reference audio) both read from, not
+# something the user tags or assigns.
 import shutil
 from pathlib import Path
 
@@ -12,6 +13,24 @@ from .projects import project_dir
 router = APIRouter()
 
 VALID_TRACKS = ("mix", "vocal")
+
+
+def require_track(data: dict, directory: Path, track: str) -> Path:
+    rel = ((data.get("audio") or {}).get(track) or {}).get("relativePath")
+    if not rel:
+        raise HTTPException(status_code=400, detail=f"no {track} track uploaded for this project yet")
+    path = directory / rel
+    if not path.exists():
+        raise HTTPException(status_code=400, detail=f"{track} track file is missing on disk")
+    return path
+
+
+def optional_track(data: dict, directory: Path, track: str) -> Path | None:
+    rel = ((data.get("audio") or {}).get(track) or {}).get("relativePath")
+    if not rel:
+        return None
+    path = directory / rel
+    return path if path.exists() else None
 
 
 @router.post("/api/projects/{project_id}/audio/{track}")

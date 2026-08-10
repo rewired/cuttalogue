@@ -12,15 +12,12 @@ from pathlib import Path
 from fastapi import APIRouter, Body, HTTPException
 from fastapi.responses import JSONResponse
 
-from . import frames, jobs, media
+from . import audio, frames, jobs, media
 from .projects import project_dir
 
 logger = logging.getLogger("cuttalogue.export")
 
 router = APIRouter()
-
-LIP_SYNC_SAMPLE_RATE = "32000"
-LIP_SYNC_CHANNELS = "1"
 
 
 def _load_project(project_id: str) -> tuple[dict, Path]:
@@ -32,49 +29,11 @@ def _load_project(project_id: str) -> tuple[dict, Path]:
     return data, directory
 
 
-def _snippet_cmd(source_path: Path, start_seconds: float, duration_seconds: float, output_path: Path) -> list[str]:
-    return [
-        "ffmpeg",
-        "-y",
-        "-ss",
-        f"{start_seconds:.6f}",
-        "-i",
-        str(source_path),
-        "-t",
-        f"{duration_seconds:.6f}",
-        "-ar",
-        LIP_SYNC_SAMPLE_RATE,
-        "-ac",
-        LIP_SYNC_CHANNELS,
-        "-c:a",
-        "flac",
-        str(output_path),
-    ]
-
-
 def _error_message(exc: Exception) -> str:
     # str(exc) is empty for some exceptions (bare AssertionError, etc.) - repr()
     # always includes the exception type, so the client never sees a blank
     # "job failed" with no clue what happened.
     return str(exc) or repr(exc)
-
-
-def _require_track(data: dict, directory: Path, track: str) -> Path:
-    rel = ((data.get("audio") or {}).get(track) or {}).get("relativePath")
-    if not rel:
-        raise HTTPException(status_code=400, detail=f"no {track} track uploaded for this project yet")
-    path = directory / rel
-    if not path.exists():
-        raise HTTPException(status_code=400, detail=f"{track} track file is missing on disk")
-    return path
-
-
-def _optional_track(data: dict, directory: Path, track: str) -> Path | None:
-    rel = ((data.get("audio") or {}).get(track) or {}).get("relativePath")
-    if not rel:
-        return None
-    path = directory / rel
-    return path if path.exists() else None
 
 
 @router.post("/api/projects/{project_id}/export")
@@ -86,11 +45,11 @@ async def export_project(project_id: str, options: dict = Body(default={})):
     if not shots:
         raise HTTPException(status_code=400, detail="project has no shots to export")
 
-    vocal_path = _require_track(data, directory, "vocal")
+    vocal_path = audio.require_track(data, directory, "vocal")
     # Full-mix copy (below) is best-effort - a project without a mix track
     # still exports fine. The per-shot mix.flac snippet is opt-in, so *that*
     # still errors like before when requested without a mix uploaded.
-    mix_path = _optional_track(data, directory, "mix")
+    mix_path = audio.optional_track(data, directory, "mix")
     if include_mix and mix_path is None:
         raise HTTPException(status_code=400, detail="no mix track uploaded for this project yet")
 
@@ -159,7 +118,7 @@ async def export_project(project_id: str, options: dict = Body(default={})):
                     )
 
                 await media.run_ffmpeg_with_progress(
-                    _snippet_cmd(vocal_path, shot["startSeconds"], render_duration, shot_dir / "lip_sync.flac"),
+                    media.audio_snippet_cmd(vocal_path, shot["startSeconds"], render_duration, shot_dir / "lip_sync.flac"),
                     render_duration,
                     on_progress,
                     should_cancel=should_cancel,
@@ -182,7 +141,7 @@ async def export_project(project_id: str, options: dict = Body(default={})):
                         )
 
                     await media.run_ffmpeg_with_progress(
-                        _snippet_cmd(mix_path, shot["startSeconds"], render_duration, shot_dir / "mix.flac"),
+                        media.audio_snippet_cmd(mix_path, shot["startSeconds"], render_duration, shot_dir / "mix.flac"),
                         render_duration,
                         on_mix_progress,
                         should_cancel=should_cancel,
