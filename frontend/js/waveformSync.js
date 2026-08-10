@@ -90,6 +90,8 @@
     els.vocalContainer = document.getElementById('track-vocal');
     els.vocalWrap = document.getElementById('track-vocal-wrap');
     els.silenceLayer = document.getElementById('silence-layer');
+    els.vocalCueLayer = document.getElementById('vocal-cue-layer');
+    els.addCueBtn = document.getElementById('add-cue-at-playhead-btn');
     els.playhead = document.getElementById('current-time-readout');
     els.loopToggleBtn = document.getElementById('loop-toggle-btn');
     els.loopSnapToggle = document.getElementById('loop-snap-toggle');
@@ -265,6 +267,7 @@
       isSyncingScroll = false;
       updatePlayheadPosition();
       repositionLoopOverlay();
+      repositionVocalCues();
     });
   }
 
@@ -572,6 +575,7 @@
     layoutSilenceOverlay();
     updatePlayheadPosition();
     repositionLoopOverlay();
+    repositionVocalCues();
   }
 
   function setAudioTrackHeight(px) {
@@ -594,6 +598,166 @@
       div.style.width = `${width}px`;
       els.silenceLayer.appendChild(div);
     });
+  }
+
+  // --- Vocal cue markers ------------------------------------------------
+  // Manually-authored, project-absolute song-timing anchors (MSE.vocalCues,
+  // Phase 2 of docs/h3-shot-direction-roadmap.md), shown as point markers on
+  // the Vocal track rather than a fourth WaveSurfer region - same
+  // untransformed px-per-second space as the silence overlay above (left =
+  // absolute time * pxPerSecond, minus the real vocalWs instance's own
+  // scroll), not the Shots lane's translateX'd content div.
+  function vocalCueLeft(cue) {
+    const scroll = vocalWs ? vocalWs.getScroll() : 0;
+    return cue.timeSeconds * pxPerSecond - scroll;
+  }
+
+  // Only one rename input can be open at a time - tracks how to tear the
+  // current one down (committing whatever's typed) if another interaction
+  // (a full re-render, or opening a second rename) needs it gone first.
+  let cancelVocalCueRename = null;
+
+  function startVocalCueRename(labelEl, cue) {
+    if (cancelVocalCueRename) cancelVocalCueRename();
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'vocal-cue-label-input';
+    input.placeholder = 'Cue label';
+    input.value = cue.label || '';
+    labelEl.hidden = true;
+    labelEl.insertAdjacentElement('afterend', input);
+    input.focus();
+    input.select();
+
+    function finish(commit) {
+      cancelVocalCueRename = null;
+      input.removeEventListener('blur', onBlur);
+      input.remove();
+      labelEl.hidden = false;
+      if (commit) MSE.vocalCues.rename(cue.id, input.value.trim());
+    }
+    function onBlur() {
+      finish(true);
+    }
+    input.addEventListener('blur', onBlur);
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') input.blur();
+      if (e.key === 'Escape') finish(false);
+    });
+    cancelVocalCueRename = () => finish(true);
+  }
+
+  // Drag mutates cue.timeSeconds directly and repositions just this one
+  // marker on every pointermove (no emit, no re-render) - same "live-mutate,
+  // commit-on-release" discipline as laneWidget.js's wireSegmentDrag, so a
+  // drag in progress never has its own DOM element torn out from under it by
+  // a vocal-cues-changed-triggered full rebuild.
+  function wireVocalCueDrag(dot, marker, cue) {
+    dot.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.stopPropagation();
+      e.preventDefault();
+      const startX = e.clientX;
+      const startTime = cue.timeSeconds;
+      let moved = false;
+
+      function onMove(ev) {
+        const dx = ev.clientX - startX;
+        if (!moved && Math.abs(dx) < 3) return;
+        moved = true;
+        const duration = state.audio.mix.durationSeconds || 0;
+        cue.timeSeconds = Math.max(0, Math.min(duration, startTime + dx / pxPerSecond));
+        marker.style.left = `${vocalCueLeft(cue)}px`;
+      }
+      function onUp() {
+        document.removeEventListener('pointermove', onMove);
+        document.removeEventListener('pointerup', onUp);
+        if (moved) MSE.vocalCues.move(cue.id, cue.timeSeconds);
+      }
+      document.addEventListener('pointermove', onMove);
+      document.addEventListener('pointerup', onUp);
+    });
+  }
+
+  function renderVocalCues() {
+    if (!els.vocalCueLayer) return;
+    if (cancelVocalCueRename) cancelVocalCueRename();
+    els.vocalCueLayer.innerHTML = '';
+    state.vocalCues.forEach((cue) => {
+      const marker = document.createElement('div');
+      marker.className = 'vocal-cue-marker';
+      marker.style.left = `${vocalCueLeft(cue)}px`;
+      marker.dataset.cueId = cue.id;
+
+      const dot = document.createElement('div');
+      dot.className = 'vocal-cue-dot';
+      dot.title = cue.label || '(untitled cue)';
+      marker.appendChild(dot);
+      wireVocalCueDrag(dot, marker, cue);
+
+      const label = document.createElement('div');
+      label.className = 'vocal-cue-label';
+      label.textContent = cue.label || '(untitled)';
+      label.title = cue.label || '(untitled cue)';
+      label.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        startVocalCueRename(label, cue);
+      });
+      marker.appendChild(label);
+
+      els.vocalCueLayer.appendChild(marker);
+    });
+  }
+
+  // Cheap reposition-only pass for scroll/zoom - mirrors
+  // repositionLoopOverlay vs renderLoopOverlay: never tears down a marker
+  // mid-drag or mid-rename, unlike renderVocalCues()'s full rebuild.
+  function repositionVocalCues() {
+    if (!els.vocalCueLayer) return;
+    els.vocalCueLayer.querySelectorAll('.vocal-cue-marker').forEach((el) => {
+      const cue = state.vocalCues.find((c) => c.id === el.dataset.cueId);
+      if (cue) el.style.left = `${vocalCueLeft(cue)}px`;
+    });
+  }
+
+  function setupVocalCueContextMenu() {
+    const menu = document.getElementById('vocal-cue-context-menu');
+    const renameBtn = document.getElementById('vocal-cue-context-rename');
+    const deleteBtn = document.getElementById('vocal-cue-context-delete');
+    if (!menu || !renameBtn || !deleteBtn || !els.vocalCueLayer) return;
+    MSE.contextMenu.create({
+      container: els.vocalCueLayer,
+      menuEl: menu,
+      resolveTarget: (e) => {
+        const marker = e.target.closest('.vocal-cue-marker');
+        return marker ? marker.dataset.cueId : null;
+      },
+      actions: [
+        {
+          btn: renameBtn,
+          onClick: (cueId) => {
+            const marker = els.vocalCueLayer.querySelector(`.vocal-cue-marker[data-cue-id="${CSS.escape(cueId)}"]`);
+            const cue = state.vocalCues.find((c) => c.id === cueId);
+            const label = marker && marker.querySelector('.vocal-cue-label');
+            if (label && cue) startVocalCueRename(label, cue);
+          },
+        },
+        { btn: deleteBtn, onClick: (cueId) => MSE.vocalCues.remove(cueId) },
+      ],
+    });
+  }
+
+  // Primary manual creation workflow (see docs/h3-shot-direction-roadmap.md
+  // Phase 2 §10): uses the exact current playback position, never quantized
+  // to the grid - a vocal cue represents performed audio timing, not the
+  // nominal musical grid. Opens the label straight into rename so typing the
+  // heard lyric is the very next keystroke.
+  function addCueAtPlayhead() {
+    const cue = MSE.vocalCues.add(getCurrentTime(), '');
+    renderVocalCues();
+    const marker = els.vocalCueLayer && els.vocalCueLayer.querySelector(`.vocal-cue-marker[data-cue-id="${CSS.escape(cue.id)}"]`);
+    const label = marker && marker.querySelector('.vocal-cue-label');
+    if (label) startVocalCueRename(label, cue);
   }
 
   // --- Shots lane -----------------------------------------------------
@@ -1021,6 +1185,12 @@
 
     setupShotsInteraction();
     setupShotContextMenu();
+    setupVocalCueContextMenu();
+    if (els.addCueBtn) {
+      els.addCueBtn.disabled = false;
+      els.addCueBtn.addEventListener('click', () => addCueAtPlayhead());
+    }
+    renderVocalCues();
     createPlayheadSegments();
     renderLoopOverlay();
     updateLoopToggle();
@@ -1082,6 +1252,9 @@
     vocalWs.zoom(pxPerSecond);
     vocalWs.on('scroll', layoutSilenceOverlay);
     vocalWs.on('zoom', layoutSilenceOverlay);
+    vocalWs.on('scroll', repositionVocalCues);
+    vocalWs.on('zoom', repositionVocalCues);
+    repositionVocalCues();
 
     const buffer = vocalWs.getDecodedData();
     if (buffer) {
@@ -1103,7 +1276,9 @@
     renderLoopOverlay();
     updateLoopToggle();
     updateLoopSnapToggle();
+    renderVocalCues();
   });
+  on('vocal-cues-changed', () => renderVocalCues());
   // Selecting a shot (from the list, or scrollToShot elsewhere) never changes
   // any row's content, so just toggle the .selected class in place - a full
   // renderShotList() rebuild here would replace the row/cell DOM nodes on

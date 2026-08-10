@@ -44,6 +44,10 @@
       },
       shots: [], // { id, startSeconds, endSeconds, prompt, notes, assetIds }
       assets: [], // { id, type, fileName, relativePath, thumbnailPath, tags, metadata }
+      // Project-absolute song timing anchors (Phase 2 of docs/h3-shot-direction-
+      // roadmap.md) - { id, timeSeconds, label }, sorted ascending by timeSeconds.
+      // Manually authored only; NOT duplicated per-shot - see vocalCues.js.
+      vocalCues: [],
       export: {
         includeMixSnippet: false,
       },

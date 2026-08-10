@@ -153,15 +153,32 @@
   // Shot-relative time (0 = shot start) -> nearest grid line, in the same
   // domain the Grid row ticks are drawn in (absolute song grid or shot-local,
   // per gridMode) - mirrors shots.js's own snapSeconds, but that one only
-  // knows the song timeline, not a shot-relative one.
-  function snapToDirectionGrid(relativeTime, shot) {
+  // knows the song timeline, not a shot-relative one. Returns null (rather
+  // than relativeTime unchanged) when there's no valid grid step, so the
+  // union in snapToDirectionGrid below can tell "no grid candidate" apart
+  // from "grid candidate happens to equal the input".
+  function nearestGridTime(relativeTime, shot) {
     const tempo = state.tempo;
     const step = MSE.grid.gridStepSeconds(tempo);
-    if (!step || step <= 0) return relativeTime;
+    if (!step || step <= 0) return null;
     const origin = gridMode === 'relative' ? shot.startSeconds : tempo.gridOffsetSeconds;
     const absoluteTime = shot.startSeconds + relativeTime;
     const snappedRel = Math.round((absoluteTime - origin) / step) * step;
     return Math.max(0, origin + snappedRel - shot.startSeconds);
+  }
+
+  // Snap targets are the union of the musical grid and this shot's vocal
+  // cues (MSE.vocalCues.forShot - never anything in H3's render overhang) -
+  // whichever single candidate lands closest to relativeTime wins, via the
+  // same nearestOf() union rule the regression tests exercise directly. A
+  // vocal cue is a timing guide only: this can move where a segment edge
+  // LANDS when Snap is on, but never feeds the H3 compiler or creates a
+  // semantic beat boundary by itself - only an authored segment edge does.
+  function snapToDirectionGrid(relativeTime, shot) {
+    const gridTime = nearestGridTime(relativeTime, shot);
+    const cueTimes = MSE.vocalCues.forShot(shot).map((cue) => cue.relativeTimeSeconds);
+    const snapped = MSE.vocalCues.nearestOf([gridTime, ...cueTimes], relativeTime);
+    return snapped === null ? relativeTime : snapped;
   }
 
   // Reprojects a raw pointer clientX (e.g. from a context-menu right-click)
@@ -525,6 +542,54 @@
     return row;
   }
 
+  // Read-only point markers for this shot's vocal cues (MSE.vocalCues, Phase
+  // 2) - not built through laneWidget.buildSegment, same reasoning as
+  // buildBeatSpan: a cue is authored on the main timeline (waveformSync.js),
+  // never dragged from here. Positioned against the same domainDuration as
+  // every other row, but MSE.vocalCues.forShot() already excludes anything
+  // at/after shot.endSeconds, so a cue never appears inside H3's render
+  // overhang even though the row's own band reaches that far.
+  function buildCueRow(shot, duration, domainDuration) {
+    const row = document.createElement('div');
+    row.className = 'direction-lane-row direction-cue-row';
+
+    const labelEl = document.createElement('div');
+    labelEl.className = 'direction-lane-label';
+    labelEl.textContent = 'Vocal Cues';
+    labelEl.title = 'Project vocal cues inside this shot - authored on the main timeline; drag a segment edge onto one to snap to it';
+    row.appendChild(labelEl);
+
+    const content = document.createElement('div');
+    content.className = 'direction-lane-content';
+    row.appendChild(content);
+
+    MSE.vocalCues.forShot(shot).forEach((cue) => {
+      const pct = domainDuration > 0 ? (cue.relativeTimeSeconds / domainDuration) * 100 : 0;
+      const title = `${cue.label || '(untitled cue)'} · ${cue.relativeTimeSeconds.toFixed(2)}s`;
+
+      const marker = document.createElement('div');
+      marker.className = 'direction-cue-marker';
+      marker.style.left = `${pct}%`;
+
+      const dot = document.createElement('div');
+      dot.className = 'direction-cue-dot';
+      dot.title = title;
+      marker.appendChild(dot);
+
+      const labelSpan = document.createElement('div');
+      labelSpan.className = 'direction-cue-label';
+      labelSpan.textContent = cue.label || '(untitled)';
+      labelSpan.title = title;
+      marker.appendChild(labelSpan);
+
+      content.appendChild(marker);
+    });
+
+    MSE.laneWidget.appendOverhangBand(content, duration, domainDuration, OVERHANG_TITLE);
+
+    return row;
+  }
+
   // Bulk convenience over the same per-beat isCut primitive the beat detail
   // panel edits one at a time (see shots.js's applyBurstBeats) - shown
   // unconditionally (unlike the beat/orphans rows below, which only appear
@@ -558,6 +623,7 @@
     const direction = shot.direction || { camera: [], subjects: {}, props: {}, beatNotes: [] };
 
     el.lanes.appendChild(buildGridRow(shot, duration, domainDuration));
+    el.lanes.appendChild(buildCueRow(shot, duration, domainDuration));
     el.lanes.appendChild(buildBurstToolbarRow(shot));
 
     el.lanes.appendChild(
@@ -1029,6 +1095,10 @@
       currentShotId = null;
       selection = null;
     });
+    // A cue added/renamed/moved/deleted on the main timeline changes what
+    // this shot's Vocal Cues row shows and what its segments snap to - both
+    // are read fresh from MSE.vocalCues on every renderAll(), no local copy.
+    on('vocal-cues-changed', () => renderAll());
 
     el.constraintsInput.addEventListener('keydown', (e) => {
       if (e.key !== 'Enter') return;

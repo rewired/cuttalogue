@@ -432,6 +432,55 @@ input.small { width: 44px; }
   border-right: 1px solid rgba(255, 255, 255, 0.15);
 }
 
+/* Vocal cue markers on the main timeline (waveformSync.js) - the layer
+   itself lets clicks/drags through to the waveform underneath (for scrub/
+   seek), only the small marker hit-areas re-enable pointer events, same
+   pattern as .loop-region-segment sitting over the Grid row. */
+.vocal-cue-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+.vocal-cue-marker { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; }
+.vocal-cue-dot {
+  position: absolute;
+  top: 4px;
+  width: 9px;
+  height: 9px;
+  margin-left: -4px;
+  border-radius: 50%;
+  background: #ffb84c;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+  cursor: grab;
+  pointer-events: auto;
+}
+.vocal-cue-dot:active { cursor: grabbing; }
+.vocal-cue-label {
+  position: absolute;
+  top: 15px;
+  left: 0;
+  transform: translateX(-50%);
+  max-width: 110px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: #ffb84c;
+  cursor: text;
+  pointer-events: auto;
+}
+.vocal-cue-label-input {
+  position: absolute;
+  top: 13px;
+  left: 0;
+  transform: translateX(-50%);
+  width: 110px;
+  font-size: 10px;
+  padding: 1px 3px;
+  pointer-events: auto;
+}
+
 /* The Shots track (waveformSync.js) is plain light-DOM now, not a
    WaveSurfer-shadow-DOM region - this class actually applies (see the
    removed inline-style workaround it used to need). */
@@ -1215,6 +1264,34 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   cursor: pointer;
   border-bottom: 2px solid transparent;
 }
+/* Read-only point markers, not laneWidget segments (see direction.js's
+   buildCueRow) - a vocal cue is a timing guide, never draggable from here
+   (it's authored on the main timeline, waveformSync.js). */
+.direction-cue-row .direction-lane-content { height: 26px; background: transparent; }
+.direction-cue-marker { position: absolute; top: 0; bottom: 0; width: 0; }
+.direction-cue-dot {
+  position: absolute;
+  top: 3px;
+  width: 7px;
+  height: 7px;
+  margin-left: -3.5px;
+  border-radius: 50%;
+  background: #ffb84c;
+  border: 1px solid rgba(0, 0, 0, 0.4);
+}
+.direction-cue-label {
+  position: absolute;
+  top: 13px;
+  left: 0;
+  transform: translateX(-50%);
+  max-width: 90px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 10px;
+  color: #ffb84c;
+}
+
 .direction-beat-segment:hover { background: rgba(255, 255, 255, 0.05); }
 .direction-beat-segment.selected { background: rgba(76, 141, 255, 0.2); border-bottom-color: var(--accent); }
 .direction-beat-segment.has-note::after {

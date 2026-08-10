@@ -53,6 +53,7 @@
         direction: s.direction || { camera: [], subjects: {}, props: {}, beatNotes: [] },
       })),
       assets: state.assets,
+      vocalCues: (state.vocalCues || []).map((c) => ({ id: c.id, timeSeconds: c.timeSeconds, label: c.label || '' })),
       export: state.export,
       loop: state.loop,
       // Stamped by saveProjectToBackend() on every real save - the sole
@@ -132,6 +133,12 @@
     }));
     normalized.shots.forEach((s) => normalizeDirectionSegments(s.direction));
     normalized.assets = (normalized.assets || []).map((a) => ({ tags: [], description: '', ...a }));
+    // Older projects predate vocalCues entirely -> []. Always re-sorted
+    // ascending by timeSeconds here (not just wherever a cue is mutated) so a
+    // hand-edited or foreign project.json can't load with a stale order.
+    normalized.vocalCues = (normalized.vocalCues || [])
+      .map((c) => ({ label: '', ...c }))
+      .sort((a, b) => a.timeSeconds - b.timeSeconds);
     normalized.export = { includeMixSnippet: false, ...(normalized.export || {}) };
     normalized.loop = { enabled: false, startSeconds: null, endSeconds: null, snapMode: 'grid', ...(normalized.loop || {}) };
     normalized.savedAt = normalized.savedAt ?? null;
@@ -407,5 +414,9 @@
     listProjects,
     exportShotsJson,
     exportShotsCsv,
+    // Pure - exposed for the regression tests (frontend/tests/vocalCues.test.js)
+    // to exercise the normalize/serialize round-trip directly.
+    normalizeProjectData,
+    serializeProject,
   };
 })(window.MSE = window.MSE || {});

@@ -58,6 +58,7 @@
     <button type="button" id="loop-toggle-btn" class="icon-btn loop-toggle-btn" disabled title="Loop: off">&#8635;</button>
     <button type="button" id="loop-snap-toggle" class="icon-btn loop-snap-toggle" disabled title="Snap loop locators to the grid or to shot boundaries">Grid</button>
   </div>
+  <button type="button" id="add-cue-at-playhead-btn" class="icon-btn" disabled title="Add a vocal cue at the current playhead position">+ Cue</button>
   <div class="readout" id="current-time-readout">00:00.000 · F0 · 1.1.0.000</div>
   <div class="zoom-control">
     <label for="zoom-slider">Zoom</label>
@@ -142,6 +143,7 @@ Right-click a shot to delete it">&#9432;</span></div>
     <div class="track-content vocal-wrapper" id="track-vocal-wrap">
       <div id="track-vocal"></div>
       <div class="silence-overlay" id="silence-layer"></div>
+      <div class="vocal-cue-layer" id="vocal-cue-layer"></div>
     </div>
   </div>
   <div id="track-height-handle" class="track-height-handle" title="Drag to resize the Mix/Vocal tracks">
@@ -276,6 +278,11 @@ Right-click a shot to delete it">&#9432;</span></div>
 
 <div id="shot-context-menu" class="context-menu">
   <button type="button" id="shot-context-delete">Delete shot</button>
+</div>
+
+<div id="vocal-cue-context-menu" class="context-menu">
+  <button type="button" id="vocal-cue-context-rename">Rename cue</button>
+  <button type="button" id="vocal-cue-context-delete">Delete cue</button>
 </div>
 
 <div id="direction-segment-context-menu" class="context-menu">
@@ -440,6 +447,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/shots.js"></script>
 <script src="js/assets.js"></script>
 <script src="js/references.js"></script>
+<script src="js/vocalCues.js"></script>
 <script src="js/silence.js"></script>
 <script src="js/waveformSync.js"></script>
 <script src="js/trackHeightResize.js"></script>
