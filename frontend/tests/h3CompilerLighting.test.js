@@ -127,6 +127,12 @@ function makeShot({ camera = [], lighting = [], assetIds = [], assetRoles = {}, 
 }
 
 // --- Case K: Lighting compiler output - populated vs. empty fields --------
+// Phase 5 rewrote phraseLighting's grammar (see h3Compiler.js's own
+// comment): "sits in X" (missing article) and "filled by minimal" (a verb
+// bolted onto a bare adjective) are gone, replaced by one natural sentence
+// that folds atmosphere into the main clause and lists key/fill/backlight
+// with "the"/compound-modifier phrasing (never a/an, for the same
+// anti-brittleness reason as the Phase 4b expression-grammar fix).
 {
   const shot = makeShot({
     lighting: [{
@@ -141,11 +147,13 @@ function makeShot({ camera = [], lighting = [], assetIds = [], assetRoles = {}, 
     }],
   });
   const text = h3Compiler.compileH3Sections(shot).detailedDescription;
-  assertIncludes(text, 'Lighting is low-key', 'Case K: exposure clause present');
-  assertIncludes(text, 'sits in dark smoky club', 'Case K: atmosphere clause present');
-  assertIncludes(text, 'keyed by warm stage key from camera-left', 'Case K: keyLight clause present');
-  assertIncludes(text, 'filled by minimal', 'Case K: fill clause present');
-  assertIncludes(text, 'backlit by subtle amber rim', 'Case K: backlight clause present');
+  assertIncludes(text, 'The lighting remains low-key', 'Case K: exposure clause present');
+  assertIncludes(text, 'in the dark smoky club atmosphere', 'Case K: atmosphere clause present, with an article (not the old bare "sits in dark smoky club")');
+  assertIncludes(text, 'the warm stage key from camera-left', 'Case K: keyLight clause present');
+  assertIncludes(text, 'minimal fill', 'Case K: fill clause present as a compound modifier');
+  assertIncludes(text, 'the subtle amber rim', 'Case K: backlight clause present');
+  assertNotIncludes(text, 'sits in', 'Case K: the old "sits in" (missing-article) construction never appears');
+  assertNotIncludes(text, 'filled by minimal', 'Case K: the old "filled by minimal" construction never appears');
 
   const blankShot = makeShot({ lighting: [{ startSeconds: 0, endSeconds: 10, enabled: true }] });
   const blankText = h3Compiler.compileH3Sections(blankShot).detailedDescription;
@@ -154,6 +162,11 @@ function makeShot({ camera = [], lighting = [], assetIds = [], assetRoles = {}, 
 
 // --- Case L: a real lighting CHANGE compiles as two distinct beats, and ---
 // --- environment retention no longer claims lighting stays the same ------
+// Phase 5 section 16: a genuine change from one active Lighting segment to
+// a different one uses "shifts to/into" instead of the steady-state
+// "remains"/"carries"/"is shaped by" framing (see phraseLighting's
+// `isChange` parameter) - the first beat has no previous Lighting to shift
+// from, so it still reads as an establishing statement.
 {
   assets.addAssets([{ id: 'club', type: 'image', fileName: 'club.png', relativePath: 'x', tags: [], metadata: {} }]);
   const shot = makeShot({
@@ -166,8 +179,8 @@ function makeShot({ camera = [], lighting = [], assetIds = [], assetRoles = {}, 
     endSeconds: 6,
   });
   const sections = h3Compiler.compileH3Sections(shot);
-  assertIncludes(sections.detailedDescription, 'keyed by cold blue side light', 'Case L: the first Lighting beat is described');
-  assertIncludes(sections.detailedDescription, 'keyed by warm amber frontal light', 'Case L: the second Lighting beat is described as an actual change, not suppressed');
+  assertIncludes(sections.detailedDescription, 'is shaped by the cold blue side light', 'Case L: the first Lighting beat is described as an establishing statement (no previous Lighting to shift from)');
+  assertIncludes(sections.detailedDescription, 'shifts to the warm amber frontal light', 'Case L: the second Lighting beat is described as an actual change, not suppressed, using shift language');
 
   assertIncludes(sections.subjectDefinitions, 'architecture and spatial layout', 'Case L: environment retention drops "lighting" once Lighting Direction exists');
   assertNotIncludes(sections.subjectDefinitions, 'architecture, lighting, and spatial layout', 'Case L: the un-adjusted (lighting-inclusive) retention wording must not also appear');

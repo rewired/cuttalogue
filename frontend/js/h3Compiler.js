@@ -9,10 +9,32 @@
 // The compiler deliberately does NOT merge short segments into larger beats
 // itself - the Direction modal's own hint to keep segments coarse stands in
 // for that. It only takes the union of segment boundaries as-authored.
+//
+// Phase 5 ("H3 Prompt Compiler 2.0"): beat construction and prose rendering
+// are now two separate stages. buildSemanticBeats() walks the authored
+// Direction once per shot and produces a normalized, compiler-only
+// Semantic Beat IR (never persisted) carrying the active Camera/Lighting/
+// per-subject/per-prop segment for every beat interval, plus its BeatNote
+// and hard-cut flag. renderSemanticBeat() then composes ONE beat's prose,
+// diffing against the immediately preceding beat (by object identity - see
+// its own comment) so a lane that's simply continuing unchanged is not
+// restated every beat, while a hard cut resets that continuity outright.
+// Canonical reference binding (Phase 0) and the "vocal regions never create
+// a beat boundary by themselves" invariant (Phase 4a) are both untouched by
+// this refactor - buildSemanticBeats still reads subject identity only from
+// orderedSubjects()/MSE.references, and collectBeatBoundaries still has no
+// parameter for region data at all.
 (function (MSE) {
   'use strict';
 
   const shotsApi = MSE.shots;
+
+  // Phase 5: bumped whenever this file's compiled WORDING changes for
+  // already-populated Direction fields (schemas/semantics are unchanged -
+  // see section 34 of the Phase 5 spec). Not persisted anywhere yet; no
+  // take/generation record currently stores a compiler version, and adding
+  // one is out of scope for a compiler-internals-only phase.
+  const H3_COMPILER_VERSION = '2.0';
 
   const ROLE_PRESERVE = {
     primary_character: 'identity, face, hair, wardrobe, and body proportions',
@@ -28,6 +50,8 @@
   // retention vs Lighting Direction"). Only "lighting" is dropped; spatial/
   // architectural retention still applies regardless of Lighting Direction.
   // A shot with no Lighting segments keeps the original wording unchanged.
+  // Phase 5 note (section 31): retention already never mentions pose/action
+  // for character roles, so no further narrowing was needed there.
   const ROLE_PRESERVE_NO_LIGHTING = { ...ROLE_PRESERVE, environment: 'architecture and spatial layout' };
 
   function rolePreserveText(role, hasLightingDirection) {
@@ -41,6 +65,10 @@
     prop: 'a prop',
   };
 
+  // Movement vocabulary is centralized here (section 8) and never renamed -
+  // each entry keeps its own distinct verb so optical zoom, physical push/
+  // pull, and traveling/tracking language never collapse into one generic
+  // "moves closer" (section 9).
   const MOVEMENT_PHRASES = {
     zoom_in: 'zooms in',
     zoom_out: 'zooms out',
@@ -66,7 +94,8 @@
   // ahead of the shot content itself (Full-Reference mode puts style
   // *before* [Shot 1], unlike Base mode). A per-project style field is
   // future scope; this generic default at least gets the required
-  // structural element right.
+  // structural element right. Untouched by Phase 5 (spec section: "keep
+  // STYLE_OPENER untouched").
   const STYLE_OPENER = 'The target video is live-action and cinematic with natural human motion and realistic body mechanics.';
 
   // Hard-cut phrasing for a beat marked isCut (see shots.js's
@@ -149,7 +178,9 @@
   // Subject N / Picture N ordering now comes from the canonical reference
   // binding (references.js) - the same binding Generate uses for
   // referenceAssetIds - so the two can never diverge. See references.js for
-  // the role-order/stability rules.
+  // the role-order/stability rules. Phase 5's Semantic Beat IR reads subject
+  // identity exclusively through this function too - no independent
+  // ordering exists anywhere in this file.
   function orderedSubjects(shot) {
     return MSE.references.forShot(shot).map((ref) => ({
       assetId: ref.assetId,
@@ -163,6 +194,17 @@
     return role === 'primary_character' || role === 'supporting_character';
   }
 
+  // Joins 1+ already-composed noun phrases with a natural "and" (no Oxford
+  // comma - the compact style already used throughout this file). Used by
+  // phraseLighting's key/fill/backlight list; deliberately generic so it can
+  // serve any future comma-list without a bespoke join per caller.
+  function joinWithAnd(parts) {
+    if (parts.length === 0) return '';
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+    return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+  }
+
   // Guide section 6.4: movement + amplitude + speed, as one natural
   // sentence rather than a tag list - "The camera pushes in with small
   // amplitude at slow speed toward her hand on the railing", amplitude/
@@ -174,7 +216,20 @@
   // decision for an arbitrary string (see the Phase 4b preflight fix for
   // why that's brittle). `depthOfField` goes through the centralized
   // DEPTH_OF_FIELD_PHRASES map; `focusTarget` is optical focus, distinct
-  // from `target` (movement/composition) above.
+  // from `target` (movement/composition) above - Phase 5 keeps both as
+  // independent clauses on purpose (section 27/Case O: they're different
+  // concepts even when the authored value happens to be the same string).
+  //
+  // Phase 5 deliberately does NOT restructure this sentence's own internal
+  // grammar further (e.g. weaving speed/direction into the verb as
+  // adjectives) - `speed`/`direction` are free text with no closed
+  // vocabulary, and guessing adverb morphology for arbitrary strings is
+  // exactly the kind of brittle mini-NLP the spec warns against elsewhere.
+  // What Phase 5 changes about Camera is at the beat-composition level
+  // (see renderSemanticBeat): an unchanged Camera segment is no longer
+  // restated every beat, and hard cuts force a full restatement. This
+  // sentence itself is unchanged from Phase 4b, so it stays byte-identical
+  // for the same segment.
   function phraseCamera(segment) {
     if (!segment) return '';
     const verb = MOVEMENT_PHRASES[segment.movement] || segment.movement;
@@ -192,27 +247,54 @@
     return sentence;
   }
 
-  // Phase 4b: Lighting is independent authored Direction (unlike Vocal
-  // Regions), so its boundaries ARE semantic beat boundaries (see
-  // collectBeatBoundaries) and its active segment contributes its own
-  // sentence per beat, same call shape as phraseCamera/phraseSubjectAction.
-  // Verb-led clauses ("is X", "sits in Y", "keyed by Z") rather than raw
-  // noun interpolation, so no a/an decision is ever needed and a value that
-  // happens to already contain a category word (e.g. fill: "soft neutral
-  // fill") never literally duplicates it. No hidden state: called fresh per
-  // beat, so a Lighting segment spanning several beats legitimately repeats
-  // its own description each time (matches the compiler's existing
-  // self-contained-beat style, e.g. phraseCamera does the same).
-  function phraseLighting(segment) {
+  // Phase 5 Lighting grammar rewrite (preflight fix + spec section 15):
+  // replaces the Phase 4b mechanical "is X, sits in Y, keyed by Z, filled by
+  // W, backlit by V" clause list - "sits in dark smoky club" (missing
+  // article) and "filled by minimal" (a verb bolted onto a bare adjective)
+  // both read as broken English - with one natural sentence.
+  //
+  // keyLight/backlight are authored as complete descriptive phrases already
+  // ("warm stage key from camera-left", "subtle amber rim" - see their
+  // datalist placeholders in direction.js), so they're introduced with "the"
+  // rather than "a/an": same anti-brittleness reasoning as the Phase 4b
+  // expression-grammar fix (an arbitrary free-text phrase can start with any
+  // letter, and "the" is grammatical either way, unlike "a/an"). `fill` is
+  // authored as a bare adjective ("minimal", "soft") and is instead composed
+  // as a compound modifier ("minimal fill"), the same technique already used
+  // for Camera's focalLength ("85mm framing") - never "filled by minimal".
+  // `atmosphere` is folded into the same main clause ("in the X atmosphere")
+  // rather than its own "sits in" sentence.
+  //
+  // `isChange` (Phase 5 section 16) is true only when this Lighting segment
+  // is a genuine change from a different, non-null previous segment (see
+  // renderSemanticBeat) - it swaps the leading verb to "shifts to"/"shifts
+  // into" so a real Lighting change reads as a change, not a restatement.
+  // Deliberately a single boolean, not a full previous-vs-current field
+  // diff - the spec explicitly warns against a "complex temporal-diff
+  // engine" here.
+  function phraseLighting(segment, isChange) {
     if (!segment) return '';
-    const clauses = [];
-    if (segment.exposure) clauses.push(`is ${EXPOSURE_PHRASES[segment.exposure] || segment.exposure}`);
-    if (segment.atmosphere) clauses.push(`sits in ${segment.atmosphere}`);
-    if (segment.keyLight) clauses.push(`keyed by ${segment.keyLight}`);
-    if (segment.fill) clauses.push(`filled by ${segment.fill}`);
-    if (segment.backlight) clauses.push(`backlit by ${segment.backlight}`);
+    const withParts = [];
+    if (segment.keyLight) withParts.push(`the ${segment.keyLight}`);
+    if (segment.fill) withParts.push(`${segment.fill} fill`);
+    if (segment.backlight) withParts.push(`the ${segment.backlight}`);
+    const withClause = withParts.length > 0 ? `, with ${joinWithAnd(withParts)}` : '';
+
+    let main = '';
+    if (segment.exposure) {
+      const verb = isChange ? 'shifts to' : 'remains';
+      main = `The lighting ${verb} ${EXPOSURE_PHRASES[segment.exposure] || segment.exposure}`;
+      if (segment.atmosphere) main += ` in the ${segment.atmosphere} atmosphere`;
+      main += withClause;
+    } else if (segment.atmosphere) {
+      main = isChange ? `The lighting shifts into the ${segment.atmosphere} atmosphere` : `The lighting carries the ${segment.atmosphere} atmosphere`;
+      main += withClause;
+    } else if (withParts.length > 0) {
+      main = isChange ? `The lighting shifts to ${joinWithAnd(withParts)}` : `The lighting is shaped by ${joinWithAnd(withParts)}`;
+    }
+
     const sentences = [];
-    if (clauses.length > 0) sentences.push(`Lighting ${clauses.join(', ')}.`);
+    if (main) sentences.push(`${main}.`);
     if (segment.notes) sentences.push(sentences.length > 0 ? segment.notes : `Lighting: ${segment.notes}.`);
     return sentences.join(' ');
   }
@@ -238,6 +320,9 @@
   //   bodyMotion        -> overall movement quality, own sentence
   //   notes             -> fallback exceptional instruction, never repeats
   //                        the structured fields above
+  // Phase 5 leaves this sentence's own grammar unchanged (it already matched
+  // the spec's suggested semantic-ownership table field-for-field); what
+  // changed is when it gets called at all - see renderSemanticBeat.
   function phraseSubjectAction(label, segment) {
     if (!segment) return '';
     const clauses = [];
@@ -278,6 +363,14 @@
   // transition, no separate before/after schema needed. `ownerAssetId` wins
   // over free-text `state` when both are set, since it lets the compiler
   // reference the holder by its own <Subject N> label instead of prose.
+  //
+  // Phase 5 (section 26/Case N): if the owner's OWN active Character segment
+  // this beat already carries an explicit `gesture` (e.g. "both hands grip
+  // microphone"), the owner-based prop sentence would just restate the same
+  // fact in different words - see ownerGestureAlreadyCoversProp, checked by
+  // the caller before this function runs at all. That's a narrow,
+  // field-aware rule (does the owner's gesture field exist at all this
+  // beat?), not fuzzy text similarity between the two authored strings.
   function phrasePropState(label, segment, subjects) {
     if (!segment) return '';
     if (segment.ownerAssetId) {
@@ -286,6 +379,19 @@
     }
     if (segment.state) return `<${label}> is ${segment.state}.`;
     return '';
+  }
+
+  // Phase 5 Case N: a prop's "is held by <Subject>" sentence is redundant
+  // once that subject's own active Character segment this beat already
+  // states the physical gesture holding it - the two would say the same
+  // thing in two different vocabularies. Deliberately checks only "does the
+  // owner have a non-empty `gesture` field right now", not the CONTENT of
+  // that gesture text against the prop's own fields - see the module
+  // comment above for why this stays a field-aware rule, not fuzzy NLP.
+  function ownerGestureAlreadyCoversProp(beat, propSegment) {
+    if (!propSegment || !propSegment.ownerAssetId) return false;
+    const owner = beat.subjects.find((s) => s.assetId === propSegment.ownerAssetId);
+    return !!(owner && owner.segment && owner.segment.gesture);
   }
 
   function segmentActiveAt(segment, beatStart, beatEnd) {
@@ -299,9 +405,9 @@
 
   // Finds the BeatNote (see shots.js's upsertBeatNote/removeBeatNote)
   // attached to the beat spanning [start, end], or null. Single source of
-  // truth for "does this beat have a note" - used by this file's own
-  // paragraph builder, by shots.js's upsertBeatNote (to find-or-create), and
-  // by direction.js's beat UI (marker dot, detail panel, orphan detection).
+  // truth for "does this beat have a note" - used by this file's own beat
+  // IR builder, by shots.js's upsertBeatNote (to find-or-create), and by
+  // direction.js's beat UI (marker dot, detail panel, orphan detection).
   function findBeatNote(shot, start, end) {
     return (
       (shot.direction.beatNotes || []).find(
@@ -310,6 +416,12 @@
     );
   }
 
+  // Beat boundaries are the union of authored Direction segment edges only
+  // (Camera/Lighting/Character/Prop) plus the shot's own start/end - never
+  // vocal cue/region/word-alignment timing (Phase 4a/4b invariant: vocal
+  // analysis alone is never an H3 semantic beat). This function has no
+  // parameter for region data at all, which is the structural proof that a
+  // region boundary can never leak in here.
   function collectBeatBoundaries(shot, subjects) {
     const points = new Set([0, shotsApi.shotDuration(shot)]);
     (shot.direction.camera || []).filter((seg) => seg.enabled !== false).forEach((seg) => {
@@ -318,9 +430,7 @@
     });
     // Lighting is authored Direction (unlike transient Vocal Regions - see
     // Phase 4a/4b's own architecture note), so its boundaries are genuine
-    // semantic beat boundaries, same as Camera/Character/Prop above. A
-    // region boundary with no authored segment at it never reaches this
-    // function at all, so that invariant stays intact untouched.
+    // semantic beat boundaries, same as Camera/Character/Prop above.
     (shot.direction.lighting || []).filter((seg) => seg.enabled !== false).forEach((seg) => {
       points.add(seg.startSeconds);
       points.add(seg.endSeconds);
@@ -344,6 +454,167 @@
       .sort((a, b) => a - b);
   }
 
+  // --- Phase 5: Semantic Beat IR ---------------------------------------
+  //
+  // buildSemanticBeats() walks collectBeatBoundaries() once and resolves,
+  // for every resulting interval, which authored segment is active in every
+  // lane (Camera/Lighting/each acting subject/each cast prop) plus its
+  // BeatNote - all BEFORE any prose is generated. This is compiler-only IR:
+  // it is never persisted, never round-tripped, and carries the original
+  // segment object references (not copies), which is exactly what lets
+  // renderSemanticBeat() detect "same segment, still active" via a plain
+  // `===` identity check instead of a value-by-value diff.
+  //
+  // Shape (see the Phase 5 spec's own "possible shape" - this is a close
+  // match, not a forced rename):
+  //   {
+  //     startSeconds, endSeconds,
+  //     camera: CameraSegment|null,
+  //     lighting: LightingSegment|null,
+  //     subjects: [{ assetId, label, segment: CharacterSegment|null }],
+  //     props:    [{ assetId, label, segment: PropSegment|null }],
+  //     beatNote: BeatNote|null,
+  //     isHardCut: boolean,
+  //   }
+  function buildSemanticBeats(shot, subjects) {
+    const orderedSubjectsList = subjects || orderedSubjects(shot);
+    const boundaries = collectBeatBoundaries(shot, orderedSubjectsList);
+    const beats = [];
+    for (let i = 0; i < boundaries.length - 1; i++) {
+      const startSeconds = boundaries[i];
+      const endSeconds = boundaries[i + 1];
+      if (endSeconds - startSeconds < 1e-6) continue;
+
+      const camera = (shot.direction.camera || []).find((seg) => segmentActiveAt(seg, startSeconds, endSeconds)) || null;
+      const lighting = (shot.direction.lighting || []).find((seg) => segmentActiveAt(seg, startSeconds, endSeconds)) || null;
+
+      const subjectStates = orderedSubjectsList
+        .filter((s) => isActingRole(s.role))
+        .map((s) => ({
+          assetId: s.assetId,
+          label: s.label,
+          segment: ((shot.direction.subjects || {})[s.assetId] || []).find((seg) => segmentActiveAt(seg, startSeconds, endSeconds)) || null,
+        }));
+
+      const propStates = orderedSubjectsList
+        .filter((s) => s.role === 'prop')
+        .map((s) => ({
+          assetId: s.assetId,
+          label: s.label,
+          segment: ((shot.direction.props || {})[s.assetId] || []).find((seg) => segmentActiveAt(seg, startSeconds, endSeconds)) || null,
+        }));
+
+      const beatNote = findBeatNote(shot, startSeconds, endSeconds);
+      beats.push({
+        startSeconds,
+        endSeconds,
+        camera,
+        lighting,
+        subjects: subjectStates,
+        props: propStates,
+        beatNote,
+        isHardCut: !!(beatNote && beatNote.isCut),
+      });
+    }
+    return beats;
+  }
+
+  function findByAssetId(list, assetId) {
+    const found = list.find((entry) => entry.assetId === assetId);
+    return found ? found.segment : undefined;
+  }
+
+  // Renders ONE semantic beat's prose. `previousBeat` is the immediately
+  // preceding beat in time (or null for the shot's very first beat) - see
+  // buildBeatParagraphs, which always advances it beat-by-beat regardless of
+  // whether the previous beat actually produced any text.
+  //
+  // Continuity rule (spec sections 18-22): a lane whose active segment is
+  // the SAME object as in the previous beat is "continuing unchanged" and is
+  // not restated; a lane that's different (including null -> segment, or
+  // segment -> a different segment) is "changed" and gets its sentence.
+  // `resetContinuity` (the shot's first beat, or a beat whose own BeatNote
+  // marks it as a hard cut) forces every active lane to render in full,
+  // regardless of identity - "camera continuity from the previous beat
+  // resets" on a hard cut (section 19), and there is no previous beat at all
+  // for the very first one.
+  //
+  // Fallback (section 40): if continuity suppression empties the beat out
+  // entirely, but at least one lane IS active (just unchanged), the beat is
+  // re-rendered without suppression rather than silently dropped - a beat
+  // boundary only exists because *something* changed at that instant (see
+  // collectBeatBoundaries), so an empty result here would mean "some lane
+  // ended with nothing else to say", which still deserves output if other
+  // lanes are quietly continuing.
+  function renderSemanticBeat(beat, previousBeat, subjectsAll) {
+    const resetContinuity = !previousBeat || beat.isHardCut;
+
+    function cameraLine() {
+      return phraseCamera(beat.camera);
+    }
+    function subjectLine(s) {
+      return phraseSubjectAction(s.label, s.segment);
+    }
+    function propLine(pr) {
+      if (ownerGestureAlreadyCoversProp(beat, pr.segment)) return '';
+      return phrasePropState(pr.label, pr.segment, subjectsAll);
+    }
+    function lightingLine(isChange) {
+      return phraseLighting(beat.lighting, isChange);
+    }
+
+    const cameraChanged = resetContinuity || beat.camera !== previousBeat.camera;
+    const lightingChanged = resetContinuity || beat.lighting !== previousBeat.lighting;
+    const lightingIsShift = !resetContinuity && !!previousBeat.lighting && lightingChanged;
+
+    const lines = [];
+    if (beat.camera && cameraChanged) {
+      const l = cameraLine();
+      if (l) lines.push(l);
+    }
+    beat.subjects.forEach((s) => {
+      const changed = resetContinuity || s.segment !== findByAssetId(previousBeat.subjects, s.assetId);
+      if (s.segment && changed) {
+        const l = subjectLine(s);
+        if (l) lines.push(l);
+      }
+    });
+    beat.props.forEach((pr) => {
+      const changed = resetContinuity || pr.segment !== findByAssetId(previousBeat.props, pr.assetId);
+      if (pr.segment && changed) {
+        const l = propLine(pr);
+        if (l) lines.push(l);
+      }
+    });
+    if (beat.lighting && lightingChanged) {
+      const l = lightingLine(lightingIsShift);
+      if (l) lines.push(l);
+    }
+    // Beat Note intent/endState (sections 23/25) are per-beat, exact-match
+    // facts, never carried over from a previous beat - always included,
+    // never subject to continuity suppression. Priority (section 24) stays
+    // uncompiled, same as before Phase 5: it has no consumer yet.
+    if (beat.beatNote && beat.beatNote.intent) lines.push(`Intent: ${beat.beatNote.intent}.`);
+    if (beat.beatNote && beat.beatNote.endState) lines.push(`By the end of this beat: ${beat.beatNote.endState}.`);
+
+    if (lines.length > 0 || resetContinuity) return lines.join(' ');
+
+    const fallback = [];
+    const camFallback = cameraLine();
+    if (camFallback) fallback.push(camFallback);
+    beat.subjects.forEach((s) => {
+      const l = subjectLine(s);
+      if (l) fallback.push(l);
+    });
+    beat.props.forEach((pr) => {
+      const l = propLine(pr);
+      if (l) fallback.push(l);
+    });
+    const lightFallback = lightingLine(false);
+    if (lightFallback) fallback.push(lightFallback);
+    return fallback.join(' ');
+  }
+
   function lowercaseFirst(text) {
     return text.charAt(0).toLowerCase() + text.slice(1);
   }
@@ -362,8 +633,14 @@
   // [Shot N] hard cut. With no isCut beats at all, this produces exactly
   // today's single-[Shot 1]-plus-continuations output - the branch below is
   // additive, never a behavior change for existing shots.
+  //
+  // Phase 5: the per-beat prose itself now comes from renderSemanticBeat()
+  // over the Semantic Beat IR (buildSemanticBeats) instead of directly
+  // reading segments per beat - the [Shot N]/"From X to Y seconds," wrapping
+  // convention below (and the shotNumber counting that decides it) is
+  // otherwise unchanged from Phase 4b.
   function buildBeatParagraphs(shot, subjects) {
-    const boundaries = collectBeatBoundaries(shot, subjects);
+    const beats = buildSemanticBeats(shot, subjects);
     const paragraphs = [];
     let shotNumber = 0;
     // Whenever this shot has any cut at all, [Shot 1] needs its own end
@@ -374,62 +651,30 @@
     // node 166 "BURST TEST 1" example, whose own [Shot 1] reads "From 0.00
     // to 1.00 seconds: ..." rather than a bare marker.
     const hasAnyCutMarked = (shot.direction.beatNotes || []).some((n) => n.isCut);
-    for (let i = 0; i < boundaries.length - 1; i++) {
-      const start = boundaries[i];
-      const end = boundaries[i + 1];
-      if (end - start < 1e-6) continue;
-
-      const sentences = [];
-      const camera = (shot.direction.camera || []).find((seg) => segmentActiveAt(seg, start, end));
-      const cameraPhrase = phraseCamera(camera);
-      if (cameraPhrase) sentences.push(cameraPhrase);
-
-      const lighting = (shot.direction.lighting || []).find((seg) => segmentActiveAt(seg, start, end));
-      const lightingPhrase = phraseLighting(lighting);
-      if (lightingPhrase) sentences.push(lightingPhrase);
-
-      subjects
-        .filter((s) => isActingRole(s.role))
-        .forEach((s) => {
-          const track = (shot.direction.subjects || {})[s.assetId] || [];
-          const active = track.find((seg) => segmentActiveAt(seg, start, end));
-          const actionPhrase = phraseSubjectAction(s.label, active);
-          if (actionPhrase) sentences.push(actionPhrase);
-        });
-
-      subjects
-        .filter((s) => s.role === 'prop')
-        .forEach((s) => {
-          const track = (shot.direction.props || {})[s.assetId] || [];
-          const active = track.find((seg) => segmentActiveAt(seg, start, end));
-          const statePhrase = phrasePropState(s.label, active, subjects);
-          if (statePhrase) sentences.push(statePhrase);
-        });
-
-      // Priority is intentionally not compiled - it has no consumer until
-      // the (deferred) conflict/priority engine exists; stored and editable
-      // now, compiled later.
-      const note = findBeatNote(shot, start, end);
-      if (note && note.intent) sentences.push(`Intent: ${note.intent}.`);
-      if (note && note.endState) sentences.push(`By the end of this beat: ${note.endState}.`);
-
-      if (sentences.length === 0) continue;
-      const body = sentences.join(' ');
-
-      const isCut = shotNumber === 0 || !!(note && note.isCut);
-      if (isCut) {
-        shotNumber += 1;
-        if (shotNumber > 1) {
-          paragraphs.push(hardCutIntro(shotNumber, start, body));
-        } else if (hasAnyCutMarked) {
-          paragraphs.push(`[Shot 1]\nFrom ${formatSeconds(start)} to ${formatSeconds(end)} seconds: ${body}`);
+    let previousBeat = null;
+    beats.forEach((beat) => {
+      const body = renderSemanticBeat(beat, previousBeat, subjects);
+      if (body) {
+        const isCut = shotNumber === 0 || beat.isHardCut;
+        if (isCut) {
+          shotNumber += 1;
+          if (shotNumber > 1) {
+            paragraphs.push(hardCutIntro(shotNumber, beat.startSeconds, body));
+          } else if (hasAnyCutMarked) {
+            paragraphs.push(`[Shot 1]\nFrom ${formatSeconds(beat.startSeconds)} to ${formatSeconds(beat.endSeconds)} seconds: ${body}`);
+          } else {
+            paragraphs.push(`[Shot 1] ${body}`);
+          }
         } else {
-          paragraphs.push(`[Shot 1] ${body}`);
+          paragraphs.push(`From ${formatSeconds(beat.startSeconds)} to ${formatSeconds(beat.endSeconds)} seconds, ${lowercaseFirst(body)}`);
         }
-      } else {
-        paragraphs.push(`From ${formatSeconds(start)} to ${formatSeconds(end)} seconds, ${lowercaseFirst(body)}`);
       }
-    }
+      // Continuity is diffed against the immediately preceding beat in
+      // time, regardless of whether it rendered any text - an empty beat
+      // still represents "nothing changed here", which is exactly the
+      // state the next beat needs to compare against.
+      previousBeat = beat;
+    });
     return paragraphs;
   }
 
@@ -565,10 +810,12 @@
   }
 
   MSE.h3Compiler = {
+    H3_COMPILER_VERSION,
     compileH3Prompt,
     compileH3Sections,
     assembleH3Prompt,
     collectBeatBoundaries,
+    buildSemanticBeats,
     orderedSubjects,
     isActingRole,
     findBeatNote,
