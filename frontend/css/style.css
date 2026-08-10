@@ -1237,6 +1237,12 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
 .lane-segment.selected { border-color: var(--accent); background: rgba(76, 141, 255, 0.55); }
 .lane-segment.disabled { opacity: 0.4; background: rgba(255, 255, 255, 0.08); border-style: dashed; }
 
+/* Lighting (Phase 4b) gets its own amber-ish tint so its lane reads as
+   visually distinct from Camera's blue at a glance, same idea as the
+   Vocal Cue/Hold amber used elsewhere in Direction. */
+.lane-segment[data-kind="lighting"] { background: rgba(255, 184, 76, 0.28); border-color: rgba(255, 184, 76, 0.6); }
+.lane-segment[data-kind="lighting"].selected { border-color: var(--accent); background: rgba(255, 184, 76, 0.5); }
+
 /* The loop region spans the ruler track's full height (unlike shot
    "clips", which sit inset with top/bottom margin) and uses an amber
    accent distinct from the blue used for shots/direction segments, so

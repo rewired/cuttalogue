@@ -90,8 +90,24 @@
   // against the other.
   const EYE_STATES = ['', 'open', 'closed', 'half_closed'];
 
+  // Phase 4b: camera optics. Stored as a plain string (not a lens/sensor
+  // model) - a compact controlled vocabulary plus custom free text, same
+  // authoring pattern as SPEED_SUGGESTIONS in direction.js (a datalist, not
+  // a closed <select>), since focal length is visual-perspective intent for
+  // the video model, not physical lens metadata.
+  const FOCAL_LENGTHS = ['18mm', '24mm', '28mm', '35mm', '50mm', '85mm', '105mm', '135mm'];
+
+  // Depth of field stays a closed vocabulary (unlike focal length) so the
+  // compiler can map it to prose deterministically - '' means unset, same
+  // convention as CAMERA_AMPLITUDES/ACTION_TYPES.
+  const DEPTH_OF_FIELDS = ['', 'deep', 'medium', 'shallow', 'very_shallow'];
+
+  // Overall exposure/tonal intent - also a closed vocabulary for the same
+  // reason as DEPTH_OF_FIELDS (see h3Compiler.js's centralized wording map).
+  const LIGHTING_EXPOSURES = ['', 'low_key', 'dark', 'balanced', 'slightly_underexposed', 'bright', 'high_key'];
+
   function defaultDirection() {
-    return { camera: [], subjects: {}, props: {}, beatNotes: [] };
+    return { camera: [], lighting: [], subjects: {}, props: {}, beatNotes: [] };
   }
 
   function renumber() {
@@ -391,6 +407,7 @@
   function ensureDirection(shot) {
     if (!shot.direction) shot.direction = defaultDirection();
     if (!shot.direction.camera) shot.direction.camera = [];
+    if (!shot.direction.lighting) shot.direction.lighting = [];
     if (!shot.direction.subjects) shot.direction.subjects = {};
     if (!shot.direction.props) shot.direction.props = {};
     if (!shot.direction.beatNotes) shot.direction.beatNotes = [];
@@ -414,6 +431,9 @@
       amplitude: '',
       direction: '',
       target: '',
+      focalLength: '',
+      depthOfField: '',
+      focusTarget: '',
       transitionToNext: '',
       enabled: true,
       ...segment,
@@ -434,6 +454,46 @@
     const shot = findShot(shotId);
     if (!shot || !shot.direction || !shot.direction.camera[index]) return;
     shot.direction.camera.splice(index, 1);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  // Lighting lane (Phase 4b): a single array like camera, not keyed by
+  // assetId like subjects/props - lighting isn't tied to any one cast
+  // asset. `target`/`focusTarget` don't apply here; `movement` semantics
+  // live only in Camera. Independent over time from Camera/Character, so
+  // its own lane rather than folded into either.
+  function addLightingSegment(shotId, segment) {
+    const shot = findShot(shotId);
+    if (!shot) return;
+    const direction = ensureDirection(shot);
+    direction.lighting.push({
+      startSeconds: 0,
+      endSeconds: 0,
+      keyLight: '',
+      fill: '',
+      backlight: '',
+      exposure: '',
+      atmosphere: '',
+      notes: '',
+      enabled: true,
+      ...segment,
+    });
+    sortSegments(direction.lighting);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function updateLightingSegment(shotId, index, patch) {
+    const shot = findShot(shotId);
+    if (!shot || !shot.direction || !shot.direction.lighting[index]) return;
+    Object.assign(shot.direction.lighting[index], patch);
+    sortSegments(shot.direction.lighting);
+    emit('shots-changed', { reason: 'direction' });
+  }
+
+  function removeLightingSegment(shotId, index) {
+    const shot = findShot(shotId);
+    if (!shot || !shot.direction || !shot.direction.lighting[index]) return;
+    shot.direction.lighting.splice(index, 1);
     emit('shots-changed', { reason: 'direction' });
   }
 
@@ -621,6 +681,27 @@
     return clamped;
   }
 
+  function moveLightingSegmentEdge(shotId, index, side, newTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.lighting;
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentEdge(segments, index, side, newTime, shotDuration(shot));
+    segments[index][side === 'start' ? 'startSeconds' : 'endSeconds'] = clamped;
+    return clamped;
+  }
+
+  function moveLightingSegment(shotId, index, newStart) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.lighting;
+    if (!segments || !segments[index]) return null;
+    const clamped = clampSegmentMove(segments, index, newStart, shotDuration(shot));
+    const seg = segments[index];
+    const length = seg.endSeconds - seg.startSeconds;
+    seg.startSeconds = clamped;
+    seg.endSeconds = clamped + length;
+    return clamped;
+  }
+
   function moveSubjectSegmentEdge(shotId, assetId, index, side, newTime) {
     const shot = findShot(shotId);
     const segments = shot && shot.direction && shot.direction.subjects[assetId];
@@ -690,6 +771,38 @@
   function mergeCameraSegments(shotId, index) {
     const shot = findShot(shotId);
     const segments = shot && shot.direction && shot.direction.camera;
+    if (!segments || !mergeSegmentWithNext(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function splitLightingSegment(shotId, index, atTime) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.lighting;
+    if (!segments || !splitSegmentAt(segments, index, atTime)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function duplicateLightingSegment(shotId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.lighting;
+    if (!segments || !duplicateSegmentAfter(segments, index, shotDuration(shot))) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function toggleLightingSegmentEnabled(shotId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.lighting;
+    if (!segments || !toggleSegmentEnabled(segments, index)) return false;
+    emit('shots-changed', { reason: 'direction' });
+    return true;
+  }
+
+  function mergeLightingSegments(shotId, index) {
+    const shot = findShot(shotId);
+    const segments = shot && shot.direction && shot.direction.lighting;
     if (!segments || !mergeSegmentWithNext(segments, index)) return false;
     emit('shots-changed', { reason: 'direction' });
     return true;
@@ -843,6 +956,9 @@
       speed: '',
       framing: '',
       target: '',
+      focalLength: '',
+      depthOfField: '',
+      focusTarget: '',
       transitionToNext: '',
     };
     let start = 0;
@@ -936,6 +1052,9 @@
     ACTION_TYPES,
     VOCAL_PERFORMANCES,
     EYE_STATES,
+    FOCAL_LENGTHS,
+    DEPTH_OF_FIELDS,
+    LIGHTING_EXPOSURES,
     shotDuration,
     shotStatus,
     snapSeconds,
@@ -966,6 +1085,13 @@
     duplicateCameraSegment,
     toggleCameraSegmentEnabled,
     mergeCameraSegments,
+    addLightingSegment,
+    updateLightingSegment,
+    removeLightingSegment,
+    splitLightingSegment,
+    duplicateLightingSegment,
+    toggleLightingSegmentEnabled,
+    mergeLightingSegments,
     addSubjectSegment,
     updateSubjectSegment,
     removeSubjectSegment,
@@ -982,6 +1108,8 @@
     mergePropSegments,
     moveCameraSegmentEdge,
     moveCameraSegment,
+    moveLightingSegmentEdge,
+    moveLightingSegment,
     moveSubjectSegmentEdge,
     moveSubjectSegment,
     movePropSegmentEdge,

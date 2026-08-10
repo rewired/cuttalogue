@@ -50,7 +50,7 @@
         assetRoles: s.assetRoles || {},
         videoRefs: s.videoRefs || {},
         constraints: s.constraints || [],
-        direction: s.direction || { camera: [], subjects: {}, props: {}, beatNotes: [] },
+        direction: s.direction || { camera: [], lighting: [], subjects: {}, props: {}, beatNotes: [] },
       })),
       assets: state.assets,
       vocalCues: (state.vocalCues || []).map((c) => ({ id: c.id, timeSeconds: c.timeSeconds, label: c.label || '' })),
@@ -74,12 +74,25 @@
   // draft/canonical fetch, never the live in-memory segment).
   function normalizeDirectionSegments(direction) {
     if (!direction.props) direction.props = {};
+    if (!direction.lighting) direction.lighting = [];
     if (!direction.beatNotes) direction.beatNotes = [];
     (direction.camera || []).forEach((seg) => {
       if (seg.direction === undefined) seg.direction = '';
       if (seg.target === undefined) seg.target = '';
       if (seg.transitionToNext === undefined) seg.transitionToNext = '';
       if (seg.amplitude === undefined) seg.amplitude = '';
+      if (seg.focalLength === undefined) seg.focalLength = '';
+      if (seg.depthOfField === undefined) seg.depthOfField = '';
+      if (seg.focusTarget === undefined) seg.focusTarget = '';
+      if (seg.enabled === undefined) seg.enabled = true;
+    });
+    direction.lighting.forEach((seg) => {
+      if (seg.keyLight === undefined) seg.keyLight = '';
+      if (seg.fill === undefined) seg.fill = '';
+      if (seg.backlight === undefined) seg.backlight = '';
+      if (seg.exposure === undefined) seg.exposure = '';
+      if (seg.atmosphere === undefined) seg.atmosphere = '';
+      if (seg.notes === undefined) seg.notes = '';
       if (seg.enabled === undefined) seg.enabled = true;
     });
     Object.values(direction.subjects || {}).forEach((track) => {
@@ -133,7 +146,7 @@
       assetRoles: {},
       videoRefs: {},
       constraints: [],
-      direction: { camera: [], subjects: {}, props: {}, beatNotes: [] },
+      direction: { camera: [], lighting: [], subjects: {}, props: {}, beatNotes: [] },
       ...s,
     }));
     normalized.shots.forEach((s) => normalizeDirectionSegments(s.direction));

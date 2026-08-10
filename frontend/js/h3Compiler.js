@@ -21,6 +21,19 @@
     prop: 'shape, material, color, and design',
   };
 
+  // Phase 4b: once the shot has its own authored Lighting Direction, the
+  // generic environment-retention wording above must stop claiming lighting
+  // stays fixed - that would directly contradict an authored lighting
+  // change (see docs/h3-shot-direction-roadmap.md Phase 4b, "Environment
+  // retention vs Lighting Direction"). Only "lighting" is dropped; spatial/
+  // architectural retention still applies regardless of Lighting Direction.
+  // A shot with no Lighting segments keeps the original wording unchanged.
+  const ROLE_PRESERVE_NO_LIGHTING = { ...ROLE_PRESERVE, environment: 'architecture and spatial layout' };
+
+  function rolePreserveText(role, hasLightingDirection) {
+    return hasLightingDirection ? ROLE_PRESERVE_NO_LIGHTING[role] : ROLE_PRESERVE[role];
+  }
+
   const ROLE_DESCRIPTION = {
     primary_character: 'the primary character',
     supporting_character: 'a supporting character',
@@ -108,6 +121,27 @@
     half_closed: 'half-closed',
   };
 
+  // Phase 4b: depth-of-field wording, centralized here (not scattered across
+  // phraseCamera or duplicated elsewhere) so "shallow" always reads the same
+  // way everywhere it's used.
+  const DEPTH_OF_FIELD_PHRASES = {
+    deep: 'deep depth of field',
+    medium: 'moderate depth of field',
+    shallow: 'shallow depth of field',
+    very_shallow: 'very shallow depth of field',
+  };
+
+  // Phase 4b: exposure wording (see shots.js's LIGHTING_EXPOSURES), also
+  // centralized for the same reason.
+  const EXPOSURE_PHRASES = {
+    low_key: 'low-key',
+    dark: 'dark',
+    balanced: 'balanced',
+    slightly_underexposed: 'slightly underexposed',
+    bright: 'bright',
+    high_key: 'high-key',
+  };
+
   function formatSeconds(value) {
     return value.toFixed(2);
   }
@@ -133,6 +167,14 @@
   // sentence rather than a tag list - "The camera pushes in with small
   // amplitude at slow speed toward her hand on the railing", amplitude/
   // speed clauses only appear when actually set.
+  // Optics (Phase 4b) are appended as further comma clauses on the same
+  // sentence, same convention as framing/target above - `focalLength` is
+  // interpolated as a bare compound modifier ("using 85mm framing", not
+  // "using an 85mm framing") specifically to avoid needing an a/an-article
+  // decision for an arbitrary string (see the Phase 4b preflight fix for
+  // why that's brittle). `depthOfField` goes through the centralized
+  // DEPTH_OF_FIELD_PHRASES map; `focusTarget` is optical focus, distinct
+  // from `target` (movement/composition) above.
   function phraseCamera(segment) {
     if (!segment) return '';
     const verb = MOVEMENT_PHRASES[segment.movement] || segment.movement;
@@ -142,9 +184,37 @@
     if (segment.speed) sentence += ` at ${segment.speed} speed`;
     if (segment.framing) sentence += `, maintaining a ${segment.framing} composition`;
     if (segment.target) sentence += `, targeting ${segment.target}`;
+    if (segment.focalLength) sentence += `, using ${segment.focalLength} framing`;
+    if (segment.depthOfField) sentence += `, with ${DEPTH_OF_FIELD_PHRASES[segment.depthOfField] || segment.depthOfField}`;
+    if (segment.focusTarget) sentence += `, maintaining focus on ${segment.focusTarget}`;
     sentence += '.';
     if (segment.transitionToNext) sentence += ` ${segment.transitionToNext}.`;
     return sentence;
+  }
+
+  // Phase 4b: Lighting is independent authored Direction (unlike Vocal
+  // Regions), so its boundaries ARE semantic beat boundaries (see
+  // collectBeatBoundaries) and its active segment contributes its own
+  // sentence per beat, same call shape as phraseCamera/phraseSubjectAction.
+  // Verb-led clauses ("is X", "sits in Y", "keyed by Z") rather than raw
+  // noun interpolation, so no a/an decision is ever needed and a value that
+  // happens to already contain a category word (e.g. fill: "soft neutral
+  // fill") never literally duplicates it. No hidden state: called fresh per
+  // beat, so a Lighting segment spanning several beats legitimately repeats
+  // its own description each time (matches the compiler's existing
+  // self-contained-beat style, e.g. phraseCamera does the same).
+  function phraseLighting(segment) {
+    if (!segment) return '';
+    const clauses = [];
+    if (segment.exposure) clauses.push(`is ${EXPOSURE_PHRASES[segment.exposure] || segment.exposure}`);
+    if (segment.atmosphere) clauses.push(`sits in ${segment.atmosphere}`);
+    if (segment.keyLight) clauses.push(`keyed by ${segment.keyLight}`);
+    if (segment.fill) clauses.push(`filled by ${segment.fill}`);
+    if (segment.backlight) clauses.push(`backlit by ${segment.backlight}`);
+    const sentences = [];
+    if (clauses.length > 0) sentences.push(`Lighting ${clauses.join(', ')}.`);
+    if (segment.notes) sentences.push(sentences.length > 0 ? segment.notes : `Lighting: ${segment.notes}.`);
+    return sentences.join(' ');
   }
 
   // Composes a character segment's structured fields into a sentence, then
@@ -185,12 +255,17 @@
         clauses.push(VOCAL_PERFORMANCE_CLAUSES[segment.vocalPerformance]);
       }
     }
-    if (segment.expression) clauses.push(`with a ${segment.expression} expression`);
     if (segment.eyes) clauses.push(`eyes ${EYES_PHRASES[segment.eyes] || segment.eyes}`);
     if (segment.gaze) clauses.push(`looking ${segment.gaze}`);
 
     const sentences = [];
     if (clauses.length > 0) sentences.push(`<${label}> ${clauses.join(', ')}.`);
+    // A predicate-adjective sentence ("X's expression is Y") rather than
+    // "with a/an Y expression" - sidesteps needing a brittle a/an-selection
+    // helper for an arbitrary free-text adjective (was: "with a emotionally
+    // intense expression", wrongly missing the "n"; see the Phase 4b
+    // preflight fix).
+    if (segment.expression) sentences.push(`<${label}>'s expression is ${segment.expression}.`);
     if (segment.gesture) sentences.push(ensureSentence(capitalizeFirst(segment.gesture)));
     if (segment.bodyMotion) sentences.push(`<${label}>'s overall body movement is ${segment.bodyMotion.replace(/\.$/, '')}.`);
     if (segment.notes) sentences.push(sentences.length > 0 ? segment.notes : `<${label}> ${segment.notes}.`);
@@ -238,6 +313,15 @@
   function collectBeatBoundaries(shot, subjects) {
     const points = new Set([0, shotsApi.shotDuration(shot)]);
     (shot.direction.camera || []).filter((seg) => seg.enabled !== false).forEach((seg) => {
+      points.add(seg.startSeconds);
+      points.add(seg.endSeconds);
+    });
+    // Lighting is authored Direction (unlike transient Vocal Regions - see
+    // Phase 4a/4b's own architecture note), so its boundaries are genuine
+    // semantic beat boundaries, same as Camera/Character/Prop above. A
+    // region boundary with no authored segment at it never reaches this
+    // function at all, so that invariant stays intact untouched.
+    (shot.direction.lighting || []).filter((seg) => seg.enabled !== false).forEach((seg) => {
       points.add(seg.startSeconds);
       points.add(seg.endSeconds);
     });
@@ -299,6 +383,10 @@
       const camera = (shot.direction.camera || []).find((seg) => segmentActiveAt(seg, start, end));
       const cameraPhrase = phraseCamera(camera);
       if (cameraPhrase) sentences.push(cameraPhrase);
+
+      const lighting = (shot.direction.lighting || []).find((seg) => segmentActiveAt(seg, start, end));
+      const lightingPhrase = phraseLighting(lighting);
+      if (lightingPhrase) sentences.push(lightingPhrase);
 
       subjects
         .filter((s) => isActingRole(s.role))
@@ -403,6 +491,13 @@
   function compileH3Sections(shot) {
     const subjects = orderedSubjects(shot);
 
+    // Once the shot has its own authored Lighting Direction, generic
+    // environment-retention wording must stop insisting lighting stays the
+    // same (see rolePreserveText's own comment). Any enabled Lighting
+    // segment counts, regardless of which fields it has populated - the
+    // user has started directing lighting explicitly the moment one exists.
+    const hasLightingDirection = (shot.direction.lighting || []).some((seg) => seg.enabled !== false);
+
     // <Picture N> is the official H3-IR marker for "the Nth attached
     // reference image" (see docs/deep-research-report-h3-prompting.md,
     // lines ~551-559) - it's a different level from the `Image N` numbering
@@ -410,7 +505,7 @@
     // themselves. Subject N and Picture N align 1:1 here since v1 casts
     // exactly one reference image per subject role.
     const subjectDefinitions = subjects
-      .map((s, i) => `<${s.label}> is ${ROLE_DESCRIPTION[s.role]} whose ${ROLE_PRESERVE[s.role]} come from <Picture ${i + 1}>.`)
+      .map((s, i) => `<${s.label}> is ${ROLE_DESCRIPTION[s.role]} whose ${rolePreserveText(s.role, hasLightingDirection)} come from <Picture ${i + 1}>.`)
       .join('\n');
 
     // beatParagraphs is computed once here and threaded into
@@ -430,7 +525,7 @@
     // shot.").
     const scopeLabel = hasCuts ? 'every shot' : '[Shot 1]';
     const retentionAnalysis = subjects
-      .map((s) => `<${s.label}> (appears throughout ${scopeLabel}): fully_preserved - preserve ${ROLE_PRESERVE[s.role]}.`)
+      .map((s) => `<${s.label}> (appears throughout ${scopeLabel}): fully_preserved - preserve ${rolePreserveText(s.role, hasLightingDirection)}.`)
       .join('\n');
 
     const characterLabels = subjects.filter((s) => isActingRole(s.role)).map((s) => `<${s.label}>`);

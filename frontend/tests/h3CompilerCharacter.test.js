@@ -95,7 +95,7 @@ assets.addAssets([{ id: 'heather', type: 'image', fileName: 'heather.png', relat
   const text = sections.detailedDescription;
   assertIncludes(text, 'sings', 'Case C: actionType sing compiles to "sings"');
   assertIncludes(text, 'precise, natural lip sync', 'Case C: vocalPerformance lip_sync produces the lip-sync clause');
-  assertIncludes(text, 'emotionally intense expression', 'Case C: expression clause present');
+  assertIncludes(text, "expression is emotionally intense", 'Case C: expression sentence present');
   assertIncludes(text, 'eyes closed', 'Case C: eyes clause present');
   assertIncludes(text, 'Both hands grip microphone.', 'Case C: gesture appears as its own capitalized sentence, exact wording preserved');
   assertIncludes(text, 'restrained', 'Case C: bodyMotion appears');
@@ -115,13 +115,30 @@ assets.addAssets([{ id: 'heather', type: 'image', fileName: 'heather.png', relat
   assertIncludes(text, 'singing', 'Case C2: vocalPerformance sing (with a different actionType) adds its own "singing" clause');
 }
 
+// --- Case G (Phase 4b preflight): expression grammar, no naked "a X" bug --
+{
+  // Regression for the "with a emotionally intense expression" bug (missing
+  // "n") - the fix uses a predicate-adjective sentence that never needs an
+  // a/an article at all, so it must be correct for ANY expression text,
+  // including ones starting with a vowel sound.
+  const vowelShot = makeShot({ expression: 'emotionally intense' });
+  const vowelText = h3Compiler.compileH3Sections(vowelShot).detailedDescription;
+  assertIncludes(vowelText, "<Subject 1>'s expression is emotionally intense.", 'Case G: vowel-initial expression compiles without a dropped/wrong article');
+  assertNotIncludes(vowelText, 'a emotionally intense', 'Case G: the old ungrammatical "a emotionally intense" phrasing never appears');
+  assertNotIncludes(vowelText, 'an emotionally intense', 'Case G: no a/an article is used at all (article-free construction)');
+
+  const consonantShot = makeShot({ expression: 'confident' });
+  const consonantText = h3Compiler.compileH3Sections(consonantShot).detailedDescription;
+  assertIncludes(consonantText, "<Subject 1>'s expression is confident.", 'Case G: consonant-initial expression is unaffected by the fix');
+}
+
 // --- Case D: existing compiler regression (no new fields set) -------------
 {
   const shotOld = makeShot({ actionType: 'stand', manner: 'confident', gaze: 'camera', expression: 'determined', notes: 'holds a coffee cup' });
   const text = h3Compiler.compileH3Sections(shotOld).detailedDescription;
   assertIncludes(text, 'stands, confident', 'Case D: actionType + manner clause unchanged');
   assertIncludes(text, 'looking camera', 'Case D: gaze clause unchanged');
-  assertIncludes(text, 'determined expression', 'Case D: expression clause unchanged');
+  assertIncludes(text, 'expression is determined', 'Case D: expression sentence present');
   assertIncludes(text, 'holds a coffee cup', 'Case D: notes still appended');
   assertNotIncludes(text, 'lip sync', 'Case D: no lip-sync phrasing when vocalPerformance is unset');
   assertNotIncludes(text, 'eyes ', 'Case D: no eyes clause when eyes is unset');

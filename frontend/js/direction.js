@@ -115,6 +115,29 @@
     'energetic',
   ];
 
+  // Phase 4b: focal length is visual-perspective intent, not lens metadata -
+  // a datalist (free text + suggestions), same UX pattern as
+  // SPEED_SUGGESTIONS, not a closed <select>.
+  const FOCAL_LENGTH_SUGGESTIONS = ['18mm', '24mm', '28mm', '35mm', '50mm', '85mm', '105mm', '135mm'];
+
+  const DEPTH_OF_FIELD_LABELS = {
+    '': 'No depth of field set',
+    deep: 'Deep',
+    medium: 'Medium',
+    shallow: 'Shallow',
+    very_shallow: 'Very shallow',
+  };
+
+  const LIGHTING_EXPOSURE_LABELS = {
+    '': 'No exposure set',
+    low_key: 'Low-key',
+    dark: 'Dark',
+    balanced: 'Balanced',
+    slightly_underexposed: 'Slightly underexposed',
+    bright: 'Bright',
+    high_key: 'High-key',
+  };
+
   // Suggestions only, same reasoning as SPEED_SUGGESTIONS - a small closed
   // vocabulary for the common continuity rules, but never the only option.
   const CONSTRAINT_SUGGESTIONS = [
@@ -346,15 +369,30 @@
     return btn;
   }
 
+  // Camera and Lighting are both single-array lanes (no assetId), unlike
+  // subject/prop lanes which are keyed per cast asset.
+  function isLaneWithoutAsset(kind) {
+    return kind === 'camera' || kind === 'lighting';
+  }
+
   function isSelected(opts, index) {
     return !!selection
       && selection.kind === opts.kind
       && selection.index === index
-      && (opts.kind === 'camera' || selection.assetId === opts.assetId);
+      && (isLaneWithoutAsset(opts.kind) || selection.assetId === opts.assetId);
   }
 
+  // Timeline blocks stay compact (see Phase 4b's Lighting-summary
+  // requirement) - a Lighting block shows at most exposure + keyLight, not
+  // every populated field; the detail editor below owns the full list.
   function segmentLabelText(seg, opts) {
     if (opts.kind === 'camera') return MOVEMENT_LABELS[seg.movement] || seg.movement || 'Camera';
+    if (opts.kind === 'lighting') {
+      const parts = [];
+      if (seg.exposure) parts.push(LIGHTING_EXPOSURE_LABELS[seg.exposure] || seg.exposure);
+      if (seg.keyLight) parts.push(seg.keyLight);
+      return parts.length > 0 ? parts.join(' / ') : 'Lighting';
+    }
     if (opts.kind === 'prop') return seg.state || (seg.ownerAssetId ? 'Held' : 'Prop');
     if (seg.actionType) return ACTION_TYPE_LABELS[seg.actionType] || seg.actionType;
     return seg.notes || 'Action';
@@ -379,11 +417,13 @@
       isDisabled: (index) => segments[index] && segments[index].enabled === false,
       moveSegment: (index, timeValue) => {
         if (opts.kind === 'camera') return shotsApi.moveCameraSegment(currentShotId, index, timeValue);
+        if (opts.kind === 'lighting') return shotsApi.moveLightingSegment(currentShotId, index, timeValue);
         if (opts.kind === 'prop') return shotsApi.movePropSegment(currentShotId, opts.assetId, index, timeValue);
         return shotsApi.moveSubjectSegment(currentShotId, opts.assetId, index, timeValue);
       },
       moveSegmentEdge: (index, side, timeValue) => {
         if (opts.kind === 'camera') return shotsApi.moveCameraSegmentEdge(currentShotId, index, side, timeValue);
+        if (opts.kind === 'lighting') return shotsApi.moveLightingSegmentEdge(currentShotId, index, side, timeValue);
         if (opts.kind === 'prop') return shotsApi.movePropSegmentEdge(currentShotId, opts.assetId, index, side, timeValue);
         return shotsApi.moveSubjectSegmentEdge(currentShotId, opts.assetId, index, side, timeValue);
       },
@@ -397,7 +437,11 @@
         renderAll();
       },
       onAdd: opts.onAdd,
-      addTitle: opts.kind === 'camera' ? 'Add camera segment' : (opts.kind === 'prop' ? 'Add prop state' : 'Add action'),
+      addTitle: opts.kind === 'camera'
+        ? 'Add camera segment'
+        : opts.kind === 'lighting'
+          ? 'Add lighting segment'
+          : (opts.kind === 'prop' ? 'Add prop state' : 'Add action'),
       snapTime: (currentValue, altKey) => {
         const shot = findShot(currentShotId);
         return snapEnabled && !altKey && shot ? snapToDirectionGrid(currentValue, shot) : currentValue;
@@ -725,7 +769,7 @@
     const calc = MSE.frames.frameCalc(duration, state.video);
     const domainDuration = duration + calc.overhangSeconds;
 
-    const direction = shot.direction || { camera: [], subjects: {}, props: {}, beatNotes: [] };
+    const direction = shot.direction || { camera: [], lighting: [], subjects: {}, props: {}, beatNotes: [] };
 
     el.lanes.appendChild(buildGridRow(shot, duration, domainDuration));
     el.lanes.appendChild(buildCueRow(shot, duration, domainDuration));
@@ -740,6 +784,18 @@
         onAdd: () => {
           const start = MSE.laneWidget.nextSegmentStart(direction.camera || []);
           shotsApi.addCameraSegment(shot.id, { startSeconds: start, endSeconds: duration });
+        },
+      })
+    );
+
+    // Independent over time from Camera/Character (see docs/h3-shot-
+    // direction-roadmap.md Phase 4b) - its own lane, not folded into either.
+    el.lanes.appendChild(
+      buildLaneRow('Lighting', direction.lighting || [], duration, domainDuration, {
+        kind: 'lighting',
+        onAdd: () => {
+          const start = MSE.laneWidget.nextSegmentStart(direction.lighting || []);
+          shotsApi.addLightingSegment(shot.id, { startSeconds: start, endSeconds: duration });
         },
       })
     );
@@ -776,6 +832,7 @@
     });
 
     const hasAnyDirectionContent = (direction.camera || []).length > 0
+      || (direction.lighting || []).length > 0
       || actingSubjects.some((s) => ((direction.subjects || {})[s.assetId] || []).length > 0)
       || propSubjects.some((s) => ((direction.props || {})[s.assetId] || []).length > 0);
     if (hasAnyDirectionContent) {
@@ -868,9 +925,11 @@
     }
     const segments = selection.kind === 'camera'
       ? (shot.direction.camera || [])
-      : selection.kind === 'prop'
-        ? ((shot.direction.props && shot.direction.props[selection.assetId]) || [])
-        : ((shot.direction.subjects && shot.direction.subjects[selection.assetId]) || []);
+      : selection.kind === 'lighting'
+        ? (shot.direction.lighting || [])
+        : selection.kind === 'prop'
+          ? ((shot.direction.props && shot.direction.props[selection.assetId]) || [])
+          : ((shot.direction.subjects && shot.direction.subjects[selection.assetId]) || []);
     const seg = segments[selection.index];
     if (!seg) {
       selection = null;
@@ -887,6 +946,7 @@
     header.appendChild(
       buildRemoveButton(() => {
         if (selection.kind === 'camera') shotsApi.removeCameraSegment(shot.id, selection.index);
+        else if (selection.kind === 'lighting') shotsApi.removeLightingSegment(shot.id, selection.index);
         else if (selection.kind === 'prop') shotsApi.removePropSegment(shot.id, selection.assetId, selection.index);
         else shotsApi.removeSubjectSegment(shot.id, selection.assetId, selection.index);
         selection = null;
@@ -910,12 +970,42 @@
       const directionOptions = shotsApi.CAMERA_DIRECTIONS.map((d) => [d, CAMERA_DIRECTION_LABELS[d] || d]);
       row.appendChild(buildField('Direction', buildSelect(directionOptions, seg.direction, (v) => shotsApi.updateCameraSegment(shot.id, selection.index, { direction: v }))));
       row.appendChild(buildField('Target', buildTextInput(seg.target, 'reference point', (v) => shotsApi.updateCameraSegment(shot.id, selection.index, { target: v })), true));
+
+      // Optics (Phase 4b) - `target` above is movement/composition intent;
+      // `focusTarget` here is the optical focus target, a distinct concept
+      // (see h3-shot-direction-roadmap.md Phase 4b: "target -> movement/
+      // composition target, focusTarget -> optical focus target").
+      const focalLengthInput = buildTextInput(seg.focalLength, 'e.g. 85mm', (v) => shotsApi.updateCameraSegment(shot.id, selection.index, { focalLength: v }));
+      focalLengthInput.setAttribute('list', 'direction-focal-length-suggestions');
+      row.appendChild(buildField('Focal length', focalLengthInput));
+      const dofOptions = shotsApi.DEPTH_OF_FIELDS.map((v) => [v, DEPTH_OF_FIELD_LABELS[v] || v]);
+      row.appendChild(buildField('Depth of field', buildSelect(dofOptions, seg.depthOfField, (v) => shotsApi.updateCameraSegment(shot.id, selection.index, { depthOfField: v }))));
+      row.appendChild(buildField('Focus target', buildTextInput(seg.focusTarget, 'e.g. face', (v) => shotsApi.updateCameraSegment(shot.id, selection.index, { focusTarget: v })), true));
+
       row.appendChild(
         buildField(
           'Transition to next',
           buildTextInput(seg.transitionToNext, 'e.g. hard cut, dissolve...', (v) => shotsApi.updateCameraSegment(shot.id, selection.index, { transitionToNext: v })),
           true
         )
+      );
+    } else if (selection.kind === 'lighting') {
+      row.appendChild(
+        buildField(
+          'Key light',
+          buildTextInput(seg.keyLight, 'e.g. warm stage key from camera-left', (v) => shotsApi.updateLightingSegment(shot.id, selection.index, { keyLight: v })),
+          true
+        )
+      );
+      row.appendChild(buildField('Fill', buildTextInput(seg.fill, 'e.g. minimal', (v) => shotsApi.updateLightingSegment(shot.id, selection.index, { fill: v }))));
+      row.appendChild(buildField('Backlight', buildTextInput(seg.backlight, 'e.g. subtle amber rim', (v) => shotsApi.updateLightingSegment(shot.id, selection.index, { backlight: v }))));
+      const exposureOptions = shotsApi.LIGHTING_EXPOSURES.map((v) => [v, LIGHTING_EXPOSURE_LABELS[v] || v]);
+      row.appendChild(buildField('Exposure', buildSelect(exposureOptions, seg.exposure, (v) => shotsApi.updateLightingSegment(shot.id, selection.index, { exposure: v }))));
+      row.appendChild(
+        buildField('Atmosphere', buildTextInput(seg.atmosphere, 'e.g. dark smoky club', (v) => shotsApi.updateLightingSegment(shot.id, selection.index, { atmosphere: v })), true)
+      );
+      row.appendChild(
+        buildField('Notes', buildTextInput(seg.notes, 'notes...', (v) => shotsApi.updateLightingSegment(shot.id, selection.index, { notes: v })), true)
       );
     } else if (selection.kind === 'prop') {
       const actingSubjects = MSE.h3Compiler.orderedSubjects(shot).filter((s) => MSE.h3Compiler.isActingRole(s.role));
@@ -1027,12 +1117,13 @@
       }
     }
 
-    // Camera/subject/prop mutators live in shots.js as three parallel
-    // families (same shape, different track) - this just picks the right
-    // one by target.kind instead of repeating the three-way branch in every
-    // action below.
-    function dispatchByKind(kind, cameraFn, subjectFn, propFn) {
+    // Camera/lighting/subject/prop mutators live in shots.js as four
+    // parallel families (same shape, different track) - this just picks the
+    // right one by target.kind instead of repeating the four-way branch in
+    // every action below.
+    function dispatchByKind(kind, cameraFn, subjectFn, propFn, lightingFn) {
       if (kind === 'camera') return cameraFn();
+      if (kind === 'lighting') return lightingFn();
       if (kind === 'prop') return propFn();
       return subjectFn();
     }
@@ -1061,7 +1152,8 @@
               target.kind,
               () => shotsApi.splitCameraSegment(currentShotId, target.index, atTime),
               () => shotsApi.splitSubjectSegment(currentShotId, target.assetId, target.index, atTime),
-              () => shotsApi.splitPropSegment(currentShotId, target.assetId, target.index, atTime)
+              () => shotsApi.splitPropSegment(currentShotId, target.assetId, target.index, atTime),
+              () => shotsApi.splitLightingSegment(currentShotId, target.index, atTime)
             );
             if (ok) clearSelectionIfTarget(target);
           },
@@ -1074,7 +1166,8 @@
               target.kind,
               () => shotsApi.duplicateCameraSegment(currentShotId, target.index),
               () => shotsApi.duplicateSubjectSegment(currentShotId, target.assetId, target.index),
-              () => shotsApi.duplicatePropSegment(currentShotId, target.assetId, target.index)
+              () => shotsApi.duplicatePropSegment(currentShotId, target.assetId, target.index),
+              () => shotsApi.duplicateLightingSegment(currentShotId, target.index)
             );
           },
         },
@@ -1086,7 +1179,8 @@
               target.kind,
               () => shotsApi.toggleCameraSegmentEnabled(currentShotId, target.index),
               () => shotsApi.toggleSubjectSegmentEnabled(currentShotId, target.assetId, target.index),
-              () => shotsApi.togglePropSegmentEnabled(currentShotId, target.assetId, target.index)
+              () => shotsApi.togglePropSegmentEnabled(currentShotId, target.assetId, target.index),
+              () => shotsApi.toggleLightingSegmentEnabled(currentShotId, target.index)
             );
           },
         },
@@ -1097,7 +1191,8 @@
               target.kind,
               () => shotsApi.mergeCameraSegments(currentShotId, target.index),
               () => shotsApi.mergeSubjectSegments(currentShotId, target.assetId, target.index),
-              () => shotsApi.mergePropSegments(currentShotId, target.assetId, target.index)
+              () => shotsApi.mergePropSegments(currentShotId, target.assetId, target.index),
+              () => shotsApi.mergeLightingSegments(currentShotId, target.index)
             );
             if (ok) clearSelectionIfTarget(target);
           },
@@ -1111,7 +1206,8 @@
               target.kind,
               () => shotsApi.removeCameraSegment(currentShotId, target.index),
               () => shotsApi.removeSubjectSegment(currentShotId, target.assetId, target.index),
-              () => shotsApi.removePropSegment(currentShotId, target.assetId, target.index)
+              () => shotsApi.removePropSegment(currentShotId, target.assetId, target.index),
+              () => shotsApi.removeLightingSegment(currentShotId, target.index)
             );
           },
         },
@@ -1160,18 +1256,22 @@
   // whichever edge shrinks the segment first so the intermediate state
   // (after only one edge has moved) never has start > end.
   function fitSelectedSegmentToRegion(shot, region) {
-    if (!selection || (selection.kind !== 'camera' && selection.kind !== 'subject')) return;
+    if (!selection || !['camera', 'lighting', 'subject'].includes(selection.kind)) return;
     const start = region.relativeStartSeconds;
     const end = region.relativeEndSeconds;
     if (end - start <= 0) return;
-    const segments = selection.kind === 'camera' ? shot.direction.camera : (shot.direction.subjects || {})[selection.assetId];
+    const segments = selection.kind === 'camera'
+      ? shot.direction.camera
+      : selection.kind === 'lighting'
+        ? shot.direction.lighting
+        : (shot.direction.subjects || {})[selection.assetId];
     const seg = segments && segments[selection.index];
     if (!seg) return;
-    const moveEdge = (side, time) => (
-      selection.kind === 'camera'
-        ? shotsApi.moveCameraSegmentEdge(shot.id, selection.index, side, time)
-        : shotsApi.moveSubjectSegmentEdge(shot.id, selection.assetId, selection.index, side, time)
-    );
+    const moveEdge = (side, time) => {
+      if (selection.kind === 'camera') return shotsApi.moveCameraSegmentEdge(shot.id, selection.index, side, time);
+      if (selection.kind === 'lighting') return shotsApi.moveLightingSegmentEdge(shot.id, selection.index, side, time);
+      return shotsApi.moveSubjectSegmentEdge(shot.id, selection.assetId, selection.index, side, time);
+    };
     if (end >= seg.startSeconds) {
       moveEdge('end', end);
       moveEdge('start', start);
@@ -1222,7 +1322,7 @@
           el.regionContextCharacterList.appendChild(btn);
         });
 
-        el.regionContextFit.hidden = !(selection && (selection.kind === 'camera' || selection.kind === 'subject'));
+        el.regionContextFit.hidden = !(selection && ['camera', 'lighting', 'subject'].includes(selection.kind));
 
         return { shot, region };
       },
@@ -1365,6 +1465,17 @@
     document.body.appendChild(list);
   }
 
+  function buildFocalLengthDatalist() {
+    const list = document.createElement('datalist');
+    list.id = 'direction-focal-length-suggestions';
+    FOCAL_LENGTH_SUGGESTIONS.forEach((suggestion) => {
+      const opt = document.createElement('option');
+      opt.value = suggestion;
+      list.appendChild(opt);
+    });
+    document.body.appendChild(list);
+  }
+
   function buildBodyMotionDatalist() {
     const list = document.createElement('datalist');
     list.id = 'direction-body-motion-suggestions';
@@ -1390,6 +1501,7 @@
   function init() {
     cacheElements();
     buildSpeedDatalist();
+    buildFocalLengthDatalist();
     buildBodyMotionDatalist();
     buildConstraintSuggestionsDatalist();
     el.constraintsInput.setAttribute('list', 'direction-constraint-suggestions');
