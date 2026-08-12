@@ -133,6 +133,26 @@ Assigning an asset to a specific shot happens per-shot instead, in that shot's *
 
 ---
 
+## Lyrics & Alignment
+
+The top-level **Lyrics** tab turns pasted lyrics plus the project's vocal track into word-level timing, entirely locally (no cloud call, no cost) via a local forced-alignment model - given known text, it finds *where* each word occurs in the audio, it never transcribes/guesses what was sung.
+
+- **Align to Vocal** runs the alignment (needs a vocal track already loaded; the first run on a machine downloads a ~1GB model). The result is a table of every word with its start/end time and a confidence score, plus two derived, read-only views: **Phrases** (one row per lyric line, spanning its first to last aligned word) and **Holds** (any single word whose aligned duration clears a configurable threshold - a likely sustained note). Both simply group/filter the same word timings; neither is a second source of truth.
+- **Apply as Vocal Cues** (Add or Replace) turns the aligned words into real, persistent point markers on the main timeline - the one-way promotion from analysis to project data.
+- The alignment result is saved with the project and restored instantly on reload - re-running the model is never required unless the lyrics text or the vocal file itself changed since the last alignment, in which case the tab says so and asks for an explicit re-align rather than silently reusing stale timing.
+- **Export SRT** writes the current Phrase list out as a standard `.srt` subtitle file, independent of Shot boundaries. An **Offset** field (persisted with the project) shifts every subtitle's timing by a constant amount on export only - useful when the final rendered video has a fixed logo/preroll before the song starts, without touching the song-relative alignment/Phrase/cue/Shot timing itself.
+
+### Getting good alignment results
+
+Forced alignment is only as good as the correspondence between the pasted text and what's actually audible. Low-confidence words are highlighted (amber) in the Words, Phrases, and Holds tables - if a phrase's timing looks wrong (implausibly long or short), check whether its words are flagged before assuming the model is at fault. In practice:
+
+- One sung line/phrase per text line - don't merge two sung phrases onto one line or split one phrase across two.
+- Write out repeats in full (three "I'll come back."s as three lines, not "x3") - the aligner needs one text line per actual vocal occurrence.
+- Include ad-libs and backing vocals as their own lines if they're clearly audible with their own timing; leave out lines that aren't actually sung (pure section labels, etc.).
+- A stretch of low-confidence words usually means the audio in that span doesn't match the text closely enough (background vocals, an instrumental gap, an ad-libbed delivery) - fixing the source lyrics and re-aligning is the right move, not hand-editing a timestamp.
+
+---
+
 ## Cast & Locations, Direction, Prompt, Notes, Generate (per shot)
 
 Selecting a shot (click its row in the table, or the shot itself in the timeline - either stays in sync with the other) exposes five tabs to its right:
@@ -161,7 +181,9 @@ Drag a segment to move it, drag its edges to resize, click it to edit its fields
 
 ### Prompt
 
-**"Compile prompt"** deterministically serializes the shot's Direction data (camera/character/prop tracks, beats, cuts, constraints) into MiniMax H3's six-section reference-generation prompt format and writes the result here - nothing is invented, only what was explicitly authored is included. **"Expand with AI"** (needs the AI provider configured, see [Setup](#setup)) re-compiles the same five sections deterministically but sends only `detailed_description` to the configured chat model to elaborate toward H3's recommended 350-500 words, streaming the result in live; it's instructed never to invent new subjects, actions, or cuts beyond what's already stated. A word/character-count readout next to both buttons flags the 350-word gap either way. A **Seed** field holds the seed for the *next* generation in the Generate tab (leave it blank for a random one each time) - a completed take keeps a record of whichever seed it actually used, independent of whatever this field holds later.
+**"Compile prompt"** deterministically serializes the shot's Direction data (camera/character/prop tracks, beats, cuts, constraints) into MiniMax H3's six-section reference-generation prompt format and writes the result here - nothing is invented, only what was explicitly authored is included. **"Expand with AI"** (needs the AI provider configured, see [Setup](#setup)) re-compiles the same five sections deterministically but sends only `detailed_description` to the configured chat model to elaborate toward H3's recommended 350-500 words, streaming the result in live. A word/character-count readout next to both buttons flags the 350-word gap either way. A **Seed** field holds the seed for the *next* generation in the Generate tab (leave it blank for a random one each time) - a completed take keeps a record of whichever seed it actually used, independent of whatever this field holds later.
+
+Both actions enforce a hard 7,000-character cap on the assembled prompt (H3's own API limit) before writing into this field - going over it leaves the previous prompt untouched and explains why in the status line, instead of silently saving something the provider would reject anyway. "Expand with AI" is deliberately conservative: it's only allowed to make what's already stated more explicit (tighter camera/action mechanics, more precise spatial/timing detail), never to invent new subjects, actions, props, lighting, or decorative/sensory flourish (skin, reflections, atmosphere) beyond what the compiled description already says. It can be interrupted mid-stream with the **Cancel** button that appears next to its spinner while it's running.
 
 ### Notes
 

@@ -879,6 +879,12 @@ body.ctrl-cut-cursor #track-shots .shot-lane-segment {
 .lyrics-preview-table-wrap th { text-align: left; padding: 4px 8px; color: var(--text-dim); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--panel-border); position: sticky; top: 0; background: var(--bg); }
 .lyrics-preview-table-wrap td { padding: 3px 8px; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
 .lyrics-preview-row.unaligned td { color: var(--text-dim); font-style: italic; }
+/* Flags a word/Phrase/Hold row built from a low-confidence alignment (see
+   lyricsAlign.js's LOW_CONFIDENCE_THRESHOLD) - same amber warning tone as
+   the Hold viz bars below, cursor: help since the row's title attribute
+   carries the actual explanation. */
+.lyrics-preview-table-wrap tr.low-confidence td { background: rgba(255, 184, 76, 0.14); cursor: help; }
+.lyrics-preview-table-wrap tr.low-confidence td:first-child { border-left: 2px solid rgba(255, 184, 76, 0.85); }
 .lyrics-apply-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 10px; }
 
 /* Phase 3b: phrase/hold sections stacked below the Words table, same table

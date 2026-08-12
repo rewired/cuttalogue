@@ -46,6 +46,33 @@
   // normalizeLyricsAlignment for the corresponding shape validation).
   const SUPPORTED_SCHEMA_VERSION = 1;
 
+  // A word below this confidence is very likely a forced-alignment failure
+  // rather than a genuinely-if-weakly-placed word - real project data shows
+  // ordinarily-placed words clustering around 0.1-0.3+, while a stretched/
+  // misplaced word (the model essentially gave up and let it absorb
+  // leftover unaligned audio) sits well under this. Not scientifically
+  // calibrated, just a practical default surfaced as a visual warning (see
+  // renderPreview/buildRegionRow below) so a bad phrase's *cause* is visible
+  // in the tab itself, rather than only showing up later as a strange SRT
+  // timestamp - see the README's "Getting good alignment results".
+  const LOW_CONFIDENCE_THRESHOLD = 0.05;
+
+  // True if any word whose span falls within [region.startSeconds,
+  // region.endSeconds] is below LOW_CONFIDENCE_THRESHOLD - a rendering-time
+  // annotation only. Never redefines a Phrase/Hold's boundaries or text;
+  // those remain exactly MSE.vocalRegions' own derivation. A Hold's span is
+  // exactly one word's span, so this naturally finds that same word; a
+  // Phrase's span typically covers several.
+  function regionHasLowConfidenceWord(region) {
+    return (previewWords || []).some((w) => (
+      w.confidence != null
+      && w.confidence < LOW_CONFIDENCE_THRESHOLD
+      && w.startSeconds != null
+      && w.startSeconds >= region.startSeconds
+      && w.endSeconds <= region.endSeconds
+    ));
+  }
+
   function cacheElements() {
     el.textarea = document.getElementById('lyrics-text');
     el.alignBtn = document.getElementById('align-lyrics-btn');
@@ -114,7 +141,8 @@
     previewWords.forEach((word) => {
       const row = document.createElement('tr');
       const unaligned = word.startSeconds == null;
-      row.className = `lyrics-preview-row${unaligned ? ' unaligned' : ''}`;
+      const lowConfidence = !unaligned && word.confidence != null && word.confidence < LOW_CONFIDENCE_THRESHOLD;
+      row.className = `lyrics-preview-row${unaligned ? ' unaligned' : ''}${lowConfidence ? ' low-confidence' : ''}`;
 
       const startCell = document.createElement('td');
       startCell.textContent = unaligned ? '—' : MSE.format.formatTime(word.startSeconds);
@@ -126,7 +154,11 @@
 
       const wordCell = document.createElement('td');
       wordCell.textContent = unaligned ? `${word.text} (unaligned)` : word.text;
-      if (word.confidence != null) wordCell.title = `confidence ${word.confidence.toFixed(2)}`;
+      if (word.confidence != null) {
+        wordCell.title = lowConfidence
+          ? `confidence ${word.confidence.toFixed(2)} - low, this timing may be unreliable`
+          : `confidence ${word.confidence.toFixed(2)}`;
+      }
       row.appendChild(wordCell);
 
       el.previewList.appendChild(row);
@@ -146,6 +178,10 @@
 
   function buildRegionRow(region) {
     const row = document.createElement('tr');
+    if (regionHasLowConfidenceWord(region)) {
+      row.className = 'low-confidence';
+      row.title = 'Contains a low-confidence word - this timing may be unreliable (see README: Getting good alignment results)';
+    }
     const startCell = document.createElement('td');
     startCell.textContent = MSE.format.formatTime(region.startSeconds);
     row.appendChild(startCell);
