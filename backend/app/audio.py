@@ -3,6 +3,7 @@
 # an open pool - this is what export (frames.py math against real audio
 # bytes) and comfy.py (H3 lip-sync reference audio) both read from, not
 # something the user tags or assigns.
+import json
 import shutil
 from pathlib import Path
 
@@ -33,6 +34,21 @@ def optional_track(data: dict, directory: Path, track: str) -> Path | None:
     return path if path.exists() else None
 
 
+# Phase 5.1: the one place a track's on-disk identity is fingerprinted, so
+# both align_lyrics_endpoint (stamping a fresh lyricsAlignment.vocalSource)
+# and the read-only endpoint below (checking whether a persisted alignment
+# is still valid) agree on the same lightweight, non-cryptographic identity -
+# relative path + size + mtime, not a content hash (see the Phase 5.1 spec's
+# "reliable practical invalidation, not forensic identity").
+def track_fingerprint(data: dict, directory: Path, track: str) -> dict | None:
+    path = optional_track(data, directory, track)
+    if path is None:
+        return None
+    rel = ((data.get("audio") or {}).get(track) or {}).get("relativePath")
+    stat = path.stat()
+    return {"relativePath": rel, "sizeBytes": stat.st_size, "mtimeMs": stat.st_mtime * 1000}
+
+
 @router.post("/api/projects/{project_id}/audio/{track}")
 async def upload_audio(project_id: str, track: str, file: UploadFile = File(...)):
     if track not in VALID_TRACKS:
@@ -56,3 +72,19 @@ async def upload_audio(project_id: str, track: str, file: UploadFile = File(...)
         shutil.copyfileobj(file.file, out)
 
     return {"relativePath": f"audio/{dest.name}", "fileName": file.filename}
+
+
+# Phase 5.1: lets the frontend learn the *current* on-disk vocal (or mix)
+# fingerprint on project load/vocal change without running MMS - a persisted
+# lyricsAlignment.vocalSource is only ever compared against this, never
+# recomputed by re-running alignment. Read-only, never touches project.json.
+@router.get("/api/projects/{project_id}/audio/{track}/fingerprint")
+async def get_track_fingerprint(project_id: str, track: str):
+    if track not in VALID_TRACKS:
+        raise HTTPException(status_code=400, detail="track must be 'mix' or 'vocal'")
+    directory = project_dir(project_id)
+    file = directory / "project.json"
+    if not file.exists():
+        raise HTTPException(status_code=404, detail="project not found")
+    data = json.loads(file.read_text(encoding="utf-8"))
+    return {"fingerprint": track_fingerprint(data, directory, track)}

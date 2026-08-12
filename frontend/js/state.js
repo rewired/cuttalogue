@@ -53,6 +53,12 @@
       // this are transient (never persisted) until explicitly applied as
       // vocalCues above.
       lyrics: { text: '' },
+      // Phase 5.1: persisted word-level forced-alignment result (see
+      // lyricsAlign.js) - null until a successful alignment. Phrase/Hold
+      // regions stay derived-on-demand from this, never persisted
+      // themselves. See project.js's normalizeLyricsAlignment for the
+      // validated shape.
+      lyricsAlignment: null,
       export: {
         includeMixSnippet: false,
       },

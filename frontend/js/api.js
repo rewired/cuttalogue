@@ -223,6 +223,16 @@
     return res.json(); // { jobId }
   }
 
+  // Phase 5.1: current on-disk vocal fingerprint, used only to decide
+  // whether a persisted lyricsAlignment is still valid (see lyricsAlign.js's
+  // getStoredAlignmentStatus) - never triggers alignment itself.
+  async function getVocalFingerprint(projectId) {
+    const res = await fetch(`/api/projects/${projectId}/audio/vocal/fingerprint`);
+    if (!res.ok) throw new Error(`get vocal fingerprint failed: ${res.status}`);
+    const body = await res.json();
+    return body.fingerprint; // null | { relativePath, sizeBytes, mtimeMs }
+  }
+
   // No FormData needed - the take's output file already lives on the
   // server, this just tells it to copy that file into the asset pool.
   async function promoteTakeToAsset(projectId, shotId, takeId) {
@@ -257,6 +267,7 @@
     describeAsset,
     expandDescription,
     alignLyrics,
+    getVocalFingerprint,
     generateTake,
     promoteTakeToAsset,
   };

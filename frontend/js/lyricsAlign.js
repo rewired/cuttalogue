@@ -1,11 +1,17 @@
 // Phase 3a of docs/h3-shot-direction-roadmap.md: local word-level lyrics-to-
 // vocal alignment. This module owns the Lyrics tab (textarea persistence,
-// the Align job, and the transient preview/apply flow) but does NOT own any
-// cue state - alignment results are a preview only, converted into real
-// Phase-2 vocal cues purely through MSE.vocalCues.add()/remove() when the
-// user clicks Apply. Once applied, the main timeline/Direction editor pick
-// them up through the existing vocal-cues-changed event, same as any
-// manually authored cue - there is no second cue display path here.
+// the Align job, and the preview/apply flow) but does NOT own any cue state
+// - alignment results are converted into real Phase-2 vocal cues purely
+// through MSE.vocalCues.add()/remove() when the user clicks Apply. Once
+// applied, the main timeline/Direction editor pick them up through the
+// existing vocal-cues-changed event, same as any manually authored cue -
+// there is no second cue display path here.
+//
+// Phase 5.1: the expensive word-level result itself IS persisted, as
+// state.lyricsAlignment (see project.js's serializeProject/
+// normalizeLyricsAlignment) - restored on project load when still valid
+// (getStoredAlignmentStatus below), with no MMS run required. Phrases/Holds
+// remain purely derived/transient, same as before.
 (function (MSE) {
   'use strict';
 
@@ -13,11 +19,12 @@
 
   const el = {};
   let isVisible = false;
-  // Last alignment result (array of { text, startSeconds, endSeconds,
+  // The current preview result (array of { text, startSeconds, endSeconds,
   // confidence, lineIndex, wordIndex }, startSeconds/endSeconds null for a
-  // word the aligner couldn't place) - null until an alignment has actually
-  // completed. Transient by design (see file header); never written to
-  // state/project.
+  // word the aligner couldn't place) - null when there's nothing active to
+  // show. Mirrors state.lyricsAlignment.words while a valid persisted/fresh
+  // result is active; this module-local copy is what rendering reads from,
+  // never a second source of truth for the persisted words themselves.
   let previewWords = null;
   // The exact lyrics text that produced previewWords, snapshotted at
   // request time rather than re-read from state.lyrics.text later - phrase
@@ -33,6 +40,11 @@
   let previewPhrases = [];
   let previewHolds = [];
   let holdThresholdSeconds = MSE.vocalRegions.DEFAULT_HOLD_THRESHOLD_SECONDS;
+
+  // Phase 5.1: the one schema version this build understands - kept as a
+  // single constant, never scattered numeric checks (see project.js's
+  // normalizeLyricsAlignment for the corresponding shape validation).
+  const SUPPORTED_SCHEMA_VERSION = 1;
 
   function cacheElements() {
     el.textarea = document.getElementById('lyrics-text');
@@ -67,6 +79,19 @@
   function wireTextarea() {
     el.textarea.addEventListener('input', () => {
       state.lyrics.text = el.textarea.value;
+      // Phase 5.1 (spec 18): an active preview/derived-region result no
+      // longer corresponds to what's on screen the moment lyrics diverge
+      // from the exact text it was derived from - clear it rather than let
+      // Direction keep reading stale regions as current. The *persisted*
+      // state.lyricsAlignment record itself is left untouched here; only a
+      // successful re-align (or an explicit clear) replaces it.
+      if (previewWords && el.textarea.value !== previewLyricsText) {
+        previewWords = null;
+        previewLyricsText = '';
+        renderPreview();
+        deriveAndRenderRegions();
+        setAlignStatus('Lyrics changed — re-align required.', false);
+      }
     });
   }
 
@@ -255,6 +280,70 @@
     el.alignSpinner.hidden = !spinning;
   }
 
+  // Phase 5.1: the one authoritative validity decision for the persisted
+  // state.lyricsAlignment record - every restore/invalidation path below
+  // calls this rather than re-deriving its own staleness logic. Pure
+  // read-only (one network call to learn the *current* on-disk vocal
+  // fingerprint; never runs alignment). See project.js's
+  // normalizeLyricsAlignment for the shape this reads.
+  async function getStoredAlignmentStatus() {
+    const stored = state.lyricsAlignment;
+    if (!stored) return { status: 'missing', reason: null };
+    if (stored.schemaVersion !== SUPPORTED_SCHEMA_VERSION) return { status: 'stale', reason: 'schema' };
+
+    const currentLyrics = (state.lyrics && state.lyrics.text) || '';
+    if (currentLyrics !== stored.lyricsSnapshot) return { status: 'stale', reason: 'lyrics_changed' };
+
+    const projectId = MSE.project.getProjectId();
+    let currentFingerprint = null;
+    if (projectId) {
+      try {
+        currentFingerprint = await MSE.api.getVocalFingerprint(projectId);
+      } catch (err) {
+        currentFingerprint = null;
+      }
+    }
+    if (!currentFingerprint) return { status: 'stale', reason: 'vocal_changed' };
+
+    const stale = stored.vocalSource == null
+      || currentFingerprint.relativePath !== stored.vocalSource.relativePath
+      || currentFingerprint.sizeBytes !== stored.vocalSource.sizeBytes
+      || currentFingerprint.mtimeMs !== stored.vocalSource.mtimeMs;
+    if (stale) return { status: 'stale', reason: 'vocal_changed' };
+
+    return { status: 'valid', reason: null };
+  }
+
+  // One place mapping a status/reason to the short status-line text (spec
+  // section 26) - never scattered across call sites.
+  function describeStatus({ status, reason }) {
+    if (status === 'valid') return 'Aligned result restored.';
+    if (reason === 'lyrics_changed') return 'Lyrics changed — re-align required.';
+    if (reason === 'vocal_changed') return 'Vocal changed — re-align required.';
+    if (reason === 'schema') return 'Alignment source unavailable — re-align required.';
+    return '';
+  }
+
+  // Restores previewWords/previewLyricsText from a valid persisted
+  // state.lyricsAlignment and re-renders through the exact same paths a
+  // fresh alignment uses (spec section 12: no separate "restored" UI path).
+  // Clears the active preview otherwise. Shared by the project-loaded and
+  // vocal-ready handlers below.
+  async function syncPreviewWithStoredAlignment() {
+    const result = await getStoredAlignmentStatus();
+    if (result.status === 'valid') {
+      previewWords = state.lyricsAlignment.words;
+      previewLyricsText = state.lyricsAlignment.lyricsSnapshot;
+    } else {
+      previewWords = null;
+      previewLyricsText = '';
+    }
+    renderPreview();
+    deriveAndRenderRegions();
+    setAlignStatus(describeStatus(result), false);
+    return result;
+  }
+
   async function runAlignment() {
     const lyricsText = (state.lyrics && state.lyrics.text) || '';
     if (!lyricsText.trim()) {
@@ -275,10 +364,17 @@
       const event = await MSE.api.watchJob(jobId, (progressEvent) => {
         if (progressEvent.message) setAlignStatus(progressEvent.message, true);
       });
-      previewWords = (event.result && event.result.words) || [];
+      const alignment = (event.result && event.result.lyricsAlignment) || null;
+      previewWords = (alignment && alignment.words) || [];
       previewLyricsText = lyricsText;
       renderPreview();
       deriveAndRenderRegions();
+      // Written only on success (spec section 8) - a failed re-align below
+      // never touches state.lyricsAlignment, leaving whatever was
+      // previously persisted completely intact. This single assignment is
+      // also what makes the project dirty, via project.js's existing
+      // serialize-and-diff autosave poll - no explicit dirty call needed.
+      state.lyricsAlignment = alignment;
       const alignedCount = previewWords.filter((w) => w.startSeconds != null).length;
       setAlignStatus(`Aligned ${alignedCount} of ${previewWords.length} word(s).`, false);
     } catch (err) {
@@ -340,14 +436,24 @@
       isVisible = detail.view === 'lyrics';
       if (isVisible) syncTextareaFromState();
     });
-    on('project-loaded', () => {
-      previewWords = null;
-      previewLyricsText = '';
-      renderPreview();
-      deriveAndRenderRegions();
-      setAlignStatus('', false);
+    // Phase 5.1: restores a valid persisted alignment immediately (no MMS
+    // run) instead of unconditionally clearing the preview - see
+    // syncPreviewWithStoredAlignment. audio.vocal.relativePath in the just-
+    // loaded project (not a browser File) is what the fingerprint check
+    // resolves against, so this never requires reselecting the vocal file.
+    on('project-loaded', async () => {
+      await syncPreviewWithStoredAlignment();
       el.applyStatusText.textContent = '';
       if (isVisible) syncTextareaFromState();
+    });
+    // Fires both on a fresh vocal file pick and on the backend auto-restore
+    // during project load (waveformSync.js) - only re-checks when there's
+    // an active preview to (in)validate, so an ordinary playback load never
+    // costs an extra fingerprint fetch. On the auto-restore case this just
+    // re-confirms what project-loaded already restored (harmless no-op).
+    on('vocal-ready', async () => {
+      if (!previewWords) return;
+      await syncPreviewWithStoredAlignment();
     });
   }
 
@@ -362,5 +468,5 @@
 
   document.addEventListener('DOMContentLoaded', init);
 
-  MSE.lyricsAlign = { applyAlignmentWords, getCurrentRegions };
+  MSE.lyricsAlign = { applyAlignmentWords, getCurrentRegions, getStoredAlignmentStatus };
 })(window.MSE = window.MSE || {});

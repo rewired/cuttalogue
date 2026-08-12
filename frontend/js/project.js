@@ -55,6 +55,7 @@
       assets: state.assets,
       vocalCues: (state.vocalCues || []).map((c) => ({ id: c.id, timeSeconds: c.timeSeconds, label: c.label || '' })),
       lyrics: { text: (state.lyrics && state.lyrics.text) || '' },
+      lyricsAlignment: state.lyricsAlignment || null,
       export: state.export,
       loop: state.loop,
       // Stamped by saveProjectToBackend() on every real save - the sole
@@ -127,6 +128,49 @@
     });
   }
 
+  // Defensive-only normalization for a persisted word (Phase 5.1) - protects
+  // against a malformed/foreign record (older hand-edited project.json)
+  // crashing project load. Never decides staleness/validity - that's the
+  // single job of MSE.lyricsAlign.getStoredAlignmentStatus(); this only
+  // drops entries that can't be trusted structurally.
+  function normalizeAlignmentWord(w) {
+    if (!w || typeof w.text !== 'string') return null;
+    if (!Number.isInteger(w.lineIndex) || !Number.isInteger(w.wordIndex)) return null;
+    return {
+      text: w.text,
+      startSeconds: Number.isFinite(w.startSeconds) ? w.startSeconds : null,
+      endSeconds: Number.isFinite(w.endSeconds) ? w.endSeconds : null,
+      confidence: Number.isFinite(w.confidence) ? w.confidence : null,
+      lineIndex: w.lineIndex,
+      wordIndex: w.wordIndex,
+    };
+  }
+
+  // Pure: normalizes a persisted lyricsAlignment record (or undefined, for
+  // every project predating Phase 5.1) to either a well-shaped object or
+  // null. A record with zero usable words after filtering is treated as no
+  // alignment at all, not an empty-but-present one - an empty result was
+  // never a real successful alignment (see the Phase 5.1 spec's "never
+  // restore an empty Phrase/Hold result as though alignment succeeded").
+  function normalizeLyricsAlignment(raw) {
+    if (!raw || typeof raw !== 'object') return null;
+    const words = (Array.isArray(raw.words) ? raw.words : []).map(normalizeAlignmentWord).filter(Boolean);
+    if (!words.length) return null;
+    return {
+      schemaVersion: Number.isFinite(raw.schemaVersion) ? raw.schemaVersion : null,
+      engine: typeof raw.engine === 'string' ? raw.engine : null,
+      lyricsSnapshot: typeof raw.lyricsSnapshot === 'string' ? raw.lyricsSnapshot : '',
+      vocalSource: raw.vocalSource && typeof raw.vocalSource === 'object'
+        ? {
+            relativePath: raw.vocalSource.relativePath ?? null,
+            sizeBytes: Number.isFinite(raw.vocalSource.sizeBytes) ? raw.vocalSource.sizeBytes : null,
+            mtimeMs: Number.isFinite(raw.vocalSource.mtimeMs) ? raw.vocalSource.mtimeMs : null,
+          }
+        : null,
+      words,
+    };
+  }
+
   // Pure: defaults in fields older/foreign project data predates (name/
   // prompt/notes/assetIds/assets/export/savedAt/constraints) without
   // touching `parsed` or global state - needed so both the canonical
@@ -161,6 +205,7 @@
     // verbatim (line breaks and all) - never re-derived or normalized here,
     // that only ever happens transiently inside the alignment call itself.
     normalized.lyrics = { text: '', ...(normalized.lyrics || {}) };
+    normalized.lyricsAlignment = normalizeLyricsAlignment(normalized.lyricsAlignment);
     normalized.export = { includeMixSnippet: false, ...(normalized.export || {}) };
     normalized.loop = { enabled: false, startSeconds: null, endSeconds: null, snapMode: 'grid', ...(normalized.loop || {}) };
     normalized.savedAt = normalized.savedAt ?? null;

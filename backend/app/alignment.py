@@ -41,6 +41,12 @@ logger = logging.getLogger("cuttalogue.alignment")
 
 router = APIRouter()
 
+# Phase 5.1: the single provenance identifiers stamped onto a persisted
+# lyricsAlignment record (see project.js's serializeProject) - never
+# duplicated as string literals elsewhere.
+ALIGNMENT_ENGINE_ID = "torchaudio-mms-fa"
+LYRICS_ALIGNMENT_SCHEMA_VERSION = 1
+
 
 class WordAlignment(TypedDict):
     text: str
@@ -326,7 +332,20 @@ async def align_lyrics_endpoint(project_id: str, body: dict = Body(default={})):
                     "Alignment produced no usable word timings - the vocal track and lyrics may not "
                     "correspond, or the supplied lyrics contain no alignable words."
                 )
-            job.result = {"words": words}
+            # One canonical result shape (Phase 5.1) - the frontend uses this
+            # directly both as the transient preview (words) and, unchanged,
+            # as what gets written into project.json on Save. See
+            # audio.track_fingerprint's docstring for why vocal identity is
+            # captured here rather than recomputed later.
+            job.result = {
+                "lyricsAlignment": {
+                    "schemaVersion": LYRICS_ALIGNMENT_SCHEMA_VERSION,
+                    "engine": ALIGNMENT_ENGINE_ID,
+                    "lyricsSnapshot": lyrics_text,
+                    "vocalSource": audio.track_fingerprint(data, directory, "vocal"),
+                    "words": words,
+                }
+            }
             await jobs.emit(job, {"status": "done", "phase": "complete", "message": "Done", "result": job.result})
         except Exception as exc:  # noqa: BLE001 - reported to the client as a job error, not raised
             logger.error("align-lyrics failed for project %s: %s", project_id, traceback.format_exc())
