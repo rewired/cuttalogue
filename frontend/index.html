@@ -291,6 +291,14 @@ Right-click a shot to delete it">&#9432;</span></div>
             <span id="align-status-text"></span>
           </span>
         </div>
+        <div class="direction-compile-toolbar">
+          <span>Subtitle export</span>
+          <label title="A constant shift applied only when writing the .srt file - e.g. a fixed logo/preroll before the song in the final rendered video. Never changes alignment, Phrase, cue, Direction, or Shot timing.">
+            Offset <input type="number" id="subtitle-offset-input" step="0.001"> s
+          </label>
+          <button type="button" id="export-srt-btn" title="Export the current Phrase regions as a .srt subtitle file">Export SRT</button>
+          <span id="srt-export-status-text" class="placeholder-hint"></span>
+        </div>
       </div>
       <div class="lyrics-preview-col">
         <p class="placeholder-hint" id="align-preview-empty">Align to see word-level timing here before applying it as vocal cues.</p>
@@ -525,6 +533,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/references.js"></script>
 <script src="js/vocalCues.js"></script>
 <script src="js/vocalRegions.js"></script>
+<script src="js/subtitles.js"></script>
 <script src="js/silence.js"></script>
 <script src="js/waveformSync.js"></script>
 <script src="js/trackHeightResize.js"></script>

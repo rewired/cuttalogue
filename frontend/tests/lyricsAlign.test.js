@@ -222,6 +222,36 @@ function makeAlignment(overrides) {
   assertEqual(allMalformed, null, 'Case K: a record with zero usable words after filtering normalizes to null, not an empty-but-present record');
 }
 
+// --- Phase 5.2: persisted subtitleExport.offsetSeconds -----------------------
+
+// --- Case Q: old project compatibility ---------------------------------------
+{
+  const normalized = project.normalizeProjectData({});
+  assertEqual(normalized.subtitleExport, { offsetSeconds: 0 }, 'Case Q: a project with no subtitleExport field normalizes to { offsetSeconds: 0 }');
+}
+
+// --- Case R: round-trip persistence -------------------------------------------
+{
+  state.subtitleExport.offsetSeconds = 5.25;
+  const serialized = project.serializeProject();
+  assertEqual(serialized.subtitleExport, { offsetSeconds: 5.25 }, 'Case R: serializeProject emits the offset verbatim');
+
+  const roundTripped = project.normalizeProjectData(JSON.parse(JSON.stringify(serialized)));
+  assertEqual(roundTripped.subtitleExport, { offsetSeconds: 5.25 }, 'Case R: offsetSeconds survives a serialize -> reload round-trip unchanged');
+
+  const malformed = project.normalizeProjectData({ subtitleExport: { offsetSeconds: 'not-a-number' } });
+  assertEqual(malformed.subtitleExport, { offsetSeconds: 0 }, 'Case R: a non-finite/malformed offset falls back to 0 rather than leaking NaN/a string');
+
+  state.subtitleExport.offsetSeconds = 0;
+}
+
+// Note: SRT-export alignment gating (missing/stale lyrics_changed/vocal_changed)
+// is not re-tested here - lyricsAlign.js's exportSrt() gates on the exact
+// same getStoredAlignmentStatus() already exercised end-to-end by Cases
+// L-P below, so there is no second staleness check to verify (see
+// getStoredAlignmentStatus's own doc comment: it is the one authoritative
+// validity decision, reused verbatim by the export handler).
+
 // --- Cases L-P: getStoredAlignmentStatus (Phase 5.1's one authoritative check)
 async function runAsyncCases() {
   const fingerprint = { relativePath: 'audio/vocal.wav', sizeBytes: 1000, mtimeMs: 123456 };

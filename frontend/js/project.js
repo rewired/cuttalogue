@@ -56,6 +56,7 @@
       vocalCues: (state.vocalCues || []).map((c) => ({ id: c.id, timeSeconds: c.timeSeconds, label: c.label || '' })),
       lyrics: { text: (state.lyrics && state.lyrics.text) || '' },
       lyricsAlignment: state.lyricsAlignment || null,
+      subtitleExport: { offsetSeconds: (state.subtitleExport && state.subtitleExport.offsetSeconds) || 0 },
       export: state.export,
       loop: state.loop,
       // Stamped by saveProjectToBackend() on every real save - the sole
@@ -206,6 +207,15 @@
     // that only ever happens transiently inside the alignment call itself.
     normalized.lyrics = { text: '', ...(normalized.lyrics || {}) };
     normalized.lyricsAlignment = normalizeLyricsAlignment(normalized.lyricsAlignment);
+    // Older projects predate subtitleExport entirely -> the default offset.
+    // A non-finite/malformed offset (foreign or hand-edited project.json)
+    // falls back the same way, rather than letting NaN/a string leak into
+    // SRT serialization later.
+    normalized.subtitleExport = {
+      offsetSeconds: Number.isFinite((normalized.subtitleExport || {}).offsetSeconds)
+        ? normalized.subtitleExport.offsetSeconds
+        : 0,
+    };
     normalized.export = { includeMixSnippet: false, ...(normalized.export || {}) };
     normalized.loop = { enabled: false, startSeconds: null, endSeconds: null, snapMode: 'grid', ...(normalized.loop || {}) };
     normalized.savedAt = normalized.savedAt ?? null;
@@ -481,6 +491,11 @@
     listProjects,
     exportShotsJson,
     exportShotsCsv,
+    // Generic client-side text-file download (Blob + object URL), reused by
+    // Phase 5.2's SRT export (lyricsAlign.js) - same helper exportShotsJson/
+    // exportShotsCsv already use above, just not previously exposed outside
+    // this module.
+    triggerDownload,
     // Pure - exposed for the regression tests (frontend/tests/vocalCues.test.js)
     // to exercise the normalize/serialize round-trip directly.
     normalizeProjectData,

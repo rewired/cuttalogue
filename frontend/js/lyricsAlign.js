@@ -64,6 +64,15 @@
     el.applyStatusText = document.getElementById('apply-status-text');
     el.modeAdd = document.getElementById('align-apply-mode-add');
     el.modeReplace = document.getElementById('align-apply-mode-replace');
+    el.subtitleOffsetInput = document.getElementById('subtitle-offset-input');
+    el.exportSrtBtn = document.getElementById('export-srt-btn');
+    el.srtExportStatusText = document.getElementById('srt-export-status-text');
+  }
+
+  // Same "don't clobber an active edit" guard as syncTextareaFromState.
+  function syncSubtitleOffsetFromState() {
+    if (document.activeElement === el.subtitleOffsetInput) return;
+    el.subtitleOffsetInput.value = state.subtitleExport.offsetSeconds;
   }
 
   // Mirrors renderShotList's "don't clobber an active edit" guard - a full
@@ -419,6 +428,58 @@
       : `Added ${created} new vocal cue(s).`;
   }
 
+  // Separate from describeStatus() above (which is worded for the restore-
+  // on-load status line) - SRT export needs its own phrasing ("re-align
+  // before exporting", not "re-align required") on the same underlying
+  // status/reason values from getStoredAlignmentStatus(), the one
+  // authoritative check both call sites share.
+  function describeExportBlockedReason({ reason }) {
+    if (reason === 'lyrics_changed') return 'Lyrics changed — re-align before exporting SRT.';
+    if (reason === 'vocal_changed') return 'Vocal changed — re-align before exporting SRT.';
+    return 'Align the lyrics to the current vocal before exporting SRT.';
+  }
+
+  // Characters invalid/problematic in local filenames across common
+  // filesystems - never a random id (spec section 19). Falls back to
+  // 'lyrics' if the project name is empty or sanitizes away to nothing.
+  function sanitizeFilenameStem(name) {
+    const cleaned = (name || '').replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').trim();
+    return cleaned || 'lyrics';
+  }
+
+  // Export SRT never re-runs alignment (spec section 16) - it only ever
+  // reads the current, already-derived Phrase list via getCurrentRegions()
+  // (the same accessor Direction uses), gated by the same
+  // getStoredAlignmentStatus() check restore-on-load uses. Hold regions and
+  // Shot boundaries are never consulted - MSE.subtitles.serializeSrt only
+  // ever receives (phrases, offsetSeconds).
+  async function exportSrt() {
+    el.exportSrtBtn.disabled = true;
+    el.srtExportStatusText.textContent = 'Checking alignment…';
+    try {
+      const result = await getStoredAlignmentStatus();
+      if (result.status !== 'valid') {
+        el.srtExportStatusText.textContent = describeExportBlockedReason(result);
+        return;
+      }
+      const { phrases } = getCurrentRegions();
+      const srt = MSE.subtitles.serializeSrt(phrases, state.subtitleExport.offsetSeconds);
+      // Empty covers both "no Phrase regions at all" and "every Phrase was
+      // clamped/omitted by the current offset" (spec section 22) - either
+      // way, never silently download a blank .srt.
+      if (!srt) {
+        el.srtExportStatusText.textContent = 'No aligned lyric phrases are available to export.';
+        return;
+      }
+      const cueCount = srt.trim().split('\n\n').length;
+      const filename = `${sanitizeFilenameStem(state.name)}.srt`;
+      MSE.project.triggerDownload(filename, srt, 'application/x-subrip;charset=utf-8');
+      el.srtExportStatusText.textContent = `Exported ${cueCount} subtitle(s).`;
+    } finally {
+      el.exportSrtBtn.disabled = false;
+    }
+  }
+
   function wire() {
     wireTextarea();
     el.alignBtn.addEventListener('click', () => runAlignment());
@@ -431,10 +492,25 @@
       el.holdThresholdInput.value = holdThresholdSeconds;
       deriveAndRenderRegions();
     });
+    // Direct state mutation, same convention as lyrics.text's own input
+    // handler - project.js's existing poll-and-diff autosave picks this up
+    // without an explicit dirty call. Unlike the hold threshold above, this
+    // value is persisted (spec section 6/8), so no in-memory fallback
+    // variable is needed - state.subtitleExport.offsetSeconds *is* the
+    // value.
+    el.subtitleOffsetInput.addEventListener('change', () => {
+      const parsed = Number(el.subtitleOffsetInput.value);
+      state.subtitleExport.offsetSeconds = Number.isFinite(parsed) ? parsed : 0;
+      el.subtitleOffsetInput.value = state.subtitleExport.offsetSeconds;
+    });
+    el.exportSrtBtn.addEventListener('click', () => exportSrt());
 
     on('main-view-changed', ({ detail }) => {
       isVisible = detail.view === 'lyrics';
-      if (isVisible) syncTextareaFromState();
+      if (isVisible) {
+        syncTextareaFromState();
+        syncSubtitleOffsetFromState();
+      }
     });
     // Phase 5.1: restores a valid persisted alignment immediately (no MMS
     // run) instead of unconditionally clearing the preview - see
@@ -444,6 +520,8 @@
     on('project-loaded', async () => {
       await syncPreviewWithStoredAlignment();
       el.applyStatusText.textContent = '';
+      el.srtExportStatusText.textContent = '';
+      syncSubtitleOffsetFromState();
       if (isVisible) syncTextareaFromState();
     });
     // Fires both on a fresh vocal file pick and on the backend auto-restore
@@ -461,6 +539,7 @@
     cacheElements();
     holdThresholdSeconds = MSE.vocalRegions.DEFAULT_HOLD_THRESHOLD_SECONDS;
     el.holdThresholdInput.value = holdThresholdSeconds;
+    syncSubtitleOffsetFromState();
     wire();
     renderPreview();
     deriveAndRenderRegions();

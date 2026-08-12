@@ -59,6 +59,15 @@
       // themselves. See project.js's normalizeLyricsAlignment for the
       // validated shape.
       lyricsAlignment: null,
+      // Phase 5.2: a constant, export-only offset applied when serializing
+      // Phrase regions to .srt (see subtitles.js/lyricsAlign.js) - the
+      // final delivered video may have a logo/preroll before the song that
+      // CUTTAlogue's own song-relative timeline never models. Deliberately
+      // its own top-level key, not folded into `export` (Phase 4b's
+      // whole-project video-export settings, a different feature that just
+      // happens to share the word) or into `lyrics` (this is output
+      // configuration, not lyric content).
+      subtitleExport: { offsetSeconds: 0 },
       export: {
         includeMixSnippet: false,
       },
