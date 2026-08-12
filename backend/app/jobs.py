@@ -98,6 +98,25 @@ async def job_events(job_id: str):
         raise HTTPException(status_code=404, detail="job not found")
 
     async def stream():
+        # A client (re)connecting after the job already reached a terminal
+        # state - e.g. the browser's EventSource auto-reconnecting after a
+        # dropped connection - would otherwise block forever on queue.get():
+        # the sentinel that ends the queue was already consumed by whichever
+        # connection was open when the job actually finished, so a fresh
+        # connection's queue is empty and nothing will ever be put into it
+        # again. Synthesize the terminal event straight from the job's own
+        # fields instead of relying on a queue that no longer has any
+        # history to replay - this is what turned an observed "Expand with
+        # AI" hang (spinner/buttons stuck forever) into a real bug fix
+        # rather than just a client-side cancel button papering over it.
+        if job.status in ("done", "error", "cancelled"):
+            event: dict = {"status": job.status}
+            if job.status == "done":
+                event["result"] = job.result
+            elif job.status == "error":
+                event["message"] = job.error
+            yield f"data: {json.dumps(event)}\n\n"
+            return
         while True:
             event = await job.queue.get()
             if event is None:

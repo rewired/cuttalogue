@@ -289,6 +289,7 @@
     el.expandAiBtn = document.getElementById('direction-expand-ai-btn');
     el.compileStatusText = document.getElementById('direction-compile-status-text');
     el.compileSpinner = document.getElementById('direction-compile-spinner');
+    el.expandCancelBtn = document.getElementById('direction-expand-cancel-btn');
     el.segmentContextMenu = document.getElementById('direction-segment-context-menu');
     el.segmentContextSplit = document.getElementById('direction-segment-context-split');
     el.segmentContextDuplicate = document.getElementById('direction-segment-context-duplicate');
@@ -1334,6 +1335,13 @@
   }
 
   const H3_RECOMMENDED_MIN_WORDS = 350;
+  // H3's own hard API limit (see the "getting close" warning below, which
+  // fires ahead of this at 6000). A prompt over this is guaranteed to be
+  // rejected by the provider - never write one into shot.prompt, whether it
+  // came from the deterministic Compile or an AI expansion that ran long
+  // despite its own instructions not to pad length (see expand.py's
+  // SYSTEM_PROMPT).
+  const H3_MAX_PROMPT_CHARS = 7000;
 
   function wordCount(text) {
     const trimmed = (text || '').trim();
@@ -1359,6 +1367,28 @@
     el.compileSpinner.hidden = !spinning;
   }
 
+  // The in-flight "Expand with AI" job id, if any - lets the Cancel button
+  // (shown only while this is set) call MSE.api.cancelJob without a second
+  // job-tracking mechanism, same convention as taskPanel.js's activeJobId.
+  let activeExpandJobId = null;
+
+  // The one place a compiled/expanded prompt is actually written into
+  // shot.prompt - shared by both wire() handlers below so the 7000-char
+  // safety net can't be bypassed by either path. Over the limit, the
+  // previous prompt is left untouched rather than saving something H3 would
+  // reject outright; the human has to shorten Direction detail (or ask for
+  // a shorter AI expansion) and recompile.
+  function applyCompiledPrompt(shot, text, detailedDescription) {
+    if (text.length > H3_MAX_PROMPT_CHARS) {
+      setCompileStatus(
+        `Not applied: compiled prompt is ${text.length} characters, over H3's ${H3_MAX_PROMPT_CHARS}-character limit. Shorten the shot's Direction detail and try again.`
+      );
+      return;
+    }
+    shotsApi.setShotPrompt(shot.id, text);
+    setCompileStatus(compileStatusText(text, detailedDescription));
+  }
+
   function wire() {
     el.snapToggle.addEventListener('click', () => setSnapEnabled(!snapEnabled));
     el.expandBtn.addEventListener('click', expand);
@@ -1378,8 +1408,7 @@
       if (!shot) return;
       const sections = MSE.h3Compiler.compileH3Sections(shot);
       const text = MSE.h3Compiler.assembleH3Prompt(sections);
-      shotsApi.setShotPrompt(shot.id, text);
-      setCompileStatus(compileStatusText(text, sections.detailedDescription));
+      applyCompiledPrompt(shot, text, sections.detailedDescription);
     });
 
     // The deferred "LLM-based compiler variant" (see docs/h3-shot-direction-
@@ -1394,22 +1423,46 @@
       const sections = MSE.h3Compiler.compileH3Sections(shot);
       el.expandAiBtn.disabled = true;
       el.compileBtn.disabled = true;
+      el.expandCancelBtn.hidden = false;
+      el.expandCancelBtn.disabled = false;
+      el.expandCancelBtn.textContent = 'Cancel';
       setCompileStatus('Expanding with AI…', true);
       try {
         const { jobId } = await MSE.api.expandDescription(sections.detailedDescription);
+        activeExpandJobId = jobId;
         let expanded = '';
-        await MSE.api.watchJob(jobId, (event) => {
+        const result = await MSE.api.watchJob(jobId, (event) => {
           if (event.delta) expanded += event.delta;
         });
+        if (result.status === 'cancelled') {
+          setCompileStatus('Expand cancelled.');
+          return;
+        }
         const text = MSE.h3Compiler.assembleH3Prompt({ ...sections, detailedDescription: expanded });
-        shotsApi.setShotPrompt(shot.id, text);
-        setCompileStatus(compileStatusText(text, expanded));
+        applyCompiledPrompt(shot, text, expanded);
       } catch (err) {
         console.error(err);
         setCompileStatus(`Expand failed: ${err.message}`);
       } finally {
+        activeExpandJobId = null;
+        el.expandCancelBtn.hidden = true;
         el.expandAiBtn.disabled = false;
         el.compileBtn.disabled = false;
+      }
+    });
+
+    // Safety net for a slow/stuck provider call - previously there was no
+    // way to interrupt "Expand with AI" short of waiting out the backend's
+    // own 120s provider timeout (see expand.py's _stream_expansion, which
+    // now checks cancellation between streamed chunks).
+    el.expandCancelBtn.addEventListener('click', async () => {
+      if (!activeExpandJobId) return;
+      el.expandCancelBtn.disabled = true;
+      el.expandCancelBtn.textContent = 'Cancelling…';
+      try {
+        await MSE.api.cancelJob(activeExpandJobId);
+      } catch (err) {
+        console.error(err);
       }
     });
 
