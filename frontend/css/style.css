@@ -734,6 +734,14 @@ body.ctrl-cut-cursor #track-shots .shot-lane-segment {
   transition: width 0.15s ease-out;
 }
 
+/* Reuses .export-progress-bar/.export-progress-fill's look for the Lyrics
+   tab's model-download progress (see lyricsAlign.js's setAlignProgress) -
+   but as a fixed-width inline-block, not the task panel's flex-filled div:
+   #align-status is a plain <span> flex *item* inside .direction-compile-
+   toolbar, not itself a flex container, so `flex: 1 1 auto` has no parent
+   to size against here. */
+#align-progress-bar { display: inline-block; width: 140px; vertical-align: middle; }
+
 
 .asset-grid {
   display: grid;

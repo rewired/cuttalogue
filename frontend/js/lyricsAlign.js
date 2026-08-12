@@ -78,6 +78,8 @@
     el.alignBtn = document.getElementById('align-lyrics-btn');
     el.alignSpinner = document.getElementById('align-spinner');
     el.alignStatusText = document.getElementById('align-status-text');
+    el.alignProgressBar = document.getElementById('align-progress-bar');
+    el.alignProgressFill = document.getElementById('align-progress-fill');
     el.previewEmpty = document.getElementById('align-preview-empty');
     el.previewDetail = document.getElementById('align-preview-detail');
     el.previewList = document.getElementById('align-preview-list');
@@ -325,6 +327,19 @@
     el.alignSpinner.hidden = !spinning;
   }
 
+  // fraction == null hides the bar (no download in progress, or the
+  // server gave no Content-Length to compute a real percentage from - see
+  // _download_model_with_progress's own comment on why that case never
+  // shows a fabricated fraction). Otherwise shows it at the given 0..1.
+  function setAlignProgress(fraction) {
+    if (fraction == null) {
+      el.alignProgressBar.hidden = true;
+      return;
+    }
+    el.alignProgressBar.hidden = false;
+    el.alignProgressFill.style.width = `${fraction * 100}%`;
+  }
+
   // Phase 5.1: the one authoritative validity decision for the persisted
   // state.lyricsAlignment record - every restore/invalidation path below
   // calls this rather than re-deriving its own staleness logic. Pure
@@ -407,6 +422,10 @@
     try {
       const { jobId } = await MSE.api.alignLyrics(projectId, lyricsText);
       const event = await MSE.api.watchJob(jobId, (progressEvent) => {
+        // Real byte progress only while the backend is actually downloading
+        // the alignment model (see alignment.py's _download_model_with_progress)
+        // - any other phase (audio prep, model load, aligning) hides the bar.
+        setAlignProgress(progressEvent.phase === 'downloading_model' ? progressEvent.progressFraction : null);
         if (progressEvent.message) setAlignStatus(progressEvent.message, true);
       });
       const alignment = (event.result && event.result.lyricsAlignment) || null;
@@ -430,6 +449,7 @@
       deriveAndRenderRegions();
       setAlignStatus(`Failed: ${err.message}`, false);
     } finally {
+      setAlignProgress(null);
       el.alignBtn.disabled = false;
     }
   }

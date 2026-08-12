@@ -25,7 +25,9 @@ import logging
 import re
 import shutil
 import subprocess
+import time
 import traceback
+import uuid
 import wave
 from pathlib import Path
 from typing import TypedDict
@@ -46,6 +48,15 @@ router = APIRouter()
 # duplicated as string literals elsewhere.
 ALIGNMENT_ENGINE_ID = "torchaudio-mms-fa"
 LYRICS_ALIGNMENT_SCHEMA_VERSION = 1
+
+# A specific, collision-safe cache filename for the MMS_FA checkpoint -
+# passed to bundle.get_model(dl_kwargs=...) below. Without this,
+# torch.hub.load_state_dict_from_url defaults to the URL's basename
+# ("model.pt"), which on a real machine collides with the same generic
+# filename other unrelated tools' checkpoints already use in the same
+# shared ~/.cache/torch/hub/checkpoints/ directory - also what makes
+# is_model_downloaded() below a reliable check rather than a guess.
+ALIGNMENT_MODEL_FILENAME = "mms_fa_ctc_alignment_mling_uroman.pt"
 
 
 class WordAlignment(TypedDict):
@@ -71,6 +82,22 @@ class WordAlignment(TypedDict):
 _bundle_cache: dict = {}
 
 
+def _model_cache_path() -> Path:
+    import torch
+
+    return Path(torch.hub.get_dir()) / "checkpoints" / ALIGNMENT_MODEL_FILENAME
+
+
+def is_model_downloaded() -> bool:
+    """Whether the MMS_FA checkpoint is already present in torch's hub
+    cache on disk - distinct from is_model_loaded() below, which is about
+    this *process* having it in memory. A model can already be downloaded
+    (fast to load) without yet being loaded in this particular backend
+    process; see align_lyrics_endpoint's run() for how the two combine into
+    an honest download/loading/aligning phase sequence."""
+    return _model_cache_path().exists()
+
+
 def _load_bundle():
     if "model" in _bundle_cache:
         return _bundle_cache
@@ -85,7 +112,13 @@ def _load_bundle():
         ) from exc
 
     bundle = torchaudio.pipelines.MMS_FA
-    model = bundle.get_model()
+    # dl_kwargs routes straight through to torch.hub.load_state_dict_from_url
+    # - see ALIGNMENT_MODEL_FILENAME's own comment for why a specific
+    # filename matters. If _download_model_with_progress already fetched
+    # the checkpoint (align_lyrics_endpoint's run()), this finds it already
+    # cached and downloads nothing; otherwise it's the (progress-less)
+    # fallback download path.
+    model = bundle.get_model(dl_kwargs={"file_name": ALIGNMENT_MODEL_FILENAME})
     # Conservative GPU use (see file header): only used if a CUDA-enabled
     # torch build AND a working device are both already present, never
     # required - CPU is plenty fast for aligning one song's vocal stem
@@ -246,6 +279,73 @@ def is_model_loaded() -> bool:
     return "model" in _bundle_cache
 
 
+# Streams the MMS_FA checkpoint ourselves rather than letting torch.hub do
+# it - torch.hub.download_url_to_file only prints a local tqdm bar to this
+# process's own stderr with no hook exposed for external progress reporting
+# (confirmed by reading its source), so real byte-level progress needs its
+# own download. Writes to a temp file next to the real cache path, then
+# renames atomically on success - the same "never leave a broken file at
+# the real cache path" behavior torch.hub's own downloader has. Once this
+# returns, _load_bundle()'s bundle.get_model() call finds the file already
+# cached (same path, via ALIGNMENT_MODEL_FILENAME) and downloads nothing.
+async def _download_model_with_progress(job: jobs.Job) -> None:
+    if is_model_downloaded():
+        return
+
+    import torchaudio
+
+    url = getattr(torchaudio.pipelines.MMS_FA, "_path", None)
+    if not url:
+        # torchaudio internals changed underneath us - fall back to
+        # bundle.get_model()'s own (progress-less) download rather than
+        # failing alignment outright.
+        logger.warning("Could not determine the MMS_FA checkpoint URL - skipping progress-reported download.")
+        return
+
+    import httpx
+
+    dest = _model_cache_path()
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp_dest = dest.with_name(dest.name + f".{uuid.uuid4().hex}.partial")
+
+    timeout = httpx.Timeout(connect=30.0, read=120.0, write=30.0, pool=30.0)
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                total = int(response.headers.get("content-length") or 0)
+                downloaded = 0
+                last_emit = 0.0
+                with tmp_dest.open("wb") as f:
+                    async for chunk in response.aiter_bytes(1024 * 1024):
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        now = time.monotonic()
+                        if now - last_emit < 0.5 and downloaded != total:
+                            continue
+                        last_emit = now
+                        mb_downloaded = downloaded / (1024 * 1024)
+                        if total:
+                            mb_total = total / (1024 * 1024)
+                            message = f"Downloading alignment model: {mb_downloaded:.0f}/{mb_total:.0f} MB"
+                            fraction = downloaded / total
+                        else:
+                            # No Content-Length from the server - report what
+                            # we know (bytes so far) without a fabricated
+                            # percentage; the frontend hides the bar and
+                            # shows this text alone in that case.
+                            message = f"Downloading alignment model: {mb_downloaded:.0f} MB"
+                            fraction = None
+                        await jobs.emit(
+                            job,
+                            {"status": "running", "phase": "downloading_model", "message": message, "progressFraction": fraction},
+                        )
+        tmp_dest.replace(dest)
+    finally:
+        if tmp_dest.exists():
+            tmp_dest.unlink()
+
+
 async def prepare_audio(vocal_path: Path, workdir: Path) -> Path:
     """Renders a temporary mono/16kHz PCM copy of vocal_path into workdir
     (a job-scoped scratch directory the caller owns and cleans up) and
@@ -320,11 +420,27 @@ async def align_lyrics_endpoint(project_id: str, body: dict = Body(default={})):
             await jobs.emit(job, {"status": "running", "phase": "audio", "message": "Preparing vocal audio"})
             wav_path = await prepare_audio(vocal_path, workdir)
 
+            # Its own explicit phase with real byte progress (see
+            # _download_model_with_progress) - only when a download is
+            # actually needed, never run for an already-downloaded/already-
+            # loaded model.
+            if not is_model_loaded() and not is_model_downloaded():
+                await jobs.emit(
+                    job,
+                    {
+                        "status": "running",
+                        "phase": "downloading_model",
+                        "message": "Downloading alignment model (first run only, ~1.2GB)…",
+                        "progressFraction": 0.0,
+                    },
+                )
+                await _download_model_with_progress(job)
+
             # Honest phase message rather than a fabricated percentage (see
-            # is_model_loaded's docstring) - the model download/load on a
-            # cold process can take a while, so it's worth calling out
-            # separately from the (usually much faster) alignment pass itself.
-            loading_message = "Aligning lyrics" if is_model_loaded() else "Loading alignment model (first run downloads it, may take a while)"
+            # is_model_loaded's docstring) - downloading is already reported
+            # separately above, so this only ever covers fast deserialization
+            # of an already-downloaded checkpoint into this process.
+            loading_message = "Aligning lyrics" if is_model_loaded() else "Loading alignment model…"
             await jobs.emit(job, {"status": "running", "phase": "aligning", "message": loading_message})
             words = await run_alignment(wav_path, lyrics_text)
             if not any(w["startSeconds"] is not None for w in words):
