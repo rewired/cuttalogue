@@ -38,6 +38,7 @@
     elements.play = document.getElementById('camera-preview-play-btn');
     elements.scrubber = document.getElementById('camera-preview-scrubber');
     elements.duration = document.getElementById('camera-preview-duration');
+    elements.export = document.getElementById('camera-preview-export-btn');
   }
 
   function selectedShot() {
@@ -55,17 +56,9 @@
 
   function compileCurrentShot() {
     if (!currentShot) return;
-    const duration = shotDuration();
     const scene = MSE.scenes ? MSE.scenes.sceneForShot(currentShot) : null;
-    const initialCamera = MSE.scenes ? MSE.scenes.cameraForScene(scene, currentShot.preview && currentShot.preview.initialCameraOverride) : null;
-    const targetContext = MSE.scenes ? MSE.scenes.targetsForShot(scene, currentShot) : { targets: {}, defaultTarget: null };
-    plan = MSE.cameraPath.compile((currentShot.direction && currentShot.direction.camera) || [], {
-      durationSeconds: duration,
-      initialCamera,
-      profile: MSE.scenes ? MSE.scenes.profileForScene(scene) : null,
-      targets: targetContext.targets,
-      defaultTarget: targetContext.defaultTarget,
-    });
+    const duration = shotDuration();
+    plan = MSE.cameraService.compileShot(currentShot, state);
     if (renderer) renderer.setPlan(plan);
     elements.scrubber.max = String(duration);
     elements.duration.textContent = `${duration.toFixed(2)} s`;
@@ -204,6 +197,13 @@
     await MSE.sync.togglePlayback();
   }
 
+  function exportCurrentCamera() {
+    if (!currentShot) return;
+    const document = MSE.cameraService.exportCamera(currentShot, state);
+    const shotNumber = String(currentShot.id).padStart(3, '0');
+    MSE.project.triggerDownload(`shot-${shotNumber}-camera.json`, JSON.stringify(document, null, 2), 'application/json');
+  }
+
   function open() {
     currentShot = selectedShot();
     if (!currentShot) return;
@@ -247,6 +247,7 @@
     elements.shotView.addEventListener('click', () => setViewMode('shot'));
     elements.freeView.addEventListener('click', () => setViewMode('free'));
     elements.play.addEventListener('click', togglePlayback);
+    elements.export.addEventListener('click', exportCurrentCamera);
     elements.scene.addEventListener('change', () => {
       if (currentShot && MSE.scenes) MSE.scenes.setShotScene(currentShot.id, elements.scene.value || null);
     });
