@@ -100,12 +100,11 @@
     return 'IMAGE';
   }
 
-  // Only "Extend" is wired up for now (see the shot-extension plan) -
-  // "Reference (motion)" will get its own option once there's a real
-  // ComfyUI graph for it to feed into.
+  // Keep persisted Extend assignments visible and removable, but never imply
+  // that the current R2V_H3_V1 workflow can consume them.
   const VIDEO_MODE_OPTIONS = [
-    ['', 'Not used'],
-    ['extend', 'Extend'],
+    { value: '', label: 'Not used', disabled: false },
+    { value: 'extend', label: 'Extend (workflow unavailable)', disabled: true },
   ];
 
   // Free start-frame + frame-count range, with a one-click "last N frames"
@@ -163,10 +162,11 @@
 
     const select = document.createElement('select');
     select.className = 'assigned-asset-role-select';
-    VIDEO_MODE_OPTIONS.forEach(([value, label]) => {
+    VIDEO_MODE_OPTIONS.forEach(({ value, label, disabled }) => {
       const opt = document.createElement('option');
       opt.value = value;
       opt.textContent = label;
+      opt.disabled = disabled;
       opt.selected = value === (current ? current.mode : '');
       select.appendChild(opt);
     });

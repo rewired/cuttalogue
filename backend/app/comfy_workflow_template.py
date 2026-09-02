@@ -22,12 +22,9 @@ AUDIO_NODE_ID = "141"  # LoadAudioUI, wired to MiniMaxH3ReferenceToVideo.ref_aud
 # duration carved out of a completely different source file. That must
 # never reach ComfyUI once CUTTAlogue is driving generation (see comfy.py).
 
-# The exported graph also contains a VHS_LoadVideo node (id "169", a video-
-# continuation source) that isn't wired into anything - this MiniMax H3
-# "Reference to Video" model has no continuation input for it to feed. The
-# app's Extend feature (comfy.py uploads extend_filename) is kept generic for
-# a future workflow that does support it, but this function intentionally
-# ignores it for R2V_H3_V1.
+# The exported graph also contains an unwired VHS_LoadVideo node. This adapter
+# rejects Extend before upload/submission instead of accepting unusable input.
+# Continuation can be enabled when a compatible workflow is installed.
 
 
 def build_workflow_payload(
@@ -36,19 +33,14 @@ def build_workflow_payload(
     seed: int,
     frame_count: int | None = None,
     fps: float | None = None,
-    extend_filename: str | None = None,
-    extend_start_frame: int = 0,
-    extend_frame_count: int | None = None,
     lip_sync_filename: str | None = None,
     lip_sync_duration: float | None = None,
 ) -> dict:
     """Returns the real workflow with prompt/seed/reference images/frame
     count/fps/lip-sync audio substituted in. `seed` is the already-resolved
     value (the caller picks a random one if none was given) so this function
-    only ever deals with a concrete int. `extend_filename`/`extend_start_frame`/
-    `extend_frame_count` are accepted for signature compatibility with the
-    app's Extend feature but not wired into R2V_H3_V1 - see module docstring.
-    `lip_sync_filename` is the ComfyUI-side filename of an already-uploaded
+    only ever deals with a concrete int. `lip_sync_filename` is the
+    ComfyUI-side filename of an already-uploaded
     audio file that comfy.py has rendered to exactly `lip_sync_duration`
     seconds (H3's own render duration, not the editorial cut duration) - the
     loader is pointed at that whole file from its own start rather than

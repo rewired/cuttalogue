@@ -59,7 +59,7 @@ async def main() -> None:
                     "support": "supporting_character",
                     "lead": "primary_character",
                 },
-                "videoRefs": {"clip": {"mode": "extend", "startFrame": 12, "frameCount": 25}},
+                "videoRefs": {},
             }],
         }), encoding="utf-8")
         repository = ProjectRepository(root)
@@ -79,7 +79,7 @@ async def main() -> None:
             body = calls[0][3]
             check(body["prompt"] == "Persisted canonical prompt", "generation uses only the persisted shot prompt")
             check(body["referenceAssetIds"] == ["lead", "support"], "generation derives canonical role-ordered references")
-            check(body["extendAssetId"] == "clip" and body["extendStartFrame"] == 12 and body["extendFrameCount"] == 25, "generation derives the stored extend-video configuration")
+            check(body["extendAssetId"] is None, "generation has no implicit continuation input")
             check(calls[0][1] == directory, "generation receives the repository-confined project directory")
             try:
                 await service.start_generation("project-a", 1, "stale", None)
@@ -87,8 +87,20 @@ async def main() -> None:
             except RevisionConflictError:
                 check(True, "generation rejects a stale project revision before starting a job")
             project = repository.read("project-a")["project"]
+            project["shots"][0]["videoRefs"] = {
+                "clip": {"mode": "extend", "startFrame": 12, "frameCount": 25},
+            }
+            extended_record = repository.write("project-a", project, revision)
+            try:
+                await service.start_generation("project-a", 1, extended_record["revision"], None)
+                check(False, "generation rejects Extend when the workflow has no continuation input")
+            except WriteValidationError as error:
+                check("Extend" in str(error), "generation rejects Extend when the workflow has no continuation input")
+            check(len(calls) == 1, "unsupported Extend is rejected before a generation job starts")
+            project = repository.read("project-a")["project"]
             project["shots"][0]["prompt"] = ""
-            next_record = repository.write("project-a", project, revision)
+            project["shots"][0]["videoRefs"] = {}
+            next_record = repository.write("project-a", project, extended_record["revision"])
             try:
                 await service.start_generation("project-a", 1, next_record["revision"], None)
                 check(False, "generation rejects a shot without a persisted prompt")
