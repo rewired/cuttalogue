@@ -8,6 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mcp import Client  # noqa: E402
+from app import jobs  # noqa: E402
 from app.mcp_server import create_mcp_server  # noqa: E402
 
 failures = 0
@@ -46,6 +47,7 @@ async def main() -> None:
                 "list_projects", "get_project", "list_shots", "get_shot",
                 "get_shot_direction", "get_camera_segments", "validate_camera_path",
                 "evaluate_camera_path", "compile_shot_prompt", "get_project_warnings",
+                "get_job_status",
             }
             check(names == expected, "MCP exposes exactly the first read-only tool set")
 
@@ -57,6 +59,11 @@ async def main() -> None:
             check(not evaluated.is_error and evaluated.structured_content["pose"]["position"] == [0.0, 1.6, 3.0], "MCP evaluates the backend camera path")
             compiled = await client.call_tool("compile_shot_prompt", {"project_id": "mcp-project", "shot_id": 1})
             check(not compiled.is_error and "The camera pushes in" in compiled.structured_content["prompt"], "MCP compiles the canonical H3 prompt")
+            job = jobs.create_job()
+            job.status, job.result = "done", {"artifact": "preview.mp4"}
+            status = await client.call_tool("get_job_status", {"job_id": job.id})
+            check(not status.is_error and status.structured_content["result"]["artifact"] == "preview.mp4", "MCP reads a non-consuming job snapshot")
+            jobs._jobs.pop(job.id, None)
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")

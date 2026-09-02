@@ -7,6 +7,7 @@ from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from .camera_service import CameraEvaluationError
+from .jobs import JobNotFoundError, read_job_status
 from .project_repository import InvalidProjectError, ProjectNotFoundError, ProjectRepository
 from .projects import DATA_DIR
 from .prompt_service import PromptCompilationError
@@ -15,7 +16,7 @@ from .read_services import EntityNotFoundError, ProjectReadService
 
 EXPECTED_READ_ERRORS = (
     CameraEvaluationError, EntityNotFoundError, InvalidProjectError,
-    ProjectNotFoundError, PromptCompilationError,
+    JobNotFoundError, ProjectNotFoundError, PromptCompilationError,
 )
 
 
@@ -81,6 +82,11 @@ def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
     def compile_shot_prompt(project_id: str, shot_id: int) -> dict[str, Any]:
         """Compile authored Direction into CUTTAlogue's deterministic H3 prompt without saving it."""
         return _read(service.compile_shot_prompt, project_id, shot_id)
+
+    @server.tool()
+    def get_job_status(job_id: str) -> dict[str, Any]:
+        """Read one in-memory CUTTAlogue job snapshot without consuming its event stream."""
+        return _read(read_job_status, job_id)
 
     @server.tool()
     def get_project_warnings(project_id: str) -> dict[str, Any]:

@@ -44,6 +44,20 @@ async def next_chunk(response, timeout: float):
 
 
 async def main() -> None:
+    # --- Snapshot contract shared by HTTP and MCP --------------------------
+    try:
+        jobs.read_job_status("missing")
+        check(False, "job snapshot rejects an unknown id with a domain error")
+    except jobs.JobNotFoundError as error:
+        check(str(error) == "job not found", "job snapshot rejects an unknown id with a domain error")
+
+    snapshot_job = jobs.create_job()
+    snapshot_job.status = "done"
+    snapshot_job.result = {"nested": {"value": 1}}
+    snapshot = jobs.read_job_status(snapshot_job.id)
+    snapshot["result"]["nested"]["value"] = 2
+    check(snapshot_job.result["nested"]["value"] == 1, "job snapshot cannot mutate the registry result")
+
     # --- Case A: reconnecting to an already-'done' job must not hang -------
     job_done = jobs.create_job()
     job_done.status = "done"
