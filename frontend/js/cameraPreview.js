@@ -58,10 +58,13 @@
     const duration = shotDuration();
     const scene = MSE.scenes ? MSE.scenes.sceneForShot(currentShot) : null;
     const initialCamera = MSE.scenes ? MSE.scenes.cameraForScene(scene, currentShot.preview && currentShot.preview.initialCameraOverride) : null;
+    const targetContext = MSE.scenes ? MSE.scenes.targetsForShot(scene, currentShot) : { targets: {}, defaultTarget: null };
     plan = MSE.cameraPath.compile((currentShot.direction && currentShot.direction.camera) || [], {
       durationSeconds: duration,
       initialCamera,
-      profile: scene && scene.motionProfile,
+      profile: MSE.scenes ? MSE.scenes.profileForScene(scene) : null,
+      targets: targetContext.targets,
+      defaultTarget: targetContext.defaultTarget,
     });
     if (renderer) renderer.setPlan(plan);
     elements.scrubber.max = String(duration);
@@ -69,9 +72,13 @@
     const cameraSegments = (currentShot.direction && currentShot.direction.camera) || [];
     elements.empty.hidden = cameraSegments.some((segment) => segment.enabled !== false);
     const warningCount = plan.warnings.length;
-    pathStatus = { text: warningCount
-      ? `${warningCount} camera warning${warningCount === 1 ? '' : 's'}`
-      : 'Camera path valid', warning: warningCount > 0 };
+    const unresolved = plan.warnings.find((warning) => warning.code === 'unresolved_target' || warning.code === 'missing_target');
+    pathStatus = { text: unresolved
+      ? (unresolved.value ? `Unresolved target: ${unresolved.value}` : 'Camera target needs calibration')
+      : warningCount
+        ? `${warningCount} camera warning${warningCount === 1 ? '' : 's'}`
+        : 'Camera path valid', warning: warningCount > 0 };
+    if (renderer) renderer.setAnchors(scene ? scene.anchors : {});
     updateDiagnostics();
   }
 
@@ -200,6 +207,7 @@
   function open() {
     currentShot = selectedShot();
     if (!currentShot) return;
+    if (MSE.sceneCalibrationPanel) MSE.sceneCalibrationPanel.setShot(currentShot);
     if (renderer) renderer.dispose();
     elements.overlay.hidden = false;
     elements.title.textContent = 'Camera preview';
@@ -225,6 +233,7 @@
     renderer = null;
     plan = null;
     currentShot = null;
+    if (MSE.sceneCalibrationPanel) MSE.sceneCalibrationPanel.setShot(null);
     elements.overlay.hidden = true;
   }
 
@@ -270,6 +279,7 @@
     if (!isOpen() || !currentShot) return;
     currentShot = state.shots.find((shot) => shot.id === currentShot.id) || null;
     if (!currentShot) return close();
+    if (MSE.sceneCalibrationPanel) MSE.sceneCalibrationPanel.setShot(currentShot);
     compileCurrentShot();
     render();
     if (event.detail && event.detail.reason === 'scene') loadCurrentScene();
@@ -278,6 +288,7 @@
     if (!isOpen()) return;
     currentShot = selectedShot();
     if (!currentShot) return close();
+    if (MSE.sceneCalibrationPanel) MSE.sceneCalibrationPanel.setShot(currentShot);
     elements.subtitle.textContent = currentShot.name ? `Shot ${currentShot.id} — ${currentShot.name}` : `Shot ${currentShot.id}`;
     previewTime = Math.max(0, Math.min(shotDuration(), projectRelativeTime()));
     compileCurrentShot();
@@ -286,11 +297,11 @@
     loadCurrentScene();
   });
   on('project-loaded', () => { if (isOpen()) close(); });
-  on('scenes-changed', () => {
+  on('scenes-changed', (event) => {
     if (!isOpen()) return;
     renderSceneSelect();
     compileCurrentShot();
-    loadCurrentScene();
+    if (!event.detail || ['asset-sync', 'asset-delete'].includes(event.detail.reason)) loadCurrentScene();
   });
 
   document.addEventListener('DOMContentLoaded', init);

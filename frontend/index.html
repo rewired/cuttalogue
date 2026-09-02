@@ -459,8 +459,16 @@ Right-click a shot to delete it">&#9432;</span></div>
       </div>
       <label class="camera-preview-scene-label" for="camera-preview-scene-select">Scene</label>
       <select id="camera-preview-scene-select" aria-label="Scene assigned to this shot"></select>
+      <button type="button" id="camera-preview-calibrate-btn">Calibrate</button>
       <span id="camera-preview-diagnostics" class="camera-preview-diagnostics"></span>
     </div>
+    <section id="scene-calibration-panel" class="scene-calibration-panel" hidden>
+      <div class="scene-calibration-header">
+        <strong>Scene calibration</strong>
+        <span>Shared scene values; target bindings belong to this shot.</span>
+      </div>
+      <div id="scene-calibration-content"></div>
+    </section>
     <div class="camera-preview-viewport">
       <canvas id="camera-preview-canvas" aria-label="Three-dimensional camera preview"></canvas>
       <div class="camera-preview-hud">
@@ -596,6 +604,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/assetPicker.js"></script>
 <script src="js/burstBeatsModal.js"></script>
 <script src="js/contextPanel.js"></script>
+<script src="js/sceneCalibrationPanel.js"></script>
 <script src="js/cameraPreview.js"></script>
 <script src="js/lyricsAlign.js"></script>
 <script src="js/taskPanel.js"></script>

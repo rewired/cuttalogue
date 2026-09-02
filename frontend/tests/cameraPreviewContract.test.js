@@ -11,6 +11,7 @@ const css = fs.readFileSync(path.join(FRONTEND, 'css', 'style.css'), 'utf8');
 const controller = fs.readFileSync(path.join(FRONTEND, 'js', 'cameraPreview.js'), 'utf8');
 const renderer = fs.readFileSync(path.join(FRONTEND, 'js', 'cameraPreviewRenderer.js'), 'utf8');
 const sceneGeometry = fs.readFileSync(path.join(FRONTEND, 'js', 'sceneGeometry.js'), 'utf8');
+const calibrationPanel = fs.readFileSync(path.join(FRONTEND, 'js', 'sceneCalibrationPanel.js'), 'utf8');
 let failures = 0;
 
 function assert(condition, label) {
@@ -29,6 +30,8 @@ const requiredIds = [
   'camera-preview-free-view',
   'camera-preview-scrubber',
   'camera-preview-scene-select',
+  'camera-preview-calibrate-btn',
+  'scene-calibration-panel',
 ];
 requiredIds.forEach((id) => assert(html.includes(`id="${id}"`), `preview markup contains #${id}`));
 
@@ -59,6 +62,10 @@ assert(controller.includes('MSE.cameraPath.compile'), 'preview derives animation
 assert(renderer.includes("MSE.cameraPath.evaluate"), 'renderer samples the canonical camera path contract');
 assert(renderer.includes('setSceneGeometry'), 'renderer accepts parsed scene geometry');
 assert(renderer.includes('gl.POINTS'), 'renderer draws point-cloud scene previews');
+assert(renderer.includes('setAnchors'), 'renderer accepts calibrated scene anchors');
+assert(html.includes('js/sceneCalibrationPanel.js'), 'native scene calibration editor is loaded');
+assert(calibrationPanel.includes('updateSceneCalibration') && calibrationPanel.includes('upsertAnchor'), 'calibration editor writes through the scene model');
+assert(controller.includes('Unresolved target:'), 'preview diagnostics name unresolved camera targets');
 assert(sceneGeometry.includes('parsePly') && sceneGeometry.includes('parseSplat') && sceneGeometry.includes('parseGlb'), 'scene loader supports PLY, SPLAT, and GLB');
 assert(!html.includes('SHOT VISUALIZER'), 'standalone Visualizer branding is absent');
 

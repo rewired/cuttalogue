@@ -92,7 +92,7 @@ function vectorClose(actual, expected, epsilon = 1e-9) {
   assert(warningCodes.includes('missing_direction'), 'missing truck direction emits a warning');
   assert(warningCodes.includes('invalid_focal_length'), 'invalid lens value emits a warning');
   assert(warningCodes.includes('overlapping_segments'), 'overlapping segments emit a warning');
-  assert(warningCodes.includes('movement_not_implemented'), 'deferred movement emits a warning');
+  assert(warningCodes.includes('missing_target'), 'target-aware movement without calibration emits a warning');
 }
 
 // Roll rotates the rendered right/up basis around camera forward.
@@ -100,6 +100,42 @@ function vectorClose(actual, expected, epsilon = 1e-9) {
   const basis = cameraPath.cameraBasis({ position: [0, 0, 0], yaw: 0, pitch: 0, roll: Math.PI / 2 });
   assert(vectorClose(basis.right, [0, 1, 0]), '90-degree roll rotates camera right onto world up');
   assert(vectorClose(basis.up, [-1, 0, 0]), '90-degree roll rotates camera up onto world left');
+}
+
+// Target-aware movements resolve calibrated scene anchors.
+{
+  const plan = cameraPath.compile([
+    { startSeconds: 0, endSeconds: 1, movement: 'arc_shot', direction: 'right', amplitude: 'small', target: 'performer', speed: 'linear' },
+  ], {
+    durationSeconds: 1,
+    initialCamera: { position: [0, 0, 4], yaw: 0, pitch: 0, roll: 0, focalLengthMm: 35 },
+    profile: { smallAngleDegrees: 90 },
+    targets: { performer: [0, 0, 0] },
+  });
+  const end = cameraPath.evaluate(plan, 1);
+  assert(vectorClose(end.position, [4, 0, 0], 1e-8), 'arc shot orbits around its resolved target');
+  assert(close(end.yaw, -Math.PI / 2, 1e-8), 'arc shot keeps looking at its resolved target');
+  assert(!plan.warnings.some((warning) => warning.code === 'movement_not_implemented'), 'arc shot is no longer deferred');
+}
+
+{
+  const plan = cameraPath.compile([
+    { startSeconds: 0, endSeconds: 1, movement: 'tracking_shot', direction: 'right', target: 'performer', speed: 'linear' },
+  ], {
+    durationSeconds: 1,
+    initialCamera: { position: [0, 0, 4], yaw: 0, pitch: 0, roll: 0, focalLengthMm: 35 },
+    profile: { defaultDistanceMeters: 2 },
+    targets: { performer: [0, 0, 0] },
+  });
+  assert(vectorClose(cameraPath.evaluate(plan, 1).position, [2, 0, 4]), 'tracking shot translates by the calibrated distance');
+  assert(!plan.warnings.some((warning) => warning.code === 'movement_not_implemented'), 'tracking shot is no longer deferred');
+}
+
+{
+  const plan = cameraPath.compile([
+    { startSeconds: 0, endSeconds: 1, movement: 'arc_shot', direction: 'right', target: 'missing' },
+  ], { durationSeconds: 1, targets: {} });
+  assert(plan.warnings.some((warning) => warning.code === 'unresolved_target'), 'an unresolved authored target produces a visible diagnostic');
 }
 
 if (failures) {

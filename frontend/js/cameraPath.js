@@ -76,6 +76,24 @@
     return position.map((value, index) => value + axis[index] * distance);
   }
 
+  function lookAt(camera, target) {
+    const delta = target.map((value, index) => value - camera.position[index]);
+    const horizontal = Math.hypot(delta[0], delta[2]);
+    camera.yaw = Math.atan2(delta[0], -delta[2]);
+    camera.pitch = Math.atan2(delta[1], horizontal);
+  }
+
+  function resolveTarget(segment, targets, defaultTarget, startPose, warnings, segmentIndex) {
+    const targetName = String(segment.target || '').trim();
+    const candidate = targetName ? targets[targetName] : defaultTarget;
+    const rawPosition = candidate && (candidate.position || candidate);
+    if (Array.isArray(rawPosition) && rawPosition.length === 3 && rawPosition.every((value) => Number.isFinite(Number(value)))) {
+      return rawPosition.map(Number);
+    }
+    warnings.push({ code: targetName ? 'unresolved_target' : 'missing_target', segmentIndex, value: targetName || null });
+    return addScaled(startPose.position, cameraBasis(startPose).forward, 3);
+  }
+
   function amplitudeValue(amplitude, profile, kind) {
     const suffix = kind === 'angle' ? 'AngleDegrees' : 'DistanceMeters';
     if (amplitude === 'small') return profile[`small${suffix}`];
@@ -109,7 +127,7 @@
     return merged;
   }
 
-  function endPoseForSegment(startPose, segment, profile, warnings, segmentIndex) {
+  function endPoseForSegment(startPose, segment, profile, targets, defaultTarget, warnings, segmentIndex) {
     const endPose = cloneCamera(startPose);
     const movement = segment.movement || 'static_shot';
     const basis = cameraBasis(startPose);
@@ -162,6 +180,34 @@
       case 'zoom_out':
         if (authoredFocalLength === null) endPose.focalLengthMm = startPose.focalLengthMm / profile.zoomOutFactor;
         break;
+      case 'tracking_shot': {
+        const target = resolveTarget(segment, targets, defaultTarget, startPose, warnings, segmentIndex);
+        let axis = basis.right;
+        let sign = 1;
+        if (segment.direction === 'left') sign = -1;
+        else if (segment.direction === 'forward') axis = basis.forward;
+        else if (segment.direction === 'backward') { axis = basis.forward; sign = -1; }
+        else if (segment.direction === 'up') axis = [0, 1, 0];
+        else if (segment.direction === 'down') { axis = [0, 1, 0]; sign = -1; }
+        else if (segment.direction !== 'right') directionSign(segment.direction, 'right', 'left', warnings, segmentIndex);
+        endPose.position = addScaled(startPose.position, axis, distance * sign);
+        lookAt(endPose, target);
+        break;
+      }
+      case 'arc_shot': {
+        const target = resolveTarget(segment, targets, defaultTarget, startPose, warnings, segmentIndex);
+        const sign = directionSign(segment.direction, 'right', 'left', warnings, segmentIndex);
+        const relative = startPose.position.map((value, index) => value - target[index]);
+        const cosine = Math.cos(angle * sign);
+        const sine = Math.sin(angle * sign);
+        endPose.position = [
+          target[0] + relative[0] * cosine + relative[2] * sine,
+          startPose.position[1],
+          target[2] - relative[0] * sine + relative[2] * cosine,
+        ];
+        lookAt(endPose, target);
+        break;
+      }
       default:
         warnings.push({ code: 'movement_not_implemented', segmentIndex, value: movement });
         break;
@@ -173,6 +219,8 @@
     const duration = Math.max(0, finiteNumber(options.durationSeconds, Infinity));
     const profile = normalizeProfile(options.profile);
     const initialPose = normalizeCamera(options.initialCamera);
+    const targets = options.targets && typeof options.targets === 'object' ? options.targets : {};
+    const defaultTarget = options.defaultTarget || null;
     const warnings = [];
     const source = Array.isArray(cameraSegments) ? cameraSegments : [];
     const enabled = source
@@ -195,7 +243,7 @@
         warnings.push({ code: 'overlapping_segments', segmentIndex: segment.sourceIndex });
       }
       const startPose = cloneCamera(currentPose);
-      const endPose = endPoseForSegment(startPose, segment, profile, warnings, segment.sourceIndex);
+      const endPose = endPoseForSegment(startPose, segment, profile, targets, defaultTarget, warnings, segment.sourceIndex);
       segments.push({
         sourceIndex: segment.sourceIndex,
         startSeconds,
