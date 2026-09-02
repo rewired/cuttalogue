@@ -45,7 +45,7 @@ async def main() -> None:
             expected = {
                 "list_projects", "get_project", "list_shots", "get_shot",
                 "get_shot_direction", "get_camera_segments", "validate_camera_path",
-                "evaluate_camera_path", "get_project_warnings",
+                "evaluate_camera_path", "compile_shot_prompt", "get_project_warnings",
             }
             check(names == expected, "MCP exposes exactly the first read-only tool set")
 
@@ -55,6 +55,8 @@ async def main() -> None:
             check(not camera.is_error and camera.structured_content["cameraSegments"][0]["movement"] == "push_in", "camera tool returns authoritative Direction segments")
             evaluated = await client.call_tool("evaluate_camera_path", {"project_id": "mcp-project", "shot_id": 1, "time_seconds": 5})
             check(not evaluated.is_error and evaluated.structured_content["pose"]["position"] == [0.0, 1.6, 3.0], "MCP evaluates the backend camera path")
+            compiled = await client.call_tool("compile_shot_prompt", {"project_id": "mcp-project", "shot_id": 1})
+            check(not compiled.is_error and "The camera pushes in" in compiled.structured_content["prompt"], "MCP compiles the canonical H3 prompt")
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")

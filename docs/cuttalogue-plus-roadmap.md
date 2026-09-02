@@ -31,8 +31,8 @@ MCP exposes the same domain operations used by the browser UI. It must never bec
 - Phase 2 has an initial native CUTTAlogue WebGL workspace with shared transport and explicit resource disposal.
 - Phase 3 is substantially implemented: PLY/SPLAT/GLB ingestion, reusable scene persistence, backwards-compatible normalization, per-shot scene assignment, scene-default camera and motion calibration, named anchors, per-shot target bindings, concrete unresolved-target diagnostics, and initial geometry rendering are implemented. SPLAT currently uses a point-sprite preview; a full anisotropic Gaussian rasterizer and direct viewport manipulation of calibration points remain open.
 - Phase 4 has started: preview compilation and deterministic, versioned Camera JSON export now share one application-service boundary. Broader authoring synchronization remains open.
-- Phase 5 has started: canonical project reads now pass through a path-confined repository and transport-neutral Project/Shot/Direction read services with content revisions and stable diagnostics. The deterministic camera compiler/evaluator now has backend parity and shared HTTP coverage; write services remain open.
-- Phase 6 has started: an official MCP-v2 STDIO server exposes nine read-only Project/Shot/Direction/camera tools through the shared services and is tested with the SDK's in-memory client. Prompt compilation and job-status reads remain open.
+- Phase 5 has started: canonical project reads now pass through a path-confined repository and transport-neutral Project/Shot/Direction read services with content revisions and stable diagnostics. The deterministic camera evaluator and canonical H3 prompt compiler now have shared backend/HTTP coverage; write services remain open.
+- Phase 6 has started: an official MCP-v2 STDIO server exposes ten read-only Project/Shot/Direction/camera/prompt tools through the shared services and is tested with the SDK's in-memory client. Job-status reads remain open.
 - Phases 7 and 8 remain planned.
 
 ## 2. Guiding principles

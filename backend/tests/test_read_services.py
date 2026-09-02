@@ -7,6 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.project_repository import InvalidProjectError, ProjectRepository  # noqa: E402
+from app.prompt_service import PromptCompilationError  # noqa: E402
 from app.read_services import EntityNotFoundError, ProjectReadService  # noqa: E402
 from app import projects, read_api  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
@@ -52,6 +53,7 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-read-services-") as raw:
     check(len(service.get_camera_segments("project-a", 1)["cameraSegments"]) == 1, "camera segments have a dedicated service")
     check(service.validate_camera_path("project-a", 1)["valid"], "backend camera path validates through the shared service")
     check(service.evaluate_camera_path("project-a", 1, 4)["pose"]["position"] == [0.0, 1.6, 3.0], "backend camera path evaluates through the shared service")
+    check("The camera pushes in" in service.compile_shot_prompt("project-a", 1)["prompt"], "canonical H3 prompt compiles through the shared service")
     check(service.get_project_warnings("project-a")["valid"], "valid references and timings produce no warnings")
 
     payload["shots"][0]["sceneId"] = "missing"
@@ -73,6 +75,8 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-read-services-") as raw:
         except InvalidProjectError:
             check(True, f"path-bearing project id {project_id!r} is rejected")
 
+    check(read_api.translate(PromptCompilationError("compiler unavailable")).status_code == 503, "HTTP adapter distinguishes compiler availability from invalid input")
+
     original_data_dir = projects.DATA_DIR
     try:
         projects.DATA_DIR = root
@@ -85,6 +89,8 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-read-services-") as raw:
         evaluation = client.get("/api/projects/project-a/shots/1/camera/evaluation", params={"time_seconds": 4})
         expected_pose = service.evaluate_camera_path("project-a", 1, 4)["pose"]["position"]
         check(evaluation.status_code == 200 and evaluation.json()["pose"]["position"] == expected_pose, "HTTP adapter exposes shared camera evaluation")
+        compiled = client.get("/api/projects/project-a/shots/1/prompt/compiled")
+        check(compiled.status_code == 200 and "The camera pushes in" in compiled.json()["prompt"], "HTTP adapter exposes canonical prompt compilation")
         check(client.get("/api/projects/project-a/shots/99").status_code == 404, "HTTP adapter maps missing entities to 404")
         check(client.get("/api/projects/project-a/warnings").json()["warnings"][0]["code"] == "unresolved_scene", "HTTP warnings use service results")
     finally:
