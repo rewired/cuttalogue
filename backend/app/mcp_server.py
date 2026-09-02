@@ -15,8 +15,9 @@ from .projects import DATA_DIR
 from .prompt_service import PromptCompilationError
 from .read_services import EntityNotFoundError, ProjectReadService
 from .write_services import (
-    AnchorNotFoundError, CameraSegmentNotFoundError, ProjectWriteService,
-    SceneNotFoundError, ShotNotFoundError, WriteValidationError,
+    AnchorNotFoundError, AssetNotFoundError, CameraSegmentNotFoundError,
+    ProjectWriteService, SceneNotFoundError, ShotNotFoundError,
+    WriteValidationError,
 )
 
 
@@ -62,6 +63,10 @@ def _write(operation, *args) -> Any:
         return _write_error({"code": "scene_not_found", "message": str(error)})
     except AnchorNotFoundError as error:
         return _write_error({"code": "anchor_not_found", "message": str(error)})
+    except AssetNotFoundError as error:
+        return _write_error({"code": "asset_not_found", "message": str(error)})
+    except PromptCompilationError as error:
+        return _write_error({"code": "prompt_compilation_error", "message": str(error)})
     except WriteValidationError as error:
         return _write_error({"code": "validation_error", "message": str(error)})
     except InvalidProjectError as error:
@@ -238,6 +243,38 @@ def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
         return _write(
             write_service.bind_camera_target, project_id, shot_id,
             expected_revision, target_name, anchor_name,
+        )
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def assign_asset(
+        project_id: str, shot_id: int, expected_revision: str,
+        asset_id: str, role: str = "",
+    ) -> dict[str, Any]:
+        """Assign an existing project asset to a shot with an optional prompt role."""
+        return _write(
+            write_service.assign_asset, project_id, shot_id,
+            expected_revision, asset_id, role,
+        )
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def add_constraint(
+        project_id: str, shot_id: int, expected_revision: str,
+        constraint: str,
+    ) -> dict[str, Any]:
+        """Append one non-empty authored constraint to a shot."""
+        return _write(
+            write_service.add_constraint, project_id, shot_id,
+            expected_revision, constraint,
+        )
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def compile_and_save_prompt(
+        project_id: str, shot_id: int, expected_revision: str,
+    ) -> dict[str, Any]:
+        """Compile canonical H3 Direction and atomically save it as the shot prompt."""
+        return _write(
+            write_service.compile_and_save_prompt, project_id, shot_id,
+            expected_revision,
         )
 
     return server

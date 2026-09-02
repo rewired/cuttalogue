@@ -4,9 +4,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from . import projects
 from .project_repository import InvalidProjectError, ProjectNotFoundError, ProjectRepository, RevisionConflictError
+from .prompt_service import PromptCompilationError
 from .write_services import (
-    AnchorNotFoundError, CameraSegmentNotFoundError, ProjectWriteService,
-    SceneNotFoundError, ShotNotFoundError, WriteValidationError,
+    AnchorNotFoundError, AssetNotFoundError, CameraSegmentNotFoundError,
+    ProjectWriteService, SceneNotFoundError, ShotNotFoundError,
+    WriteValidationError,
 )
 
 router = APIRouter()
@@ -79,6 +81,15 @@ class BindCameraTargetRequest(WriteRequest):
     anchor_name: str | None = Field(default=None, alias="anchorName")
 
 
+class AssignAssetRequest(WriteRequest):
+    asset_id: str = Field(alias="assetId")
+    role: str = ""
+
+
+class AddConstraintRequest(WriteRequest):
+    constraint: str
+
+
 def camera_fields(payload: AddCameraSegmentRequest | UpdateCameraSegmentRequest) -> dict:
     values = payload.model_dump(by_alias=True, exclude={"expected_revision"}, exclude_none=True)
     values.pop("expectedRevision", None)
@@ -93,6 +104,7 @@ def translate(error: Exception) -> HTTPException:
     if isinstance(error, (
         ProjectNotFoundError, ShotNotFoundError, CameraSegmentNotFoundError,
         SceneNotFoundError, AnchorNotFoundError,
+        AssetNotFoundError,
     )):
         return HTTPException(status_code=404, detail=str(error))
     if isinstance(error, RevisionConflictError):
@@ -217,5 +229,49 @@ def bind_camera_target(
         ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
         ShotNotFoundError, SceneNotFoundError, AnchorNotFoundError,
         WriteValidationError,
+    ) as error:
+        raise translate(error) from error
+
+
+@router.put("/api/projects/{project_id}/shots/{shot_id}/assets")
+def assign_asset(project_id: str, shot_id: int, payload: AssignAssetRequest):
+    try:
+        return service().assign_asset(
+            project_id, shot_id, payload.expected_revision,
+            payload.asset_id, payload.role,
+        )
+    except (
+        ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
+        ShotNotFoundError, AssetNotFoundError, WriteValidationError,
+    ) as error:
+        raise translate(error) from error
+
+
+@router.post("/api/projects/{project_id}/shots/{shot_id}/constraints")
+def add_constraint(
+    project_id: str, shot_id: int, payload: AddConstraintRequest,
+):
+    try:
+        return service().add_constraint(
+            project_id, shot_id, payload.expected_revision, payload.constraint,
+        )
+    except (
+        ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
+        ShotNotFoundError, WriteValidationError,
+    ) as error:
+        raise translate(error) from error
+
+
+@router.post("/api/projects/{project_id}/shots/{shot_id}/prompt/compile-and-save")
+def compile_and_save_prompt(
+    project_id: str, shot_id: int, payload: WriteRequest,
+):
+    try:
+        return service().compile_and_save_prompt(
+            project_id, shot_id, payload.expected_revision,
+        )
+    except (
+        ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
+        ShotNotFoundError, WriteValidationError, PromptCompilationError,
     ) as error:
         raise translate(error) from error

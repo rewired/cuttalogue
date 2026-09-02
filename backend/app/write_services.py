@@ -4,6 +4,7 @@ from copy import deepcopy
 from typing import Any
 
 from .project_repository import ProjectRepository, RevisionConflictError
+from .prompt_service import compile_shot_prompt
 
 
 MIN_SHOT_SECONDS = 0.05
@@ -28,6 +29,7 @@ CAMERA_DEFAULTS = {
     "target": "", "focalLength": "", "depthOfField": "", "focusTarget": "",
     "transitionToNext": "", "enabled": True,
 }
+ASSET_ROLES = {"", "primary_character", "supporting_character", "environment", "prop"}
 
 
 class WriteValidationError(ValueError):
@@ -47,6 +49,10 @@ class SceneNotFoundError(LookupError):
 
 
 class AnchorNotFoundError(LookupError):
+    pass
+
+
+class AssetNotFoundError(LookupError):
     pass
 
 
@@ -157,6 +163,19 @@ def _preview(shot: dict) -> dict:
     if not isinstance(bindings, dict):
         raise WriteValidationError("shot target bindings must be an object")
     return preview
+
+
+def _assets(project: dict) -> list[dict]:
+    assets = project.setdefault("assets", [])
+    if not isinstance(assets, list) or not all(isinstance(asset, dict) for asset in assets):
+        raise WriteValidationError("project assets must be an array of objects")
+    seen_ids = set()
+    for asset in assets:
+        asset_id = asset.get("id")
+        if not isinstance(asset_id, str) or not asset_id or asset_id in seen_ids:
+            raise WriteValidationError("existing asset ids must be unique non-empty strings")
+        seen_ids.add(asset_id)
+    return assets
 
 
 def _camera_lane(shot: dict) -> list[dict]:
@@ -408,4 +427,74 @@ class ProjectWriteService:
             "previousRevision": expected_revision, "revision": saved["revision"],
             "targetName": target, "anchorName": binding or None,
             "targetBindings": deepcopy(preview["targetBindings"]),
+        }
+
+    def assign_asset(
+        self, project_id: str, shot_id: int, expected_revision: str,
+        asset_id: str, role: str = "",
+    ) -> dict:
+        if not isinstance(asset_id, str) or not asset_id:
+            raise WriteValidationError("asset id must be a non-empty string")
+        if role not in ASSET_ROLES:
+            raise WriteValidationError("unsupported asset role")
+        record = self._read_for_write(project_id, expected_revision)
+        project = record["project"]
+        if not any(asset.get("id") == asset_id for asset in _assets(project)):
+            raise AssetNotFoundError("asset not found")
+        _shot_index, shot = _find_shot(_shots(project), shot_id)
+        asset_ids = shot.setdefault("assetIds", [])
+        roles = shot.setdefault("assetRoles", {})
+        if not isinstance(asset_ids, list) or not all(isinstance(value, str) for value in asset_ids):
+            raise WriteValidationError("shot asset ids must be an array of strings")
+        if not isinstance(roles, dict):
+            raise WriteValidationError("shot asset roles must be an object")
+        if asset_id not in asset_ids:
+            asset_ids.append(asset_id)
+        if role:
+            roles[asset_id] = role
+        else:
+            roles.pop(asset_id, None)
+        saved = self.repository.write(project_id, project, expected_revision)
+        return {
+            "projectId": project_id, "shotId": shot_id,
+            "previousRevision": expected_revision, "revision": saved["revision"],
+            "assetId": asset_id, "role": role or None,
+            "assetIds": deepcopy(asset_ids), "assetRoles": deepcopy(roles),
+        }
+
+    def add_constraint(
+        self, project_id: str, shot_id: int, expected_revision: str,
+        constraint: str,
+    ) -> dict:
+        if not isinstance(constraint, str) or not constraint.strip():
+            raise WriteValidationError("constraint must be a non-empty string")
+        text = constraint.strip()
+        record = self._read_for_write(project_id, expected_revision)
+        project = record["project"]
+        _shot_index, shot = _find_shot(_shots(project), shot_id)
+        constraints = shot.setdefault("constraints", [])
+        if not isinstance(constraints, list) or not all(isinstance(value, str) for value in constraints):
+            raise WriteValidationError("shot constraints must be an array of strings")
+        constraints.append(text)
+        saved = self.repository.write(project_id, project, expected_revision)
+        return {
+            "projectId": project_id, "shotId": shot_id,
+            "previousRevision": expected_revision, "revision": saved["revision"],
+            "constraintIndex": len(constraints) - 1,
+            "constraint": text, "constraints": deepcopy(constraints),
+        }
+
+    def compile_and_save_prompt(
+        self, project_id: str, shot_id: int, expected_revision: str,
+    ) -> dict:
+        record = self._read_for_write(project_id, expected_revision)
+        project = record["project"]
+        _shot_index, shot = _find_shot(_shots(project), shot_id)
+        compiled = compile_shot_prompt(shot)
+        shot["prompt"] = compiled["prompt"]
+        saved = self.repository.write(project_id, project, expected_revision)
+        return {
+            "projectId": project_id, "shotId": shot_id,
+            "previousRevision": expected_revision, "revision": saved["revision"],
+            **compiled,
         }

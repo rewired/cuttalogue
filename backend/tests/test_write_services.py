@@ -33,6 +33,7 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
     file.write_text(json.dumps({
         "name": "Write test",
         "audio": {"mix": {"durationSeconds": 10}},
+        "assets": [{"id": "lead", "name": "Lead reference", "type": "image"}],
         "scenes": [{"id": "scene-a", "anchors": {"performer": {"position": [0, 1.7, 0]}}}],
         "shots": [{"id": 1, "startSeconds": 2, "endSeconds": 4, "name": "Existing"}],
     }, indent=2), encoding="utf-8")
@@ -129,6 +130,19 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
         "project-a", 1, renamed_anchor["revision"], "lead", "",
     )
     check("lead" not in unbound["targetBindings"], "empty anchor name clears a camera target binding")
+    asset_assigned = service.assign_asset(
+        "project-a", 1, unbound["revision"], "lead", "primary_character",
+    )
+    check(asset_assigned["assetRoles"]["lead"] == "primary_character", "asset assignment stores an allowed prompt role")
+    constrained = service.add_constraint(
+        "project-a", 1, asset_assigned["revision"], "  No visible text  ",
+    )
+    check(constrained["constraint"] == "No visible text", "constraint write trims and appends authored text")
+    compiled_prompt = service.compile_and_save_prompt(
+        "project-a", 1, constrained["revision"],
+    )
+    persisted_prompt = repository.read("project-a")["project"]["shots"][0]["prompt"]
+    check(compiled_prompt["prompt"] == persisted_prompt and "No visible text." in persisted_prompt, "canonical compile-and-save persists the exact H3 result")
 
     try:
         repository.write("project-a", repository.read("project-a")["project"], "")
@@ -140,13 +154,13 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
     non_json["invalidNumber"] = float("nan")
     before_invalid = file.read_bytes()
     try:
-        repository.write("project-a", non_json, unbound["revision"])
+        repository.write("project-a", non_json, compiled_prompt["revision"])
         check(False, "repository rejects non-standard JSON numbers")
     except InvalidProjectError:
         check(True, "repository rejects non-standard JSON numbers")
     check(file.read_bytes() == before_invalid, "serialization failure leaves project bytes unchanged")
 
-    shared_revision = unbound["revision"]
+    shared_revision = compiled_prompt["revision"]
     def concurrent_rename(name):
         try:
             return service.rename_shot("project-a", 1, shared_revision, name)["revision"]
@@ -199,6 +213,18 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
             "targetName": "subject", "anchorName": "performer",
         })
         check(binding_response.status_code == 200 and binding_response.json()["targetBindings"]["subject"] == "performer", "HTTP adapter binds a camera target")
+        asset_response = client.put(f"/api/projects/project-a/shots/{http_shot}/assets", json={
+            "expectedRevision": binding_response.json()["revision"],
+            "assetId": "lead", "role": "primary_character",
+        })
+        check(asset_response.status_code == 200 and asset_response.json()["assetRoles"]["lead"] == "primary_character", "HTTP adapter assigns a project asset with a role")
+        constraint_response = client.post(f"/api/projects/project-a/shots/{http_shot}/constraints", json={
+            "expectedRevision": asset_response.json()["revision"], "constraint": "No logos",
+        })
+        prompt_response = client.post(f"/api/projects/project-a/shots/{http_shot}/prompt/compile-and-save", json={
+            "expectedRevision": constraint_response.json()["revision"],
+        })
+        check(constraint_response.status_code == 200 and prompt_response.status_code == 200 and "No logos." in prompt_response.json()["prompt"], "HTTP adapter appends constraints and saves the canonical prompt")
         stale = client.patch("/api/projects/project-a/shots/1/name", json={
             "expectedRevision": current_revision, "name": "stale",
         })
