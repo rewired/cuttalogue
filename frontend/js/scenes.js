@@ -70,6 +70,21 @@
     return shot && shot.sceneId ? state.scenes.find((scene) => scene.id === shot.sceneId) || null : null;
   }
 
+  function cameraForScene(scene, override) {
+    const source = override || (scene && scene.defaultCamera) || {};
+    const position = Array.isArray(source.position) ? source.position.map(Number) : [0, 1.6, 4];
+    const target = Array.isArray(source.target) ? source.target.map(Number) : [0, 1.5, 0];
+    const delta = target.map((value, index) => value - position[index]);
+    const horizontal = Math.hypot(delta[0], delta[2]);
+    return {
+      position,
+      yaw: Number.isFinite(Number(source.yaw)) ? Number(source.yaw) : Math.atan2(delta[0], -delta[2]),
+      pitch: Number.isFinite(Number(source.pitch)) ? Number(source.pitch) : Math.atan2(delta[1], horizontal),
+      roll: Number(source.roll) || 0,
+      focalLengthMm: Number(source.focalLengthMm) || 35,
+    };
+  }
+
   function setShotScene(shotId, sceneId) {
     const shot = state.shots.find((candidate) => candidate.id === shotId);
     if (!shot) return false;
@@ -81,5 +96,5 @@
   }
 
   on('project-loaded', syncFromAssets);
-  MSE.scenes = { syncFromAssets, detachAsset, sceneForShot, setShotScene };
+  MSE.scenes = { syncFromAssets, detachAsset, sceneForShot, cameraForScene, setShotScene };
 })(window.MSE = window.MSE || {});

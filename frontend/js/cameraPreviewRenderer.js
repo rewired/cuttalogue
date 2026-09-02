@@ -14,6 +14,28 @@
     uniform vec4 lineColor;
     void main() { gl_FragColor = lineColor; }
   `;
+  const POINT_VERTEX_SHADER = `
+    attribute vec3 position;
+    attribute vec4 vertexColor;
+    uniform mat4 viewProjection;
+    uniform float pointScale;
+    varying vec4 color;
+    void main() {
+      gl_Position = viewProjection * vec4(position, 1.0);
+      gl_PointSize = max(1.0, pointScale / max(0.01, gl_Position.w));
+      color = vertexColor;
+    }
+  `;
+  const POINT_FRAGMENT_SHADER = `
+    precision mediump float;
+    varying vec4 color;
+    void main() {
+      vec2 offset = gl_PointCoord - 0.5;
+      float distanceSquared = dot(offset, offset);
+      if (distanceSquared > 0.25) discard;
+      gl_FragColor = vec4(color.rgb, color.a * smoothstep(0.25, 0.08, distanceSquared));
+    }
+  `;
 
   function createShader(gl, type, source) {
     const shader = gl.createShader(type);
@@ -27,10 +49,10 @@
     return shader;
   }
 
-  function createProgram(gl) {
+  function createProgram(gl, vertexSource = VERTEX_SHADER, fragmentSource = FRAGMENT_SHADER) {
     const program = gl.createProgram();
-    const vertex = createShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
-    const fragment = createShader(gl, gl.FRAGMENT_SHADER, FRAGMENT_SHADER);
+    const vertex = createShader(gl, gl.VERTEX_SHADER, vertexSource);
+    const fragment = createShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
     gl.attachShader(program, vertex);
     gl.attachShader(program, fragment);
     gl.linkProgram(program);
@@ -106,11 +128,21 @@
       this.positionLocation = this.gl.getAttribLocation(this.program, 'position');
       this.matrixLocation = this.gl.getUniformLocation(this.program, 'viewProjection');
       this.colorLocation = this.gl.getUniformLocation(this.program, 'lineColor');
+      this.pointProgram = createProgram(this.gl, POINT_VERTEX_SHADER, POINT_FRAGMENT_SHADER);
+      this.pointLocations = {
+        position: this.gl.getAttribLocation(this.pointProgram, 'position'),
+        color: this.gl.getAttribLocation(this.pointProgram, 'vertexColor'),
+        matrix: this.gl.getUniformLocation(this.pointProgram, 'viewProjection'),
+        scale: this.gl.getUniformLocation(this.pointProgram, 'pointScale'),
+      };
       const gridVertices = groundGrid();
       this.gridBuffer = this.createBuffer(gridVertices);
       this.gridVertexCount = gridVertices.length / 3;
       this.pathBuffer = this.gl.createBuffer();
       this.pathVertexCount = 0;
+      this.pointCloud = null;
+      this.blockoutBuffer = null;
+      this.blockoutVertexCount = 0;
       this.disposed = false;
     }
 
@@ -135,6 +167,40 @@
       this.pathVertexCount = vertices.length / 3;
     }
 
+    clearScene() {
+      if (this.pointCloud) {
+        this.gl.deleteBuffer(this.pointCloud.positionBuffer);
+        this.gl.deleteBuffer(this.pointCloud.colorBuffer);
+      }
+      if (this.blockoutBuffer) this.gl.deleteBuffer(this.blockoutBuffer);
+      this.pointCloud = null;
+      this.blockoutBuffer = null;
+      this.blockoutVertexCount = 0;
+    }
+
+    setSceneGeometry(geometry) {
+      if (this.disposed) return;
+      this.clearScene();
+      if (geometry && geometry.pointCloud) {
+        const positions = geometry.pointCloud.positions;
+        const colors = geometry.pointCloud.colors;
+        const positionBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, positionBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, positions, this.gl.STATIC_DRAW);
+        const colorBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, colorBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, colors, this.gl.STATIC_DRAW);
+        const count = positions.length / 3;
+        this.pointCloud = { positionBuffer, colorBuffer, count, pointScale: Math.max(12, 850 / Math.sqrt(count)) };
+      }
+      if (geometry && geometry.blockout && geometry.blockout.length) {
+        this.blockoutBuffer = this.gl.createBuffer();
+        this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.blockoutBuffer);
+        this.gl.bufferData(this.gl.ARRAY_BUFFER, geometry.blockout, this.gl.STATIC_DRAW);
+        this.blockoutVertexCount = geometry.blockout.length / 3;
+      }
+    }
+
     resize() {
       const ratio = Math.min(window.devicePixelRatio || 1, 2);
       const width = Math.max(1, Math.round(this.canvas.clientWidth * ratio));
@@ -155,6 +221,26 @@
       this.gl.drawArrays(mode, 0, vertexCount);
     }
 
+    drawPointCloud(viewProjection) {
+      if (!this.pointCloud) return;
+      const gl = this.gl;
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+      gl.depthMask(false);
+      gl.useProgram(this.pointProgram);
+      gl.uniformMatrix4fv(this.pointLocations.matrix, false, viewProjection);
+      gl.uniform1f(this.pointLocations.scale, this.pointCloud.pointScale);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.pointCloud.positionBuffer);
+      gl.enableVertexAttribArray(this.pointLocations.position);
+      gl.vertexAttribPointer(this.pointLocations.position, 3, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.pointCloud.colorBuffer);
+      gl.enableVertexAttribArray(this.pointLocations.color);
+      gl.vertexAttribPointer(this.pointLocations.color, 4, gl.UNSIGNED_BYTE, true, 0, 0);
+      gl.drawArrays(gl.POINTS, 0, this.pointCloud.count);
+      gl.depthMask(true);
+      gl.disable(gl.BLEND);
+    }
+
     render(pose, viewMode) {
       if (this.disposed) return;
       this.resize();
@@ -168,10 +254,15 @@
         ? { position: [6, 5, 7], yaw: -0.7, pitch: -0.35, roll: 0, focalLengthMm: 45 }
         : pose;
       const aspect = this.canvas.width / Math.max(1, this.canvas.height);
-      const projection = perspectiveMatrix(fieldOfView(camera.focalLengthMm), aspect, 0.05, 200);
-      gl.uniformMatrix4fv(this.matrixLocation, false, multiplyMatrices(projection, viewMatrix(camera)));
+      const projection = perspectiveMatrix(fieldOfView(camera.focalLengthMm), aspect, 0.05, 10000);
+      const viewProjection = multiplyMatrices(projection, viewMatrix(camera));
+      gl.uniformMatrix4fv(this.matrixLocation, false, viewProjection);
       this.drawBuffer(this.gridBuffer, this.gridVertexCount, [0.173, 0.196, 0.22, 1], gl.LINES);
+      this.drawBuffer(this.blockoutBuffer, this.blockoutVertexCount, [0.36, 0.42, 0.47, 0.65], gl.LINES);
+      this.drawPointCloud(viewProjection);
       if (viewMode === 'free') {
+        gl.useProgram(this.program);
+        gl.uniformMatrix4fv(this.matrixLocation, false, viewProjection);
         gl.disable(gl.DEPTH_TEST);
         this.drawBuffer(this.pathBuffer, this.pathVertexCount, [0.298, 0.553, 1, 1], gl.LINE_STRIP);
       }
@@ -179,9 +270,11 @@
 
     dispose() {
       if (this.disposed) return;
+      this.clearScene();
       this.gl.deleteBuffer(this.gridBuffer);
       this.gl.deleteBuffer(this.pathBuffer);
       this.gl.deleteProgram(this.program);
+      this.gl.deleteProgram(this.pointProgram);
       this.disposed = true;
     }
   }

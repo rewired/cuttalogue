@@ -10,6 +10,7 @@ const html = fs.readFileSync(path.join(FRONTEND, 'index.html'), 'utf8');
 const css = fs.readFileSync(path.join(FRONTEND, 'css', 'style.css'), 'utf8');
 const controller = fs.readFileSync(path.join(FRONTEND, 'js', 'cameraPreview.js'), 'utf8');
 const renderer = fs.readFileSync(path.join(FRONTEND, 'js', 'cameraPreviewRenderer.js'), 'utf8');
+const sceneGeometry = fs.readFileSync(path.join(FRONTEND, 'js', 'sceneGeometry.js'), 'utf8');
 let failures = 0;
 
 function assert(condition, label) {
@@ -33,11 +34,13 @@ requiredIds.forEach((id) => assert(html.includes(`id="${id}"`), `preview markup 
 
 const pathIndex = html.indexOf('js/cameraPath.js');
 const rendererIndex = html.indexOf('js/cameraPreviewRenderer.js');
+const geometryIndex = html.indexOf('js/sceneGeometry.js');
 const controllerIndex = html.indexOf('js/cameraPreview.js');
 const assetsIndex = html.indexOf('js/assets.js');
 const scenesIndex = html.indexOf('js/scenes.js');
 const projectIndex = html.indexOf('js/project.js');
 assert(pathIndex >= 0 && rendererIndex > pathIndex, 'renderer loads after the canonical camera interpreter');
+assert(geometryIndex > pathIndex && geometryIndex < rendererIndex, 'pure scene geometry loader loads before the renderer');
 assert(controllerIndex > rendererIndex, 'preview controller loads after the renderer');
 assert(scenesIndex > assetsIndex, 'scene registry loads after the asset model');
 assert(projectIndex > scenesIndex, 'scene registry loads before project restoration');
@@ -54,6 +57,9 @@ assert(css.includes('border-color: var(--accent)'), 'preview active control uses
 assert(controller.includes('renderer.dispose()'), 'preview controller explicitly disposes WebGL resources');
 assert(controller.includes('MSE.cameraPath.compile'), 'preview derives animation from CUTTAlogue Camera segments');
 assert(renderer.includes("MSE.cameraPath.evaluate"), 'renderer samples the canonical camera path contract');
+assert(renderer.includes('setSceneGeometry'), 'renderer accepts parsed scene geometry');
+assert(renderer.includes('gl.POINTS'), 'renderer draws point-cloud scene previews');
+assert(sceneGeometry.includes('parsePly') && sceneGeometry.includes('parseSplat') && sceneGeometry.includes('parseGlb'), 'scene loader supports PLY, SPLAT, and GLB');
 assert(!html.includes('SHOT VISUALIZER'), 'standalone Visualizer branding is absent');
 
 if (failures) {
