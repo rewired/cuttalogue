@@ -1,8 +1,8 @@
 # CUTTAlogue MCP
 
-Status: read-only milestone
+Status: controlled-write milestone in progress
 
-CUTTAlogue exposes its transport-neutral project services through a local MCP server. The initial server intentionally contains no mutating tools.
+CUTTAlogue exposes its transport-neutral project services through a local MCP server. Mutations are narrow typed operations; there is no generic project JSON writer.
 
 ## Requirements
 
@@ -38,10 +38,20 @@ Set CUTTALOGUE_PROJECTS_DIR only when the host should read a non-default project
 
 Every project result includes a SHA-256 content revision where applicable. Project identifiers are path-confined before any file access.
 
+## Controlled-write tools
+
+- create_shot
+- update_shot_timing
+- rename_shot
+
+Every write requires `expected_revision` from a fresh read. Write failures return MCP errors with structured `code` and `message` fields; revision conflicts additionally contain `expectedRevision` and `currentRevision`. Failed writes do not change the project. Writes hold a project-local inter-process lock across revision verification and use same-directory temporary files plus atomic replacement.
+
 ## Testing
 
 The test uses the official SDK's in-memory client, with no subprocess or port:
 
     backend\.venv\Scripts\python.exe backend\tests\test_mcp_read_server.py
 
-Write tools remain deferred until expected-revision checks and atomic repository writes are available.
+The controlled-write test suite is dependency-free:
+
+    backend\.venv\Scripts\python.exe backend\tests\test_write_services.py
