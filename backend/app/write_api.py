@@ -5,8 +5,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from . import projects
 from .project_repository import InvalidProjectError, ProjectNotFoundError, ProjectRepository, RevisionConflictError
 from .write_services import (
-    CameraSegmentNotFoundError, ProjectWriteService, ShotNotFoundError,
-    WriteValidationError,
+    AnchorNotFoundError, CameraSegmentNotFoundError, ProjectWriteService,
+    SceneNotFoundError, ShotNotFoundError, WriteValidationError,
 )
 
 router = APIRouter()
@@ -64,6 +64,21 @@ class UpdateCameraSegmentRequest(WriteRequest):
     enabled: bool | None = None
 
 
+class AssignSceneRequest(WriteRequest):
+    scene_id: str | None = Field(default=None, alias="sceneId")
+
+
+class SetSceneAnchorRequest(WriteRequest):
+    name: str
+    position: list[float]
+    previous_name: str | None = Field(default=None, alias="previousName")
+
+
+class BindCameraTargetRequest(WriteRequest):
+    target_name: str = Field(alias="targetName")
+    anchor_name: str | None = Field(default=None, alias="anchorName")
+
+
 def camera_fields(payload: AddCameraSegmentRequest | UpdateCameraSegmentRequest) -> dict:
     values = payload.model_dump(by_alias=True, exclude={"expected_revision"}, exclude_none=True)
     values.pop("expectedRevision", None)
@@ -75,7 +90,10 @@ def service() -> ProjectWriteService:
 
 
 def translate(error: Exception) -> HTTPException:
-    if isinstance(error, (ProjectNotFoundError, ShotNotFoundError, CameraSegmentNotFoundError)):
+    if isinstance(error, (
+        ProjectNotFoundError, ShotNotFoundError, CameraSegmentNotFoundError,
+        SceneNotFoundError, AnchorNotFoundError,
+    )):
         return HTTPException(status_code=404, detail=str(error))
     if isinstance(error, RevisionConflictError):
         return HTTPException(status_code=409, detail={
@@ -153,5 +171,51 @@ def remove_camera_segment(
     except (
         ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
         ShotNotFoundError, CameraSegmentNotFoundError, WriteValidationError,
+    ) as error:
+        raise translate(error) from error
+
+
+@router.patch("/api/projects/{project_id}/shots/{shot_id}/scene")
+def assign_scene(project_id: str, shot_id: int, payload: AssignSceneRequest):
+    try:
+        return service().assign_scene(
+            project_id, shot_id, payload.expected_revision, payload.scene_id,
+        )
+    except (
+        ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
+        ShotNotFoundError, SceneNotFoundError, WriteValidationError,
+    ) as error:
+        raise translate(error) from error
+
+
+@router.put("/api/projects/{project_id}/scenes/{scene_id}/anchors")
+def set_scene_anchor(
+    project_id: str, scene_id: str, payload: SetSceneAnchorRequest,
+):
+    try:
+        return service().set_scene_anchor(
+            project_id, scene_id, payload.expected_revision, payload.name,
+            payload.position, payload.previous_name,
+        )
+    except (
+        ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
+        SceneNotFoundError, AnchorNotFoundError, WriteValidationError,
+    ) as error:
+        raise translate(error) from error
+
+
+@router.put("/api/projects/{project_id}/shots/{shot_id}/camera-targets")
+def bind_camera_target(
+    project_id: str, shot_id: int, payload: BindCameraTargetRequest,
+):
+    try:
+        return service().bind_camera_target(
+            project_id, shot_id, payload.expected_revision,
+            payload.target_name, payload.anchor_name,
+        )
+    except (
+        ProjectNotFoundError, InvalidProjectError, RevisionConflictError,
+        ShotNotFoundError, SceneNotFoundError, AnchorNotFoundError,
+        WriteValidationError,
     ) as error:
         raise translate(error) from error

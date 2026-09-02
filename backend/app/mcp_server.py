@@ -15,8 +15,8 @@ from .projects import DATA_DIR
 from .prompt_service import PromptCompilationError
 from .read_services import EntityNotFoundError, ProjectReadService
 from .write_services import (
-    CameraSegmentNotFoundError, ProjectWriteService, ShotNotFoundError,
-    WriteValidationError,
+    AnchorNotFoundError, CameraSegmentNotFoundError, ProjectWriteService,
+    SceneNotFoundError, ShotNotFoundError, WriteValidationError,
 )
 
 
@@ -58,6 +58,10 @@ def _write(operation, *args) -> Any:
         return _write_error({"code": "shot_not_found", "message": str(error)})
     except CameraSegmentNotFoundError as error:
         return _write_error({"code": "camera_segment_not_found", "message": str(error)})
+    except SceneNotFoundError as error:
+        return _write_error({"code": "scene_not_found", "message": str(error)})
+    except AnchorNotFoundError as error:
+        return _write_error({"code": "anchor_not_found", "message": str(error)})
     except WriteValidationError as error:
         return _write_error({"code": "validation_error", "message": str(error)})
     except InvalidProjectError as error:
@@ -201,6 +205,39 @@ def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
         return _write(
             write_service.remove_camera_segment, project_id, shot_id,
             segment_index, expected_revision,
+        )
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def assign_scene(
+        project_id: str, shot_id: int, expected_revision: str,
+        scene_id: str = "",
+    ) -> dict[str, Any]:
+        """Assign an existing scene to a shot, or clear it with an empty scene id."""
+        return _write(
+            write_service.assign_scene, project_id, shot_id,
+            expected_revision, scene_id or None,
+        )
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def set_scene_anchor(
+        project_id: str, scene_id: str, expected_revision: str, name: str,
+        x: float, y: float, z: float, previous_name: str = "",
+    ) -> dict[str, Any]:
+        """Create, move, or rename one finite 3D anchor in an existing scene."""
+        return _write(
+            write_service.set_scene_anchor, project_id, scene_id,
+            expected_revision, name, [x, y, z], previous_name or None,
+        )
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def bind_camera_target(
+        project_id: str, shot_id: int, expected_revision: str,
+        target_name: str, anchor_name: str = "",
+    ) -> dict[str, Any]:
+        """Bind a semantic camera target to a scene anchor, or clear the binding."""
+        return _write(
+            write_service.bind_camera_target, project_id, shot_id,
+            expected_revision, target_name, anchor_name,
         )
 
     return server

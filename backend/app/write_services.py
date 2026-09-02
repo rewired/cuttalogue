@@ -42,6 +42,14 @@ class CameraSegmentNotFoundError(LookupError):
     pass
 
 
+class SceneNotFoundError(LookupError):
+    pass
+
+
+class AnchorNotFoundError(LookupError):
+    pass
+
+
 def _finite(value: Any, label: str) -> float:
     if isinstance(value, bool):
         raise WriteValidationError(f"{label} must be a finite number")
@@ -108,6 +116,47 @@ def _find_shot(shots: list[dict], shot_id: int) -> tuple[int, dict]:
         if shot.get("id") == shot_id:
             return index, shot
     raise ShotNotFoundError("shot not found")
+
+
+def _scenes(project: dict) -> list[dict]:
+    scenes = project.setdefault("scenes", [])
+    if not isinstance(scenes, list) or not all(isinstance(scene, dict) for scene in scenes):
+        raise WriteValidationError("project scenes must be an array of objects")
+    seen_ids = set()
+    for scene in scenes:
+        scene_id = scene.get("id")
+        if not isinstance(scene_id, str) or not scene_id or scene_id in seen_ids:
+            raise WriteValidationError("existing scene ids must be unique non-empty strings")
+        seen_ids.add(scene_id)
+    return scenes
+
+
+def _find_scene(scenes: list[dict], scene_id: str) -> dict:
+    if not isinstance(scene_id, str) or not scene_id:
+        raise WriteValidationError("scene id must be a non-empty string")
+    scene = next((item for item in scenes if item.get("id") == scene_id), None)
+    if scene is None:
+        raise SceneNotFoundError("scene not found")
+    return scene
+
+
+def _anchor_name(value: Any, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise WriteValidationError(f"{label} must be a non-empty string")
+    return value.strip()
+
+
+def _preview(shot: dict) -> dict:
+    preview = shot.setdefault("preview", {
+        "initialCameraOverride": None, "targetBindings": {},
+        "interpreterProfile": "cinematic-v1",
+    })
+    if not isinstance(preview, dict):
+        raise WriteValidationError("shot preview must be an object")
+    bindings = preview.setdefault("targetBindings", {})
+    if not isinstance(bindings, dict):
+        raise WriteValidationError("shot target bindings must be an object")
+    return preview
 
 
 def _camera_lane(shot: dict) -> list[dict]:
@@ -280,4 +329,83 @@ class ProjectWriteService:
             "projectId": project_id, "shotId": shot_id, "previousRevision": expected_revision,
             "revision": saved["revision"], "removedSegmentIndex": index,
             "removedSegment": deepcopy(removed),
+        }
+
+    def assign_scene(self, project_id: str, shot_id: int, expected_revision: str, scene_id: str | None) -> dict:
+        record = self._read_for_write(project_id, expected_revision)
+        project = record["project"]
+        _shot_index, shot = _find_shot(_shots(project), shot_id)
+        next_scene_id = scene_id or None
+        if next_scene_id is not None:
+            _find_scene(_scenes(project), next_scene_id)
+        shot["sceneId"] = next_scene_id
+        saved = self.repository.write(project_id, project, expected_revision)
+        return _response(project_id, expected_revision, saved, shot)
+
+    def set_scene_anchor(
+        self, project_id: str, scene_id: str, expected_revision: str,
+        name: str, position: list[Any], previous_name: str | None = None,
+    ) -> dict:
+        next_name = _anchor_name(name, "anchor name")
+        if not isinstance(position, list) or len(position) != 3:
+            raise WriteValidationError("anchor position must contain exactly three coordinates")
+        next_position = [_finite(value, "anchor coordinate") for value in position]
+        record = self._read_for_write(project_id, expected_revision)
+        project = record["project"]
+        scene = _find_scene(_scenes(project), scene_id)
+        anchors = scene.setdefault("anchors", {})
+        if not isinstance(anchors, dict):
+            raise WriteValidationError("scene anchors must be an object")
+        old_name = _anchor_name(previous_name, "previous anchor name") if previous_name else None
+        if old_name is None and next_name in anchors:
+            old_name = next_name
+        if old_name and old_name not in anchors:
+            raise AnchorNotFoundError("anchor not found")
+        if old_name != next_name and next_name in anchors:
+            raise WriteValidationError("anchor name already exists")
+        if old_name and old_name != next_name:
+            del anchors[old_name]
+            for shot in _shots(project):
+                if shot.get("sceneId") != scene_id:
+                    continue
+                bindings = _preview(shot)["targetBindings"]
+                for target_name, anchor_name in list(bindings.items()):
+                    if anchor_name == old_name:
+                        bindings[target_name] = next_name
+        anchor = {"position": next_position}
+        anchors[next_name] = anchor
+        saved = self.repository.write(project_id, project, expected_revision)
+        return {
+            "projectId": project_id, "sceneId": scene_id,
+            "previousRevision": expected_revision, "revision": saved["revision"],
+            "anchorName": next_name, "anchor": deepcopy(anchor),
+        }
+
+    def bind_camera_target(
+        self, project_id: str, shot_id: int, expected_revision: str,
+        target_name: str, anchor_name: str | None,
+    ) -> dict:
+        target = _anchor_name(target_name, "target name")
+        record = self._read_for_write(project_id, expected_revision)
+        project = record["project"]
+        _shot_index, shot = _find_shot(_shots(project), shot_id)
+        preview = _preview(shot)
+        binding = anchor_name.strip() if isinstance(anchor_name, str) else ""
+        if binding:
+            scene_id = shot.get("sceneId")
+            if not scene_id:
+                raise WriteValidationError("shot must have an assigned scene before binding a target")
+            scene = _find_scene(_scenes(project), scene_id)
+            anchors = scene.get("anchors") or {}
+            if not isinstance(anchors, dict) or binding not in anchors:
+                raise AnchorNotFoundError("anchor not found")
+            preview["targetBindings"][target] = binding
+        else:
+            preview["targetBindings"].pop(target, None)
+        saved = self.repository.write(project_id, project, expected_revision)
+        return {
+            "projectId": project_id, "shotId": shot_id,
+            "previousRevision": expected_revision, "revision": saved["revision"],
+            "targetName": target, "anchorName": binding or None,
+            "targetBindings": deepcopy(preview["targetBindings"]),
         }

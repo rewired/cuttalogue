@@ -33,6 +33,7 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
     file.write_text(json.dumps({
         "name": "Write test",
         "audio": {"mix": {"durationSeconds": 10}},
+        "scenes": [{"id": "scene-a", "anchors": {"performer": {"position": [0, 1.7, 0]}}}],
         "shots": [{"id": 1, "startSeconds": 2, "endSeconds": 4, "name": "Existing"}],
     }, indent=2), encoding="utf-8")
     repository = ProjectRepository(root)
@@ -109,6 +110,26 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
     except WriteValidationError:
         check(True, "unsupported camera movement is rejected")
 
+    assigned = service.assign_scene("project-a", 1, removed_segment["revision"], "scene-a")
+    check(assigned["shot"]["sceneId"] == "scene-a", "scene assignment validates and updates one shot")
+    anchor = service.set_scene_anchor(
+        "project-a", "scene-a", assigned["revision"], "face", [0, 1.9, 0],
+    )
+    check(anchor["anchor"]["position"] == [0.0, 1.9, 0.0], "scene anchor stores finite 3D coordinates")
+    bound = service.bind_camera_target(
+        "project-a", 1, anchor["revision"], "lead", "face",
+    )
+    check(bound["targetBindings"]["lead"] == "face", "camera target binds to an anchor in the assigned scene")
+    renamed_anchor = service.set_scene_anchor(
+        "project-a", "scene-a", bound["revision"], "closeup", [0, 1.9, 0], "face",
+    )
+    persisted_shot = repository.read("project-a")["project"]["shots"][0]
+    check(persisted_shot["preview"]["targetBindings"]["lead"] == "closeup", "renaming an anchor migrates target bindings for assigned shots")
+    unbound = service.bind_camera_target(
+        "project-a", 1, renamed_anchor["revision"], "lead", "",
+    )
+    check("lead" not in unbound["targetBindings"], "empty anchor name clears a camera target binding")
+
     try:
         repository.write("project-a", repository.read("project-a")["project"], "")
         check(False, "repository requires an expected revision")
@@ -119,13 +140,13 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
     non_json["invalidNumber"] = float("nan")
     before_invalid = file.read_bytes()
     try:
-        repository.write("project-a", non_json, removed_segment["revision"])
+        repository.write("project-a", non_json, unbound["revision"])
         check(False, "repository rejects non-standard JSON numbers")
     except InvalidProjectError:
         check(True, "repository rejects non-standard JSON numbers")
     check(file.read_bytes() == before_invalid, "serialization failure leaves project bytes unchanged")
 
-    shared_revision = removed_segment["revision"]
+    shared_revision = unbound["revision"]
     def concurrent_rename(name):
         try:
             return service.rename_shot("project-a", 1, shared_revision, name)["revision"]
@@ -164,6 +185,20 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
             "expectedRevision": camera_patch.json()["revision"],
         })
         check(camera_delete.status_code == 200 and camera_delete.json()["removedSegment"]["movement"] == "arc_shot", "HTTP adapter removes a camera segment with revision protection")
+        scene_response = client.patch(f"/api/projects/project-a/shots/{http_shot}/scene", json={
+            "expectedRevision": camera_delete.json()["revision"], "sceneId": "scene-a",
+        })
+        check(scene_response.status_code == 200 and scene_response.json()["shot"]["sceneId"] == "scene-a", "HTTP adapter assigns an existing scene")
+        anchor_response = client.put("/api/projects/project-a/scenes/scene-a/anchors", json={
+            "expectedRevision": scene_response.json()["revision"],
+            "name": "performer", "position": [1, 1.8, 0],
+        })
+        check(anchor_response.status_code == 200 and anchor_response.json()["anchor"]["position"] == [1.0, 1.8, 0.0], "HTTP adapter upserts a finite scene anchor")
+        binding_response = client.put(f"/api/projects/project-a/shots/{http_shot}/camera-targets", json={
+            "expectedRevision": anchor_response.json()["revision"],
+            "targetName": "subject", "anchorName": "performer",
+        })
+        check(binding_response.status_code == 200 and binding_response.json()["targetBindings"]["subject"] == "performer", "HTTP adapter binds a camera target")
         stale = client.patch("/api/projects/project-a/shots/1/name", json={
             "expectedRevision": current_revision, "name": "stale",
         })
