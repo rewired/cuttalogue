@@ -29,6 +29,7 @@ from .export import router as export_router
 from .jobs import router as jobs_router
 from .projects import DATA_DIR
 from .projects import router as projects_router
+from .read_api import router as read_api_router
 from .settings import router as settings_router
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -53,6 +54,7 @@ async def no_cache_frontend(request, call_next):
 
 
 app.include_router(projects_router)
+app.include_router(read_api_router)
 app.include_router(jobs_router)
 app.include_router(assets_router)
 app.include_router(audio_router)
