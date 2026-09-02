@@ -2,6 +2,7 @@
 from copy import deepcopy
 
 from .camera_service import compile_shot, evaluate_path, validate_shot
+from .prompt_service import compile_shot_prompt
 from .project_repository import ProjectRepository
 
 
@@ -67,6 +68,11 @@ class ProjectReadService:
             "projectId": project_id, "shotId": shot_id, "revision": record["revision"],
             "timeSeconds": time_seconds, "pose": evaluate_path(plan, time_seconds),
         }
+
+    def compile_shot_prompt(self, project_id: str, shot_id: int) -> dict:
+        record, shot = self._shot(project_id, shot_id)
+        result = compile_shot_prompt(shot)
+        return {"projectId": project_id, "shotId": shot_id, "revision": record["revision"], **result}
 
     def get_project_warnings(self, project_id: str) -> dict:
         record = self.repository.read(project_id)

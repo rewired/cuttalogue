@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException
 
 from . import projects
 from .project_repository import InvalidProjectError, ProjectNotFoundError, ProjectRepository
+from .prompt_service import PromptCompilationError
 from .read_services import EntityNotFoundError, ProjectReadService
 
 router = APIRouter()
@@ -15,6 +16,8 @@ def service() -> ProjectReadService:
 def translate(error: Exception) -> HTTPException:
     if isinstance(error, (ProjectNotFoundError, EntityNotFoundError)):
         return HTTPException(status_code=404, detail=str(error))
+    if isinstance(error, PromptCompilationError):
+        return HTTPException(status_code=503, detail=str(error))
     return HTTPException(status_code=400, detail=str(error))
 
 
@@ -63,6 +66,14 @@ def evaluate_camera_path(project_id: str, shot_id: int, time_seconds: float):
     try:
         return service().evaluate_camera_path(project_id, shot_id, time_seconds)
     except (ProjectNotFoundError, InvalidProjectError, EntityNotFoundError, ValueError) as error:
+        raise translate(error) from error
+
+
+@router.get("/api/projects/{project_id}/shots/{shot_id}/prompt/compiled")
+def compile_shot_prompt(project_id: str, shot_id: int):
+    try:
+        return service().compile_shot_prompt(project_id, shot_id)
+    except (ProjectNotFoundError, InvalidProjectError, EntityNotFoundError, PromptCompilationError) as error:
         raise translate(error) from error
 
 

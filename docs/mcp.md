@@ -10,6 +10,8 @@ Install the backend dependencies:
 
     backend\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
 
+Node.js must be available on PATH because read-only prompt compilation invokes the canonical browser H3 compiler instead of maintaining a second grammar.
+
 ## STDIO launch
 
 Run from the backend directory:
@@ -30,6 +32,7 @@ Set CUTTALOGUE_PROJECTS_DIR only when the host should read a non-default project
 - get_camera_segments
 - validate_camera_path
 - evaluate_camera_path
+- compile_shot_prompt
 - get_project_warnings
 
 Every project result includes a SHA-256 content revision where applicable. Project identifiers are path-confined before any file access.
