@@ -6,12 +6,13 @@ from typing import Any
 from mcp.server import MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
+from .camera_service import CameraEvaluationError
 from .project_repository import InvalidProjectError, ProjectNotFoundError, ProjectRepository
 from .projects import DATA_DIR
 from .read_services import EntityNotFoundError, ProjectReadService
 
 
-EXPECTED_READ_ERRORS = (EntityNotFoundError, InvalidProjectError, ProjectNotFoundError)
+EXPECTED_READ_ERRORS = (CameraEvaluationError, EntityNotFoundError, InvalidProjectError, ProjectNotFoundError)
 
 
 def _read(operation, *args) -> Any:
@@ -61,6 +62,16 @@ def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
     def get_camera_segments(project_id: str, shot_id: int) -> dict[str, Any]:
         """Read the authoritative shot.direction.camera segments for one shot."""
         return _read(service.get_camera_segments, project_id, shot_id)
+
+    @server.tool()
+    def validate_camera_path(project_id: str, shot_id: int) -> dict[str, Any]:
+        """Compile and validate a shot's deterministic spatial camera path."""
+        return _read(service.validate_camera_path, project_id, shot_id)
+
+    @server.tool()
+    def evaluate_camera_path(project_id: str, shot_id: int, time_seconds: float) -> dict[str, Any]:
+        """Evaluate a shot-relative deterministic camera pose at a time in seconds."""
+        return _read(service.evaluate_camera_path, project_id, shot_id, time_seconds)
 
     @server.tool()
     def get_project_warnings(project_id: str) -> dict[str, Any]:

@@ -50,6 +50,22 @@ def get_camera_segments(project_id: str, shot_id: int):
         raise translate(error) from error
 
 
+@router.get("/api/projects/{project_id}/shots/{shot_id}/camera/validation")
+def validate_camera_path(project_id: str, shot_id: int):
+    try:
+        return service().validate_camera_path(project_id, shot_id)
+    except (ProjectNotFoundError, InvalidProjectError, EntityNotFoundError, ValueError) as error:
+        raise translate(error) from error
+
+
+@router.get("/api/projects/{project_id}/shots/{shot_id}/camera/evaluation")
+def evaluate_camera_path(project_id: str, shot_id: int, time_seconds: float):
+    try:
+        return service().evaluate_camera_path(project_id, shot_id, time_seconds)
+    except (ProjectNotFoundError, InvalidProjectError, EntityNotFoundError, ValueError) as error:
+        raise translate(error) from error
+
+
 @router.get("/api/projects/{project_id}/warnings")
 def get_project_warnings(project_id: str):
     try:

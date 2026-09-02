@@ -30,7 +30,9 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-read-services-") as raw:
     directory.mkdir()
     payload = {
         "name": "Service test",
-        "scenes": [{"id": "scene-a"}],
+        "scenes": [{"id": "scene-a", "defaultCamera": {
+            "position": [0, 1.6, 4], "target": [0, 1.6, 0], "focalLengthMm": 35,
+        }}],
         "shots": [{
             "id": 1, "startSeconds": 0, "endSeconds": 4, "sceneId": "scene-a",
             "direction": {"camera": [{"startSeconds": 0, "endSeconds": 4, "movement": "push_in"}]},
@@ -48,6 +50,8 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-read-services-") as raw:
     check(record["project"]["name"] == "Service test", "get_project returns the canonical project")
     check(service.get_shot("project-a", 1)["shot"]["sceneId"] == "scene-a", "get_shot returns one shot")
     check(len(service.get_camera_segments("project-a", 1)["cameraSegments"]) == 1, "camera segments have a dedicated service")
+    check(service.validate_camera_path("project-a", 1)["valid"], "backend camera path validates through the shared service")
+    check(service.evaluate_camera_path("project-a", 1, 4)["pose"]["position"] == [0.0, 1.6, 3.0], "backend camera path evaluates through the shared service")
     check(service.get_project_warnings("project-a")["valid"], "valid references and timings produce no warnings")
 
     payload["shots"][0]["sceneId"] = "missing"
@@ -78,6 +82,9 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-read-services-") as raw:
         check(client.get("/api/projects/project-a/shots").status_code == 200, "HTTP adapter exposes list_shots")
         direction = client.get("/api/projects/project-a/shots/1/direction")
         check(direction.status_code == 200 and len(direction.json()["direction"]["camera"]) == 1, "HTTP adapter exposes shot Direction")
+        evaluation = client.get("/api/projects/project-a/shots/1/camera/evaluation", params={"time_seconds": 4})
+        expected_pose = service.evaluate_camera_path("project-a", 1, 4)["pose"]["position"]
+        check(evaluation.status_code == 200 and evaluation.json()["pose"]["position"] == expected_pose, "HTTP adapter exposes shared camera evaluation")
         check(client.get("/api/projects/project-a/shots/99").status_code == 404, "HTTP adapter maps missing entities to 404")
         check(client.get("/api/projects/project-a/warnings").json()["warnings"][0]["code"] == "unresolved_scene", "HTTP warnings use service results")
     finally:
