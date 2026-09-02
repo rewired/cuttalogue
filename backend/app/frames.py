@@ -54,5 +54,9 @@ H3_MIN_FRAMES = 5
 
 
 def h3_frame_count(duration_seconds: float) -> int:
-    desired = max(H3_MIN_FRAMES, round(duration_seconds * H3_FPS))
+    # A requested duration is a lower bound: never choose a legal H3 frame
+    # count that ends before the editorial cut. ``round`` was subtly wrong
+    # whenever the requested duration sat just above an already-legal frame
+    # count (for example 22.1 frames could round back to legal frame 22).
+    desired = max(H3_MIN_FRAMES, math.ceil(duration_seconds * H3_FPS))
     return desired + (H3_REMAINDER - desired % H3_STRIDE) % H3_STRIDE
