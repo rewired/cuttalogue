@@ -38,6 +38,10 @@ const oldProject = MSE.project.normalizeProjectData({
 equal(oldProject.scenes, [], 'old projects default to an empty scene registry');
 equal(oldProject.shots[0].sceneId, null, 'old shots default to no assigned scene');
 equal(oldProject.shots[0].preview.interpreterProfile, 'cinematic-v1', 'old shots receive the stable interpreter profile');
+const calibratedCamera = MSE.scenes.cameraForScene({
+  defaultCamera: { position: [1, 2, 3], target: [1, 2, 2], focalLengthMm: 50 },
+});
+equal(calibratedCamera, { position: [1, 2, 3], yaw: 0, pitch: 0, roll: 0, focalLengthMm: 50 }, 'scene target calibration becomes a camera interpreter pose');
 
 state.assets = [];
 state.scenes = [];
