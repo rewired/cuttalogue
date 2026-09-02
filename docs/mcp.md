@@ -49,12 +49,17 @@ Every project result includes a SHA-256 content revision where applicable. Proje
 - assign_scene
 - set_scene_anchor
 - bind_camera_target
+- assign_asset
+- add_constraint
+- compile_and_save_prompt
 
 Every write requires `expected_revision` from a fresh read. Write failures return MCP errors with structured `code` and `message` fields; revision conflicts additionally contain `expectedRevision` and `currentRevision`. Failed writes do not change the project. Writes hold a project-local inter-process lock across revision verification and use same-directory temporary files plus atomic replacement.
 
 Camera segment times are shot-relative. Active segments must stay inside the shot and may touch but not overlap. Disabled draft segments may overlap. Segment mutations address the current start-time-sorted `segment_index`; add and update responses return the resulting sorted index. Removal is explicitly marked destructive in MCP tool metadata.
 
 Scene writes only reference existing scenes. Anchors require finite 3D coordinates; renaming an anchor migrates bindings in shots assigned to that scene. Target bindings require an assigned scene and an existing anchor. Passing an empty scene or anchor id clears the corresponding assignment or binding.
+
+Asset assignment only accepts existing project assets and the canonical optional roles `primary_character`, `supporting_character`, `environment`, and `prop`. Constraints are appended as trimmed authored text. `compile_and_save_prompt` runs the same deterministic H3 compiler as the browser, then persists that exact result under the same expected-revision guard.
 
 ## Testing
 

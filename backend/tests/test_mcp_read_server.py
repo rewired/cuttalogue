@@ -30,6 +30,7 @@ async def main() -> None:
         directory.mkdir()
         (directory / "project.json").write_text(json.dumps({
             "name": "MCP test",
+            "assets": [{"id": "lead", "name": "Lead reference", "type": "image"}],
             "scenes": [{"id": "scene-1", "defaultCamera": {
                 "position": [0, 1.6, 4], "target": [0, 1.6, 0], "focalLengthMm": 35,
             }}],
@@ -51,6 +52,7 @@ async def main() -> None:
                 "create_shot", "update_shot_timing", "rename_shot",
                 "add_camera_segment", "update_camera_segment", "remove_camera_segment",
                 "assign_scene", "set_scene_anchor", "bind_camera_target",
+                "assign_asset", "add_constraint", "compile_and_save_prompt",
             }
             check(names == expected, "MCP exposes exactly the planned read and Direction write tools")
             tools_by_name = {tool.name: tool for tool in tools.tools}
@@ -137,13 +139,29 @@ async def main() -> None:
                 "target_name": "lead", "anchor_name": "performer",
             })
             check(not target_bound.is_error and target_bound.structured_content["targetBindings"]["lead"] == "performer", "MCP binds semantic camera targets to scene anchors")
+            asset_assigned = await client.call_tool("assign_asset", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": target_bound.structured_content["revision"],
+                "asset_id": "lead", "role": "primary_character",
+            })
+            check(not asset_assigned.is_error and asset_assigned.structured_content["assetRoles"]["lead"] == "primary_character", "MCP assigns an existing asset with an allowed prompt role")
+            constraint_added = await client.call_tool("add_constraint", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": asset_assigned.structured_content["revision"],
+                "constraint": "No visible text",
+            })
+            prompt_saved = await client.call_tool("compile_and_save_prompt", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": constraint_added.structured_content["revision"],
+            })
+            check(not prompt_saved.is_error and "No visible text." in prompt_saved.structured_content["prompt"], "MCP compiles and atomically saves the canonical H3 prompt")
             invalid = await client.call_tool("create_shot", {
-                "project_id": "mcp-project", "expected_revision": target_bound.structured_content["revision"],
+                "project_id": "mcp-project", "expected_revision": prompt_saved.structured_content["revision"],
                 "start_seconds": 0, "end_seconds": 1, "name": "overlap",
             })
             check(invalid.is_error and invalid.structured_content["code"] == "validation_error", "MCP validation failures are structured write errors")
             after_invalid = await client.call_tool("get_project", {"project_id": "mcp-project"})
-            check(after_invalid.structured_content["revision"] == target_bound.structured_content["revision"], "invalid MCP write leaves the revision unchanged")
+            check(after_invalid.structured_content["revision"] == prompt_saved.structured_content["revision"], "invalid MCP write leaves the revision unchanged")
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")
