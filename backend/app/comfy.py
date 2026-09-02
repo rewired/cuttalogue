@@ -31,6 +31,10 @@ POLL_INTERVAL_SECONDS = 3
 POLL_TIMEOUT_SECONDS = 600  # 10 minutes - generous, generation can be slow
 
 
+class GenerationStartError(ValueError):
+    pass
+
+
 def _error_message(exc: Exception) -> str:
     return str(exc) or repr(exc)
 
@@ -66,11 +70,27 @@ async def _noop_progress(_fraction: float) -> None:
     return None
 
 
+def _ensure_not_cancelled(job: jobs.Job) -> None:
+    if job.cancel_requested:
+        raise jobs.JobCancelled()
+
+
+def _confined_project_file(directory: Path, relative_path: str) -> Path:
+    if not isinstance(relative_path, str) or not relative_path:
+        raise GenerationStartError("asset path is missing")
+    root = directory.resolve()
+    candidate = (root / relative_path).resolve()
+    if root not in candidate.parents:
+        raise GenerationStartError("asset path escapes the project directory")
+    return candidate
+
+
 async def _submit_and_poll(job: jobs.Job, base_url: str, workflow: dict) -> str:
     # Submits the built workflow graph, polls /history until it has an
     # output, returns the output video's ComfyUI-side filename.
     import httpx
 
+    _ensure_not_cancelled(job)
     async with httpx.AsyncClient(timeout=30) as client:
         res = await client.post(f"{base_url}/prompt", json={"prompt": workflow})
         if res.status_code != 200:
@@ -83,7 +103,9 @@ async def _submit_and_poll(job: jobs.Job, base_url: str, workflow: dict) -> str:
 
         elapsed = 0
         while elapsed < POLL_TIMEOUT_SECONDS:
+            _ensure_not_cancelled(job)
             await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            _ensure_not_cancelled(job)
             elapsed += POLL_INTERVAL_SECONDS
             hist_res = await client.get(f"{base_url}/history/{prompt_id}")
             if hist_res.status_code != 200:
@@ -109,15 +131,12 @@ async def _submit_and_poll(job: jobs.Job, base_url: str, workflow: dict) -> str:
     raise RuntimeError(f"Timed out after {POLL_TIMEOUT_SECONDS}s waiting for ComfyUI to finish")
 
 
-@router.post("/api/projects/{project_id}/shots/{shot_id}/generate")
-async def generate_take(project_id: str, shot_id: int, body: dict = Body(default={})):
+async def start_generation_job(data: dict, directory: Path, shot: dict, body: dict) -> dict:
     import httpx
-
-    data, directory = _load_project(project_id)
 
     prompt_text = (body.get("prompt") or "").strip()
     if not prompt_text:
-        raise HTTPException(status_code=400, detail="no prompt given")
+        raise GenerationStartError("no prompt given")
     requested_seed = body.get("seed")
     reference_asset_ids = body.get("referenceAssetIds") or []
     extend_asset_id = body.get("extendAssetId")
@@ -127,22 +146,23 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
     comfy = settings.load_settings()["providers"]["comfy"]
     base_url = (comfy["baseUrl"] or "").rstrip("/")
     if not base_url:
-        raise HTTPException(status_code=400, detail="ComfyUI provider not configured - set it up on the Setup page first")
-
-    # The shot must exist before we can derive H3 render duration or the
-    # lip-sync audio window below - fail synchronously (like the checks
-    # above) rather than inside the job, where "shot not found" would only
-    # surface as an opaque job error after a job was already created.
-    shot = next((s for s in data.get("shots", []) if s.get("id") == shot_id), None)
-    if not shot:
-        raise HTTPException(status_code=404, detail="shot not found")
+        raise GenerationStartError("ComfyUI provider not configured - set it up on the Setup page first")
+    shot_id = shot["id"]
 
     # The H3 reference audio must come from the project's own stored vocal
     # track - never the full mix, never whatever audio happens to still be
     # baked into the workflow template from an earlier manual test. Resolved
     # synchronously so a missing vocal track fails cleanly before anything is
     # uploaded to ComfyUI, same as the prompt/base_url checks above.
-    vocal_path = audio.require_track(data, directory, "vocal")
+    try:
+        vocal_path = audio.require_track(data, directory, "vocal")
+    except HTTPException as error:
+        raise GenerationStartError(str(error.detail)) from error
+    try:
+        vocal_relative = vocal_path.resolve().relative_to(directory.resolve())
+    except ValueError as error:
+        raise GenerationStartError("audio path escapes the project directory") from error
+    vocal_path = _confined_project_file(directory, str(vocal_relative))
 
     assets_by_id = {a["id"]: a for a in data.get("assets", [])}
     reference_paths = []
@@ -150,7 +170,7 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
         asset = assets_by_id.get(asset_id)
         if not asset:
             continue
-        path = directory / asset["relativePath"]
+        path = _confined_project_file(directory, asset.get("relativePath"))
         if path.exists():
             reference_paths.append(path)
 
@@ -158,7 +178,7 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
     if extend_asset_id:
         extend_asset = assets_by_id.get(extend_asset_id)
         if extend_asset:
-            candidate = directory / extend_asset["relativePath"]
+            candidate = _confined_project_file(directory, extend_asset.get("relativePath"))
             if candidate.exists():
                 extend_path = candidate
 
@@ -195,6 +215,7 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
 
     async def run():
         try:
+            _ensure_not_cancelled(job)
             generation_dir.mkdir(parents=True, exist_ok=True)
             await jobs.emit(job, {"status": "running", "phase": "audio", "message": "Preparing lip-sync audio"})
             await media.run_ffmpeg_with_progress(
@@ -203,6 +224,7 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
                 _noop_progress,
             )
 
+            _ensure_not_cancelled(job)
             await jobs.emit(job, {"status": "running", "phase": "uploading", "message": "Uploading references"})
             async with httpx.AsyncClient(timeout=60) as client:
                 uploaded = [await _upload_input_file(client, base_url, p) for p in reference_paths]
@@ -225,9 +247,11 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
             await jobs.emit(job, {"status": "running", "phase": "submitting", "message": "Submitting to ComfyUI"})
             filename = await _submit_and_poll(job, base_url, workflow)
 
+            _ensure_not_cancelled(job)
             await jobs.emit(job, {"status": "running", "phase": "downloading", "message": "Downloading result"})
             async with httpx.AsyncClient(timeout=120) as client:
                 view_res = await client.get(f"{base_url}/view", params={"filename": filename, "type": "output"})
+            _ensure_not_cancelled(job)
             if view_res.status_code != 200:
                 raise RuntimeError(f"ComfyUI /view returned HTTP {view_res.status_code}")
 
@@ -242,6 +266,8 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
                 "seed": resolved_seed,
             }
             await jobs.emit(job, {"status": "done", "phase": "complete", "message": "Done", "result": job.result})
+        except jobs.JobCancelled:
+            await jobs.emit(job, {"status": "cancelled", "message": "Cancelled"})
         except Exception as exc:  # noqa: BLE001 - reported to the client as a job error, not raised
             logger.error("generate failed for shot %s: %s", shot_id, traceback.format_exc())
             job.error = _error_message(exc)
@@ -251,4 +277,17 @@ async def generate_take(project_id: str, shot_id: int, body: dict = Body(default
             await jobs.close(job)
 
     asyncio.create_task(run())
-    return JSONResponse(status_code=202, content={"jobId": job.id, "takeId": take_id})
+    return {"jobId": job.id, "takeId": take_id}
+
+
+@router.post("/api/projects/{project_id}/shots/{shot_id}/generate")
+async def generate_take(project_id: str, shot_id: int, body: dict = Body(default={})):
+    data, directory = _load_project(project_id)
+    shot = next((s for s in data.get("shots", []) if s.get("id") == shot_id), None)
+    if not shot:
+        raise HTTPException(status_code=404, detail="shot not found")
+    try:
+        result = await start_generation_job(data, directory, shot, body)
+    except GenerationStartError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    return JSONResponse(status_code=202, content=result)

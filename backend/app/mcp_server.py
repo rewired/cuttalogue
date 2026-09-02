@@ -9,7 +9,9 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import CallToolResult, TextContent, ToolAnnotations
 
 from .camera_service import CameraEvaluationError
-from .jobs import JobNotFoundError, read_job_status
+from .comfy import GenerationStartError
+from .generation_service import GenerationService
+from .jobs import JobNotFoundError, cancel_job_request, read_job_status
 from .project_repository import InvalidProjectError, ProjectNotFoundError, ProjectRepository, RevisionConflictError
 from .projects import DATA_DIR
 from .prompt_service import PromptCompilationError
@@ -28,6 +30,7 @@ EXPECTED_READ_ERRORS = (
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 CONTROLLED_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
 CONTROLLED_DELETE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
+EXTERNAL_ACTION = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True)
 
 
 def _read(operation, *args) -> Any:
@@ -73,10 +76,32 @@ def _write(operation, *args) -> Any:
         return _write_error({"code": "invalid_project", "message": str(error)})
 
 
+async def _write_async(operation, *args) -> Any:
+    try:
+        return await operation(*args)
+    except RevisionConflictError as error:
+        return _write_error({
+            "code": "revision_conflict", "message": str(error),
+            "expectedRevision": error.expected_revision,
+            "currentRevision": error.current_revision,
+        })
+    except ProjectNotFoundError as error:
+        return _write_error({"code": "project_not_found", "message": str(error)})
+    except ShotNotFoundError as error:
+        return _write_error({"code": "shot_not_found", "message": str(error)})
+    except WriteValidationError as error:
+        return _write_error({"code": "validation_error", "message": str(error)})
+    except GenerationStartError as error:
+        return _write_error({"code": "generation_start_error", "message": str(error)})
+    except InvalidProjectError as error:
+        return _write_error({"code": "invalid_project", "message": str(error)})
+
+
 def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
     root = data_dir or Path(os.environ.get("CUTTALOGUE_PROJECTS_DIR", DATA_DIR))
     service = ProjectReadService(ProjectRepository(root))
     write_service = ProjectWriteService(ProjectRepository(root))
+    generation_service = GenerationService(ProjectRepository(root))
     server = MCPServer(
         "CUTTAlogue",
         instructions=(
@@ -275,6 +300,22 @@ def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
         return _write(
             write_service.compile_and_save_prompt, project_id, shot_id,
             expected_revision,
+        )
+
+    @server.tool(annotations=CONTROLLED_DELETE)
+    def cancel_job(job_id: str) -> dict[str, Any]:
+        """Explicitly request cancellation of one queued or running CUTTAlogue job."""
+        return _read(cancel_job_request, job_id)
+
+    @server.tool(annotations=EXTERNAL_ACTION)
+    async def start_generation(
+        project_id: str, shot_id: int, expected_revision: str,
+        seed: int | None = None,
+    ) -> dict[str, Any]:
+        """Explicitly start one external ComfyUI take from persisted shot state."""
+        return await _write_async(
+            generation_service.start_generation, project_id, shot_id,
+            expected_revision, seed,
         )
 
     return server
