@@ -72,6 +72,43 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
     moved = service.update_shot_timing("project-a", 1, renamed["revision"], 0.5, 1.5)
     check(moved["shot"]["startSeconds"] == 0.5 and moved["shot"]["endSeconds"] == 1.5, "valid timing update persists exact bounds")
 
+    first_segment = service.add_camera_segment("project-a", 1, moved["revision"], {
+        "startSeconds": 0, "endSeconds": 0.4, "movement": "push_in",
+    })
+    check(first_segment["segmentIndex"] == 0 and first_segment["segment"]["enabled"] is True, "camera add applies canonical defaults and returns the sorted index")
+    second_segment = service.add_camera_segment("project-a", 1, first_segment["revision"], {
+        "startSeconds": 0.4, "endSeconds": 0.9, "movement": "pan", "direction": "left",
+    })
+    updated_segment = service.update_camera_segment(
+        "project-a", 1, 1, second_segment["revision"],
+        {"movement": "truck", "direction": "right"},
+    )
+    check(updated_segment["segment"]["movement"] == "truck" and updated_segment["segmentIndex"] == 1, "camera update patches one segment and preserves sorted addressing")
+    try:
+        service.update_camera_segment(
+            "project-a", 1, 1, updated_segment["revision"],
+            {"startSeconds": 0.2},
+        )
+        check(False, "overlapping active camera segments are rejected")
+    except WriteValidationError:
+        check(True, "overlapping active camera segments are rejected")
+    check(repository.read("project-a")["revision"] == updated_segment["revision"], "invalid camera patch leaves the revision unchanged")
+    disabled_segment = service.add_camera_segment("project-a", 1, updated_segment["revision"], {
+        "startSeconds": 0, "endSeconds": 0.8, "movement": "static_shot", "enabled": False,
+    })
+    check(disabled_segment["segment"]["enabled"] is False, "disabled camera drafts may overlap active segments")
+    removed_segment = service.remove_camera_segment(
+        "project-a", 1, disabled_segment["segmentIndex"], disabled_segment["revision"],
+    )
+    check(removed_segment["removedSegment"]["enabled"] is False, "camera remove returns the deleted segment")
+    try:
+        service.add_camera_segment("project-a", 1, removed_segment["revision"], {
+            "startSeconds": 0.9, "endSeconds": 1, "movement": "teleport",
+        })
+        check(False, "unsupported camera movement is rejected")
+    except WriteValidationError:
+        check(True, "unsupported camera movement is rejected")
+
     try:
         repository.write("project-a", repository.read("project-a")["project"], "")
         check(False, "repository requires an expected revision")
@@ -82,13 +119,13 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
     non_json["invalidNumber"] = float("nan")
     before_invalid = file.read_bytes()
     try:
-        repository.write("project-a", non_json, moved["revision"])
+        repository.write("project-a", non_json, removed_segment["revision"])
         check(False, "repository rejects non-standard JSON numbers")
     except InvalidProjectError:
         check(True, "repository rejects non-standard JSON numbers")
     check(file.read_bytes() == before_invalid, "serialization failure leaves project bytes unchanged")
 
-    shared_revision = moved["revision"]
+    shared_revision = removed_segment["revision"]
     def concurrent_rename(name):
         try:
             return service.rename_shot("project-a", 1, shared_revision, name)["revision"]
@@ -113,6 +150,20 @@ with tempfile.TemporaryDirectory(prefix="cuttalogue-writes-") as raw:
             "endSeconds": 6, "name": "HTTP shot",
         })
         check(response.status_code == 200 and response.json()["shot"]["name"] == "HTTP shot", "HTTP adapter uses the controlled create service")
+        http_shot = response.json()["shot"]["id"]
+        camera_response = client.post(f"/api/projects/project-a/shots/{http_shot}/camera", json={
+            "expectedRevision": response.json()["revision"], "startSeconds": 0,
+            "endSeconds": 0.5, "movement": "arc_shot", "direction": "right",
+        })
+        check(camera_response.status_code == 200 and camera_response.json()["segment"]["movement"] == "arc_shot", "HTTP adapter adds a typed camera segment")
+        camera_patch = client.patch(f"/api/projects/project-a/shots/{http_shot}/camera/0", json={
+            "expectedRevision": camera_response.json()["revision"], "amplitude": "small",
+        })
+        check(camera_patch.status_code == 200 and camera_patch.json()["segment"]["amplitude"] == "small", "HTTP adapter patches a camera segment")
+        camera_delete = client.request("DELETE", f"/api/projects/project-a/shots/{http_shot}/camera/0", json={
+            "expectedRevision": camera_patch.json()["revision"],
+        })
+        check(camera_delete.status_code == 200 and camera_delete.json()["removedSegment"]["movement"] == "arc_shot", "HTTP adapter removes a camera segment with revision protection")
         stale = client.patch("/api/projects/project-a/shots/1/name", json={
             "expectedRevision": current_revision, "name": "stale",
         })

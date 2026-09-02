@@ -14,7 +14,10 @@ from .project_repository import InvalidProjectError, ProjectNotFoundError, Proje
 from .projects import DATA_DIR
 from .prompt_service import PromptCompilationError
 from .read_services import EntityNotFoundError, ProjectReadService
-from .write_services import ProjectWriteService, ShotNotFoundError, WriteValidationError
+from .write_services import (
+    CameraSegmentNotFoundError, ProjectWriteService, ShotNotFoundError,
+    WriteValidationError,
+)
 
 
 EXPECTED_READ_ERRORS = (
@@ -23,6 +26,7 @@ EXPECTED_READ_ERRORS = (
 )
 READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotentHint=True, openWorldHint=False)
 CONTROLLED_WRITE = ToolAnnotations(readOnlyHint=False, destructiveHint=False, idempotentHint=False, openWorldHint=False)
+CONTROLLED_DELETE = ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=False)
 
 
 def _read(operation, *args) -> Any:
@@ -52,6 +56,8 @@ def _write(operation, *args) -> Any:
         return _write_error({"code": "project_not_found", "message": str(error)})
     except ShotNotFoundError as error:
         return _write_error({"code": "shot_not_found", "message": str(error)})
+    except CameraSegmentNotFoundError as error:
+        return _write_error({"code": "camera_segment_not_found", "message": str(error)})
     except WriteValidationError as error:
         return _write_error({"code": "validation_error", "message": str(error)})
     except InvalidProjectError as error:
@@ -139,6 +145,63 @@ def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
     def rename_shot(project_id: str, shot_id: int, expected_revision: str, name: str) -> dict[str, Any]:
         """Rename one shot when the project revision still matches."""
         return _write(write_service.rename_shot, project_id, shot_id, expected_revision, name)
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def add_camera_segment(
+        project_id: str, shot_id: int, expected_revision: str,
+        start_seconds: float, end_seconds: float, movement: str = "zoom_in",
+        framing: str = "", speed: str = "", amplitude: str = "",
+        direction: str = "", target: str = "", focal_length: str = "",
+        depth_of_field: str = "", focus_target: str = "",
+        transition_to_next: str = "", enabled: bool = True,
+    ) -> dict[str, Any]:
+        """Add one validated, shot-relative camera segment with a fresh revision."""
+        segment = {
+            "startSeconds": start_seconds, "endSeconds": end_seconds,
+            "movement": movement, "framing": framing, "speed": speed,
+            "amplitude": amplitude, "direction": direction, "target": target,
+            "focalLength": focal_length, "depthOfField": depth_of_field,
+            "focusTarget": focus_target, "transitionToNext": transition_to_next,
+            "enabled": enabled,
+        }
+        return _write(write_service.add_camera_segment, project_id, shot_id, expected_revision, segment)
+
+    @server.tool(annotations=CONTROLLED_WRITE)
+    def update_camera_segment(
+        project_id: str, shot_id: int, segment_index: int, expected_revision: str,
+        start_seconds: float | None = None, end_seconds: float | None = None,
+        movement: str | None = None, framing: str | None = None,
+        speed: str | None = None, amplitude: str | None = None,
+        direction: str | None = None, target: str | None = None,
+        focal_length: str | None = None, depth_of_field: str | None = None,
+        focus_target: str | None = None, transition_to_next: str | None = None,
+        enabled: bool | None = None,
+    ) -> dict[str, Any]:
+        """Patch one camera segment by its current sorted index with a fresh revision."""
+        values = {
+            "startSeconds": start_seconds, "endSeconds": end_seconds,
+            "movement": movement, "framing": framing, "speed": speed,
+            "amplitude": amplitude, "direction": direction, "target": target,
+            "focalLength": focal_length, "depthOfField": depth_of_field,
+            "focusTarget": focus_target, "transitionToNext": transition_to_next,
+            "enabled": enabled,
+        }
+        patch = {key: value for key, value in values.items() if value is not None}
+        return _write(
+            write_service.update_camera_segment, project_id, shot_id,
+            segment_index, expected_revision, patch,
+        )
+
+    @server.tool(annotations=CONTROLLED_DELETE)
+    def remove_camera_segment(
+        project_id: str, shot_id: int, segment_index: int,
+        expected_revision: str,
+    ) -> dict[str, Any]:
+        """Remove one camera segment by its current sorted index with a fresh revision."""
+        return _write(
+            write_service.remove_camera_segment, project_id, shot_id,
+            segment_index, expected_revision,
+        )
 
     return server
 
