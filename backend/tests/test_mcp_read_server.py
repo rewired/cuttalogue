@@ -50,6 +50,7 @@ async def main() -> None:
                 "get_job_status",
                 "create_shot", "update_shot_timing", "rename_shot",
                 "add_camera_segment", "update_camera_segment", "remove_camera_segment",
+                "assign_scene", "set_scene_anchor", "bind_camera_target",
             }
             check(names == expected, "MCP exposes exactly the planned read and Direction write tools")
             tools_by_name = {tool.name: tool for tool in tools.tools}
@@ -118,13 +119,31 @@ async def main() -> None:
                 "expected_revision": camera_removed.structured_content["revision"],
             })
             check(missing_segment.is_error and missing_segment.structured_content["code"] == "camera_segment_not_found", "MCP returns a structured missing-camera-segment error")
+            scene_assigned = await client.call_tool("assign_scene", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": camera_removed.structured_content["revision"],
+                "scene_id": "scene-1",
+            })
+            check(not scene_assigned.is_error and scene_assigned.structured_content["shot"]["sceneId"] == "scene-1", "MCP assigns an existing scene to a shot")
+            anchor_set = await client.call_tool("set_scene_anchor", {
+                "project_id": "mcp-project", "scene_id": "scene-1",
+                "expected_revision": scene_assigned.structured_content["revision"],
+                "name": "performer", "x": 0, "y": 1.7, "z": 0,
+            })
+            check(not anchor_set.is_error and anchor_set.structured_content["anchor"]["position"] == [0.0, 1.7, 0.0], "MCP sets a finite scene anchor")
+            target_bound = await client.call_tool("bind_camera_target", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": anchor_set.structured_content["revision"],
+                "target_name": "lead", "anchor_name": "performer",
+            })
+            check(not target_bound.is_error and target_bound.structured_content["targetBindings"]["lead"] == "performer", "MCP binds semantic camera targets to scene anchors")
             invalid = await client.call_tool("create_shot", {
-                "project_id": "mcp-project", "expected_revision": camera_removed.structured_content["revision"],
+                "project_id": "mcp-project", "expected_revision": target_bound.structured_content["revision"],
                 "start_seconds": 0, "end_seconds": 1, "name": "overlap",
             })
             check(invalid.is_error and invalid.structured_content["code"] == "validation_error", "MCP validation failures are structured write errors")
             after_invalid = await client.call_tool("get_project", {"project_id": "mcp-project"})
-            check(after_invalid.structured_content["revision"] == camera_removed.structured_content["revision"], "invalid MCP write leaves the revision unchanged")
+            check(after_invalid.structured_content["revision"] == target_bound.structured_content["revision"], "invalid MCP write leaves the revision unchanged")
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")
