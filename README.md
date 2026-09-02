@@ -6,7 +6,7 @@ CUTTAlogue Plus adds an embedded spatial camera preview, reusable PLY/SPLAT/GLB 
 
 Local first - everything runs on your machine, no cloud, no lock-in to a single generation backend beyond the ComfyUI workflow you point it at.
 
-For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md), the [Plus integration roadmap](docs/cuttalogue-plus-roadmap.md), the [MCP guide](docs/mcp.md), and [release readiness](docs/release-readiness.md).
+For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md), the [Plus integration roadmap](docs/cuttalogue-plus-roadmap.md), the [H3 conformance roadmap](docs/h3-conformance-roadmap.md), the [MCP guide](docs/mcp.md), and [release readiness](docs/release-readiness.md).
 
 ---
 

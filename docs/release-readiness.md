@@ -50,6 +50,20 @@ Before merging to `master`:
 - Job state is in memory and does not survive a backend restart.
 - MCP currently uses local STDIO only; authenticated Streamable HTTP is deferred.
 - Large-scene GPU profiling and the real MMS alignment smoke remain manual release gates.
+- The bundled H3 runtime is Reference-to-Video with a required vocal stem;
+  Image-to-Video and first/last-frame adapters remain deferred.
+- Extend is intentionally unavailable until a workflow with a tested
+  continuation input is installed.
+- Authored dialogue markers and multimodal video/audio subject references are
+  planned in the H3 conformance roadmap and are not inferred from lyrics.
+
+## H3 conformance addendum
+
+Before merging an H3 conformance integration, run the focused frame, preflight,
+workflow, lip-sync, generation-service, compiler-contract, and semantic-beat
+tests listed in `docs/h3-conformance-roadmap.md`. A real configured ComfyUI
+generation must confirm prompt, vocal, frame count, and image-reference order.
+
 
 ## Master merge gate
 
