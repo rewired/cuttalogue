@@ -1,6 +1,6 @@
 # CUTTAlogue MCP
 
-Status: controlled-write milestone in progress; shot and camera Direction writes available
+Status: Phase 7 local STDIO read/write toolset complete; Phase 8 hardening in progress
 
 CUTTAlogue exposes its transport-neutral project services through a local MCP server. Mutations are narrow typed operations; there is no generic project JSON writer.
 
