@@ -34,6 +34,7 @@ Set CUTTALOGUE_PROJECTS_DIR only when the host should read a non-default project
 - evaluate_camera_path
 - compile_shot_prompt
 - get_project_warnings
+- get_job_status
 
 Every project result includes a SHA-256 content revision where applicable. Project identifiers are path-confined before any file access.
 
