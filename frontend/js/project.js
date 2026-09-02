@@ -50,9 +50,12 @@
         assetRoles: s.assetRoles || {},
         videoRefs: s.videoRefs || {},
         constraints: s.constraints || [],
+        sceneId: s.sceneId ?? null,
+        preview: s.preview || { initialCameraOverride: null, targetBindings: {}, interpreterProfile: 'cinematic-v1' },
         direction: s.direction || { camera: [], lighting: [], subjects: {}, props: {}, beatNotes: [] },
       })),
       assets: state.assets,
+      scenes: state.scenes || [],
       vocalCues: (state.vocalCues || []).map((c) => ({ id: c.id, timeSeconds: c.timeSeconds, label: c.label || '' })),
       lyrics: { text: (state.lyrics && state.lyrics.text) || '' },
       lyricsAlignment: state.lyricsAlignment || null,
@@ -191,11 +194,31 @@
       assetRoles: {},
       videoRefs: {},
       constraints: [],
+      sceneId: null,
+      preview: { initialCameraOverride: null, targetBindings: {}, interpreterProfile: 'cinematic-v1' },
       direction: { camera: [], lighting: [], subjects: {}, props: {}, beatNotes: [] },
       ...s,
     }));
-    normalized.shots.forEach((s) => normalizeDirectionSegments(s.direction));
+    normalized.shots.forEach((s) => {
+      s.preview = {
+        initialCameraOverride: null,
+        targetBindings: {},
+        interpreterProfile: 'cinematic-v1',
+        ...(s.preview || {}),
+      };
+      normalizeDirectionSegments(s.direction);
+    });
     normalized.assets = (normalized.assets || []).map((a) => ({ tags: [], description: '', ...a }));
+    normalized.scenes = (normalized.scenes || []).map((scene) => ({
+      name: '',
+      splatAssetId: null,
+      blockoutAssetId: null,
+      unitsPerMeter: 1,
+      defaultCamera: { position: [0, 1.6, 4], target: [0, 1.5, 0], focalLengthMm: 35 },
+      anchors: {},
+      motionProfile: {},
+      ...scene,
+    }));
     // Older projects predate vocalCues entirely -> []. Always re-sorted
     // ascending by timeSeconds here (not just wherever a cue is mutated) so a
     // hand-edited or foreign project.json can't load with a stale order.

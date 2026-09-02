@@ -1152,6 +1152,15 @@ th { color: var(--text-dim); font-weight: 500; font-size: 12px; }
   border-color: var(--accent);
   background: rgba(76, 141, 255, 0.15);
 }
+.camera-preview-scene-label { color: var(--text-dim); font-size: 11px; }
+#camera-preview-scene-select {
+  max-width: 260px;
+  padding: 5px 8px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+}
 .camera-preview-diagnostics { margin-left: auto; color: var(--text-dim); font-size: 12px; }
 .camera-preview-diagnostics.warning { color: #ffc107; }
 .camera-preview-viewport {
