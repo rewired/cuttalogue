@@ -262,7 +262,7 @@ Right-click a shot to delete it">&#9432;</span></div>
     <h2>Assets</h2>
     <div class="asset-library-toolbar">
       <label class="file-button">Add files
-        <input type="file" id="asset-library-file-input" multiple accept="image/*,video/*,audio/*">
+        <input type="file" id="asset-library-file-input" multiple accept="image/*,video/*,audio/*,.ply,.splat,.glb">
       </label>
       <input type="text" id="asset-library-tag-filter" placeholder="Filter by tag...">
       <p class="placeholder-hint" id="asset-library-status"></p>
@@ -457,6 +457,8 @@ Right-click a shot to delete it">&#9432;</span></div>
         <button type="button" id="camera-preview-shot-view" class="active">Shot camera</button>
         <button type="button" id="camera-preview-free-view">Free view</button>
       </div>
+      <label class="camera-preview-scene-label" for="camera-preview-scene-select">Scene</label>
+      <select id="camera-preview-scene-select" aria-label="Scene assigned to this shot"></select>
       <span id="camera-preview-diagnostics" class="camera-preview-diagnostics"></span>
     </div>
     <div class="camera-preview-viewport">
@@ -569,6 +571,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/contextMenu.js"></script>
 <script src="js/shots.js"></script>
 <script src="js/assets.js"></script>
+<script src="js/scenes.js"></script>
 <script src="js/references.js"></script>
 <script src="js/vocalCues.js"></script>
 <script src="js/vocalRegions.js"></script>

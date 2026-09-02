@@ -110,6 +110,10 @@
     return { camera: [], lighting: [], subjects: {}, props: {}, beatNotes: [] };
   }
 
+  function defaultPreview() {
+    return { initialCameraOverride: null, targetBindings: {}, interpreterProfile: 'cinematic-v1' };
+  }
+
   function renumber() {
     state.shots.sort((a, b) => a.startSeconds - b.startSeconds);
     state.shots.forEach((shot, index) => {
@@ -216,6 +220,8 @@
       assetIds: (shot.assetIds || []).slice(),
       assetRoles: { ...(shot.assetRoles || {}) },
       videoRefs: { ...(shot.videoRefs || {}) },
+      sceneId: shot.sceneId ?? null,
+      preview: { ...defaultPreview(), ...(shot.preview || {}) },
       direction: defaultDirection(),
     };
     const right = {
@@ -231,6 +237,8 @@
       assetIds: [],
       assetRoles: {},
       videoRefs: {},
+      sceneId: shot.sceneId ?? null,
+      preview: { ...defaultPreview(), ...(shot.preview || {}) },
       direction: defaultDirection(),
     };
     state.shots.splice(index, 1, left, right);
@@ -263,6 +271,8 @@
       assetIds: [],
       assetRoles: {},
       videoRefs: {},
+      sceneId: null,
+      preview: defaultPreview(),
       direction: defaultDirection(),
     });
     renumber();

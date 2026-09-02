@@ -42,8 +42,9 @@
         minimumSeconds: 8,
         maximumSeconds: 12,
       },
-      shots: [], // { id, startSeconds, endSeconds, prompt, notes, assetIds }
+      shots: [], // { id, startSeconds, endSeconds, prompt, notes, assetIds, sceneId, preview }
       assets: [], // { id, type, fileName, relativePath, thumbnailPath, tags, metadata }
+      scenes: [], // { id, name, splatAssetId, blockoutAssetId, unitsPerMeter, defaultCamera, anchors, motionProfile }
       // Project-absolute song timing anchors (Phase 2 of docs/h3-shot-direction-
       // roadmap.md) - { id, timeSeconds, label }, sorted ascending by timeSeconds.
       // Manually authored only; NOT duplicated per-shot - see vocalCues.js.

@@ -26,6 +26,7 @@
     elements.canvas = document.getElementById('camera-preview-canvas');
     elements.shotView = document.getElementById('camera-preview-shot-view');
     elements.freeView = document.getElementById('camera-preview-free-view');
+    elements.scene = document.getElementById('camera-preview-scene-select');
     elements.diagnostics = document.getElementById('camera-preview-diagnostics');
     elements.empty = document.getElementById('camera-preview-empty');
     elements.time = document.getElementById('camera-preview-time');
@@ -65,6 +66,21 @@
       ? `${warningCount} camera warning${warningCount === 1 ? '' : 's'}`
       : 'Camera path valid';
     elements.diagnostics.classList.toggle('warning', warningCount > 0);
+  }
+
+  function renderSceneSelect() {
+    elements.scene.innerHTML = '';
+    const none = document.createElement('option');
+    none.value = '';
+    none.textContent = state.scenes.length ? 'No scene' : 'No scene assets imported';
+    elements.scene.appendChild(none);
+    state.scenes.forEach((scene) => {
+      const option = document.createElement('option');
+      option.value = scene.id;
+      option.textContent = scene.name || scene.id;
+      elements.scene.appendChild(option);
+    });
+    elements.scene.value = currentShot && currentShot.sceneId ? currentShot.sceneId : '';
   }
 
   function render() {
@@ -145,6 +161,7 @@
     elements.title.textContent = 'Camera preview';
     elements.subtitle.textContent = currentShot.name ? `Shot ${currentShot.id} — ${currentShot.name}` : `Shot ${currentShot.id}`;
     previewTime = Math.max(0, Math.min(shotDuration(), projectRelativeTime()));
+    renderSceneSelect();
     try {
       renderer = new MSE.cameraPreviewRenderer.CameraPreviewRenderer(elements.canvas);
       compileCurrentShot();
@@ -175,6 +192,9 @@
     elements.shotView.addEventListener('click', () => setViewMode('shot'));
     elements.freeView.addEventListener('click', () => setViewMode('free'));
     elements.play.addEventListener('click', togglePlayback);
+    elements.scene.addEventListener('change', () => {
+      if (currentShot && MSE.scenes) MSE.scenes.setShotScene(currentShot.id, elements.scene.value || null);
+    });
     elements.scrubber.addEventListener('pointerdown', () => { isScrubbing = true; });
     elements.scrubber.addEventListener('pointerup', () => { isScrubbing = false; });
     elements.scrubber.addEventListener('input', () => {
@@ -214,9 +234,11 @@
     elements.subtitle.textContent = currentShot.name ? `Shot ${currentShot.id} — ${currentShot.name}` : `Shot ${currentShot.id}`;
     previewTime = Math.max(0, Math.min(shotDuration(), projectRelativeTime()));
     compileCurrentShot();
+    renderSceneSelect();
     render();
   });
   on('project-loaded', () => { if (isOpen()) close(); });
+  on('scenes-changed', () => { if (isOpen()) renderSceneSelect(); });
 
   document.addEventListener('DOMContentLoaded', init);
   MSE.cameraPreview = { open, close };

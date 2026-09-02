@@ -1,6 +1,6 @@
 # CUTTAlogue Plus Integration Roadmap
 
-Status: approved direction, implementation starting  
+Status: implementation in progress
 Baseline: CUTTAlogue commit `ec19f2e`  
 Integration branch: `integration/shot-visualizer`
 
@@ -23,6 +23,14 @@ The intended workflow is:
 6. The same evaluated path is available to validation, export, and MCP clients.
 
 MCP exposes the same domain operations used by the browser UI. It must never become a second, less-safe way to edit `project.json`.
+
+## Implementation status
+
+- Phase 0 is complete: the fork, baseline tag, integration branch, and this roadmap exist.
+- Phase 1 is complete for the initial deterministic camera vocabulary and regression coverage.
+- Phase 2 has an initial native CUTTAlogue WebGL workspace with shared transport and explicit resource disposal.
+- Phase 3 is in progress: PLY/SPLAT/GLB ingestion, reusable scene persistence, backwards-compatible normalization, and per-shot scene assignment are implemented. Geometry loading, calibration controls, anchors, and target bindings remain open.
+- Phases 4 through 8 remain planned.
 
 ## 2. Guiding principles
 

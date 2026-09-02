@@ -25,6 +25,12 @@
     video: [
       { value: 'motionguide', label: 'Motion guide' },
     ],
+    pointcloud: [
+      { value: 'scene_splat', label: 'Scene (Gaussian splat)' },
+    ],
+    model3d: [
+      { value: 'scene_blockout', label: 'Scene blockout' },
+    ],
   };
 
   function kindOptionsFor(assetType) {
@@ -78,6 +84,7 @@
 
   function addAssets(newAssets) {
     state.assets.push(...newAssets);
+    if (MSE.scenes) MSE.scenes.syncFromAssets();
     emit('assets-changed', { reason: 'import' });
   }
 
@@ -104,11 +111,16 @@
     asset.relativePath = fileDescriptor.relativePath;
     asset.thumbnailPath = fileDescriptor.thumbnailPath;
     asset.metadata = fileDescriptor.metadata;
+    const validKinds = kindOptionsFor(asset.type);
+    if (validKinds.length && !validKinds.some((option) => option.value === asset.kind)) {
+      asset.kind = validKinds.length === 1 ? validKinds[0].value : null;
+    }
     // thumbnailPath is always "assets/<id>/thumbnail.jpg" - stable across
     // replaces - so the <img> URL alone can't force the browser to refetch.
     // This counter rides along as a cache-busting query param wherever the
     // preview URL gets built (assetLibrary/contextPanel/assetPicker).
     asset.version = (asset.version || 0) + 1;
+    if (MSE.scenes) MSE.scenes.syncFromAssets();
     emit('assets-changed', { reason: 'replace-file' });
   }
 
@@ -144,6 +156,7 @@
   // for an asset that no longer exists.
   function removeAsset(assetId) {
     state.assets = state.assets.filter((a) => a.id !== assetId);
+    if (MSE.scenes) MSE.scenes.detachAsset(assetId);
     state.shots.forEach((shot) => {
       if (shot.assetIds) shot.assetIds = shot.assetIds.filter((id) => id !== assetId);
       if (shot.assetRoles) delete shot.assetRoles[assetId];

@@ -27,14 +27,20 @@ const requiredIds = [
   'camera-preview-shot-view',
   'camera-preview-free-view',
   'camera-preview-scrubber',
+  'camera-preview-scene-select',
 ];
 requiredIds.forEach((id) => assert(html.includes(`id="${id}"`), `preview markup contains #${id}`));
 
 const pathIndex = html.indexOf('js/cameraPath.js');
 const rendererIndex = html.indexOf('js/cameraPreviewRenderer.js');
 const controllerIndex = html.indexOf('js/cameraPreview.js');
+const assetsIndex = html.indexOf('js/assets.js');
+const scenesIndex = html.indexOf('js/scenes.js');
+const projectIndex = html.indexOf('js/project.js');
 assert(pathIndex >= 0 && rendererIndex > pathIndex, 'renderer loads after the canonical camera interpreter');
 assert(controllerIndex > rendererIndex, 'preview controller loads after the renderer');
+assert(scenesIndex > assetsIndex, 'scene registry loads after the asset model');
+assert(projectIndex > scenesIndex, 'scene registry loads before project restoration');
 
 assert(css.includes('background: var(--bg)'), 'preview viewport uses the CUTTAlogue background token');
 assert(css.includes('border-color: var(--accent)'), 'preview active control uses the CUTTAlogue accent token');
