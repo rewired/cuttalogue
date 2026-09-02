@@ -1,10 +1,12 @@
-# CUTTAlogue
+# CUTTAlogue Plus
 
 A lean, local editor for planning *and generating* video shots against a song: listen to the mix and vocal stem in sync, lock shot boundaries to the musical grid, direct each shot with structured camera/character/prop tracks, compile that into a MiniMax H3 prompt, and generate the actual clip through a connected ComfyUI Pod - all from one project.
 
+CUTTAlogue Plus adds an embedded spatial camera preview, reusable PLY/SPLAT/GLB scenes, deterministic Camera Direction evaluation, and a local controlled-write MCP interface. CUTTAlogue's workflow, colors, typography, and `shot.direction.camera` model remain authoritative.
+
 Local first - everything runs on your machine, no cloud, no lock-in to a single generation backend beyond the ComfyUI workflow you point it at.
 
-For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md), the [implementation roadmap](docs/cuttalogue-roadmap.md), and the [Direction-tab roadmap](docs/h3-shot-direction-roadmap.md).
+For background on architecture and design decisions, see [docs/musical-shot-editor.md](docs/musical-shot-editor.md), the [Plus integration roadmap](docs/cuttalogue-plus-roadmap.md), the [MCP guide](docs/mcp.md), and [release readiness](docs/release-readiness.md).
 
 ---
 

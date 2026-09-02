@@ -34,7 +34,7 @@ MCP exposes the same domain operations used by the browser UI. It must never bec
 - Phase 5 is substantially implemented: canonical reads and atomic, revision-guarded writes pass through path-confined repositories and transport-neutral services. Camera evaluation and canonical H3 prompt compilation have shared backend/HTTP coverage; migrating the legacy whole-project browser save remains open.
 - Phase 6's read-only milestone is complete: an official MCP-v2 STDIO server exposes all eleven planned Project/Shot/Direction/camera/prompt/job tools through shared services and is tested with the SDK's in-memory client. Controlled writes remain deferred to Phase 7.
 - Phase 7 is functionally complete: typed Shot and Camera Direction writes, spatial scene calibration, asset assignment, authored constraints, canonical compile-and-save, revision-checked explicit generation, and job cancellation share domain services with structured conflicts and MCP mutation metadata. A shot can be spatially directed, compiled, generated, inspected, and cancelled without raw JSON access; Phase 8 hardening remains.
-- Phase 8 remains planned.
+- Phase 8 has started: the deterministic fast release gate passes all 12 local backend suites and all 18 frontend suites; recovery, migration, security boundaries, known limitations, manual acceptance, and initial release notes are documented. Real-model alignment smoke, large-scene profiling, and recorded manual acceptance remain before the `master` merge.
 
 ## 2. Guiding principles
 
