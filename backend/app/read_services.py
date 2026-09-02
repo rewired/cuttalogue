@@ -1,6 +1,7 @@
 """Read-only application services shared by HTTP and future MCP adapters."""
 from copy import deepcopy
 
+from .camera_service import compile_shot, evaluate_path, validate_shot
 from .project_repository import ProjectRepository
 
 
@@ -52,6 +53,19 @@ class ProjectReadService:
             "shotId": shot_id,
             "revision": result["revision"],
             "cameraSegments": result["direction"]["camera"],
+        }
+
+    def validate_camera_path(self, project_id: str, shot_id: int) -> dict:
+        record, shot = self._shot(project_id, shot_id)
+        result = validate_shot(shot, record["project"])
+        return {"projectId": project_id, "shotId": shot_id, "revision": record["revision"], **result}
+
+    def evaluate_camera_path(self, project_id: str, shot_id: int, time_seconds: float) -> dict:
+        record, shot = self._shot(project_id, shot_id)
+        plan = compile_shot(shot, record["project"])
+        return {
+            "projectId": project_id, "shotId": shot_id, "revision": record["revision"],
+            "timeSeconds": time_seconds, "pose": evaluate_path(plan, time_seconds),
         }
 
     def get_project_warnings(self, project_id: str) -> dict:

@@ -29,7 +29,9 @@ async def main() -> None:
         directory.mkdir()
         (directory / "project.json").write_text(json.dumps({
             "name": "MCP test",
-            "scenes": [{"id": "scene-1"}],
+            "scenes": [{"id": "scene-1", "defaultCamera": {
+                "position": [0, 1.6, 4], "target": [0, 1.6, 0], "focalLengthMm": 35,
+            }}],
             "shots": [{
                 "id": 1, "startSeconds": 0, "endSeconds": 5, "sceneId": "scene-1",
                 "direction": {"camera": [{"startSeconds": 0, "endSeconds": 5, "movement": "push_in"}]},
@@ -42,7 +44,8 @@ async def main() -> None:
             names = {tool.name for tool in tools.tools}
             expected = {
                 "list_projects", "get_project", "list_shots", "get_shot",
-                "get_shot_direction", "get_camera_segments", "get_project_warnings",
+                "get_shot_direction", "get_camera_segments", "validate_camera_path",
+                "evaluate_camera_path", "get_project_warnings",
             }
             check(names == expected, "MCP exposes exactly the first read-only tool set")
 
@@ -50,6 +53,8 @@ async def main() -> None:
             check(not projects.is_error and projects.structured_content["projects"][0]["id"] == "mcp-project", "list_projects returns structured service data")
             camera = await client.call_tool("get_camera_segments", {"project_id": "mcp-project", "shot_id": 1})
             check(not camera.is_error and camera.structured_content["cameraSegments"][0]["movement"] == "push_in", "camera tool returns authoritative Direction segments")
+            evaluated = await client.call_tool("evaluate_camera_path", {"project_id": "mcp-project", "shot_id": 1, "time_seconds": 5})
+            check(not evaluated.is_error and evaluated.structured_content["pose"]["position"] == [0.0, 1.6, 3.0], "MCP evaluates the backend camera path")
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")
