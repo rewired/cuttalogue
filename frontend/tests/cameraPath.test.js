@@ -95,6 +95,13 @@ function vectorClose(actual, expected, epsilon = 1e-9) {
   assert(warningCodes.includes('movement_not_implemented'), 'deferred movement emits a warning');
 }
 
+// Roll rotates the rendered right/up basis around camera forward.
+{
+  const basis = cameraPath.cameraBasis({ position: [0, 0, 0], yaw: 0, pitch: 0, roll: Math.PI / 2 });
+  assert(vectorClose(basis.right, [0, 1, 0]), '90-degree roll rotates camera right onto world up');
+  assert(vectorClose(basis.up, [-1, 0, 0]), '90-degree roll rotates camera up onto world left');
+}
+
 if (failures) {
   console.error(`\n${failures} camera path test(s) failed.`);
   process.exitCode = 1;

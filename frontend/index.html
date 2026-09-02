@@ -202,6 +202,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 
           <div class="direction-lanes-toolbar">
             <button type="button" id="direction-snap-toggle" class="icon-btn direction-snap-toggle">Snap: on</button>
+            <button type="button" id="camera-preview-btn" title="Preview the authored Camera lane in 3D">Preview camera</button>
             <button type="button" id="direction-expand-btn" class="icon-btn" title="Expand" aria-label="Expand">&#9974;</button>
           </div>
 
@@ -442,6 +443,41 @@ Right-click a shot to delete it">&#9432;</span></div>
   </div>
 </div>
 
+<div id="camera-preview-modal" class="modal-overlay" hidden>
+  <div class="modal camera-preview-modal">
+    <div class="modal-header">
+      <div>
+        <h2 id="camera-preview-title">Camera preview</h2>
+        <span id="camera-preview-subtitle" class="camera-preview-subtitle"></span>
+      </div>
+      <button type="button" id="camera-preview-close-btn" class="modal-close" aria-label="Close camera preview">&times;</button>
+    </div>
+    <div class="camera-preview-toolbar">
+      <div class="camera-preview-view-switch" role="group" aria-label="Preview view">
+        <button type="button" id="camera-preview-shot-view" class="active">Shot camera</button>
+        <button type="button" id="camera-preview-free-view">Free view</button>
+      </div>
+      <span id="camera-preview-diagnostics" class="camera-preview-diagnostics"></span>
+    </div>
+    <div class="camera-preview-viewport">
+      <canvas id="camera-preview-canvas" aria-label="Three-dimensional camera preview"></canvas>
+      <div class="camera-preview-hud">
+        <span><strong id="camera-preview-time">0.00</strong> s</span>
+        <span><strong id="camera-preview-lens">35</strong> mm</span>
+        <span id="camera-preview-segment">No active segment</span>
+      </div>
+      <div class="camera-preview-empty" id="camera-preview-empty" hidden>
+        Add Camera segments in Direction to preview their motion.
+      </div>
+    </div>
+    <div class="camera-preview-transport">
+      <button type="button" id="camera-preview-play-btn">Play</button>
+      <input type="range" id="camera-preview-scrubber" min="0" max="1" step="0.001" value="0" aria-label="Camera preview time">
+      <span id="camera-preview-duration">0.00 s</span>
+    </div>
+  </div>
+</div>
+
 <div id="recovery-modal" class="modal-overlay" hidden>
   <div class="modal">
     <div class="modal-header">
@@ -528,6 +564,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/musicalGrid.js"></script>
 <script src="js/frameMath.js"></script>
 <script src="js/cameraPath.js"></script>
+<script src="js/cameraPreviewRenderer.js"></script>
 <script src="js/state.js"></script>
 <script src="js/contextMenu.js"></script>
 <script src="js/shots.js"></script>
@@ -555,6 +592,7 @@ Right-click a shot to delete it">&#9432;</span></div>
 <script src="js/assetPicker.js"></script>
 <script src="js/burstBeatsModal.js"></script>
 <script src="js/contextPanel.js"></script>
+<script src="js/cameraPreview.js"></script>
 <script src="js/lyricsAlign.js"></script>
 <script src="js/taskPanel.js"></script>
 <script src="js/main.js"></script>
