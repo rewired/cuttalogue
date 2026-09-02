@@ -1,4 +1,4 @@
-"""In-memory protocol tests for the read-only MCP server."""
+"""In-memory protocol tests for the CUTTAlogue MCP server."""
 import asyncio
 import json
 import sys
@@ -48,8 +48,14 @@ async def main() -> None:
                 "get_shot_direction", "get_camera_segments", "validate_camera_path",
                 "evaluate_camera_path", "compile_shot_prompt", "get_project_warnings",
                 "get_job_status",
+                "create_shot", "update_shot_timing", "rename_shot",
             }
-            check(names == expected, "MCP exposes exactly the first read-only tool set")
+            check(names == expected, "MCP exposes exactly the planned read and initial write tools")
+            tools_by_name = {tool.name: tool for tool in tools.tools}
+            read_annotations = tools_by_name["get_project"].annotations.model_dump(by_alias=True)
+            write_annotations = tools_by_name["create_shot"].annotations.model_dump(by_alias=True)
+            check(read_annotations["readOnlyHint"] is True, "MCP metadata marks reads as read-only")
+            check(write_annotations["readOnlyHint"] is False and write_annotations["destructiveHint"] is False, "MCP metadata marks controlled writes as non-destructive mutations")
 
             projects = await client.call_tool("list_projects", {})
             check(not projects.is_error and projects.structured_content["projects"][0]["id"] == "mcp-project", "list_projects returns structured service data")
@@ -64,6 +70,30 @@ async def main() -> None:
             status = await client.call_tool("get_job_status", {"job_id": job.id})
             check(not status.is_error and status.structured_content["result"]["artifact"] == "preview.mp4", "MCP reads a non-consuming job snapshot")
             jobs._jobs.pop(job.id, None)
+            original_revision = projects.structured_content["projects"][0]["revision"]
+            created = await client.call_tool("create_shot", {
+                "project_id": "mcp-project", "expected_revision": original_revision,
+                "start_seconds": 6, "end_seconds": 7, "name": "MCP shot",
+            })
+            created_revision = created.structured_content["revision"]
+            check(not created.is_error and created.structured_content["shot"]["name"] == "MCP shot", "MCP creates one narrow shot mutation")
+            stale = await client.call_tool("rename_shot", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": original_revision, "name": "stale",
+            })
+            check(stale.is_error and stale.structured_content["code"] == "revision_conflict" and stale.structured_content["currentRevision"] == created_revision, "MCP stale write returns a structured current revision")
+            renamed = await client.call_tool("rename_shot", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": created_revision, "name": "Renamed safely",
+            })
+            check(not renamed.is_error and renamed.structured_content["shot"]["name"] == "Renamed safely", "MCP write succeeds with the fresh revision")
+            invalid = await client.call_tool("create_shot", {
+                "project_id": "mcp-project", "expected_revision": renamed.structured_content["revision"],
+                "start_seconds": 0, "end_seconds": 1, "name": "overlap",
+            })
+            check(invalid.is_error and invalid.structured_content["code"] == "validation_error", "MCP validation failures are structured write errors")
+            after_invalid = await client.call_tool("get_project", {"project_id": "mcp-project"})
+            check(after_invalid.structured_content["revision"] == renamed.structured_content["revision"], "invalid MCP write leaves the revision unchanged")
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")
@@ -72,4 +102,4 @@ async def main() -> None:
 asyncio.run(main())
 if failures:
     raise SystemExit(f"{failures} failure(s)")
-print("\nAll read-only MCP checks passed.")
+print("\nAll MCP protocol checks passed.")

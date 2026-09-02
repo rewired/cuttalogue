@@ -31,9 +31,10 @@ MCP exposes the same domain operations used by the browser UI. It must never bec
 - Phase 2 has an initial native CUTTAlogue WebGL workspace with shared transport and explicit resource disposal.
 - Phase 3 is substantially implemented: PLY/SPLAT/GLB ingestion, reusable scene persistence, backwards-compatible normalization, per-shot scene assignment, scene-default camera and motion calibration, named anchors, per-shot target bindings, concrete unresolved-target diagnostics, and initial geometry rendering are implemented. SPLAT currently uses a point-sprite preview; a full anisotropic Gaussian rasterizer and direct viewport manipulation of calibration points remain open.
 - Phase 4 has started: preview compilation and deterministic, versioned Camera JSON export now share one application-service boundary. Broader authoring synchronization remains open.
-- Phase 5 has started: canonical project reads now pass through a path-confined repository and transport-neutral Project/Shot/Direction read services with content revisions and stable diagnostics. The deterministic camera evaluator and canonical H3 prompt compiler now have shared backend/HTTP coverage; write services remain open.
+- Phase 5 is substantially implemented: canonical reads and atomic, revision-guarded writes pass through path-confined repositories and transport-neutral services. Camera evaluation and canonical H3 prompt compilation have shared backend/HTTP coverage; migrating the legacy whole-project browser save remains open.
 - Phase 6's read-only milestone is complete: an official MCP-v2 STDIO server exposes all eleven planned Project/Shot/Direction/camera/prompt/job tools through shared services and is tested with the SDK's in-memory client. Controlled writes remain deferred to Phase 7.
-- Phases 7 and 8 remain planned.
+- Phase 7 has started with typed `create_shot`, `update_shot_timing`, and `rename_shot` services over atomic persistence, mandatory expected revisions, structured conflicts, HTTP parity, and MCP mutation metadata. The remaining controlled-write tools are planned.
+- Phase 8 remains planned.
 
 ## 2. Guiding principles
 
