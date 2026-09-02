@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 
 from . import audio, frames, jobs, media, settings
 from .comfy_workflow_template import build_workflow_payload
+from .h3_preflight import error_message, inspect_generation
 from .projects import project_dir
 
 logger = logging.getLogger("cuttalogue.comfy")
@@ -139,9 +140,10 @@ async def start_generation_job(data: dict, directory: Path, shot: dict, body: di
         raise GenerationStartError("no prompt given")
     requested_seed = body.get("seed")
     reference_asset_ids = body.get("referenceAssetIds") or []
-    extend_asset_id = body.get("extendAssetId")
-    extend_start_frame = body.get("extendStartFrame") or 0
-    extend_frame_count = body.get("extendFrameCount")
+
+    preflight = inspect_generation(data, shot, body)
+    if not preflight["ok"]:
+        raise GenerationStartError(error_message(preflight))
 
     comfy = settings.load_settings()["providers"]["comfy"]
     base_url = (comfy["baseUrl"] or "").rstrip("/")
@@ -171,16 +173,9 @@ async def start_generation_job(data: dict, directory: Path, shot: dict, body: di
         if not asset:
             continue
         path = _confined_project_file(directory, asset.get("relativePath"))
-        if path.exists():
-            reference_paths.append(path)
-
-    extend_path = None
-    if extend_asset_id:
-        extend_asset = assets_by_id.get(extend_asset_id)
-        if extend_asset:
-            candidate = _confined_project_file(directory, extend_asset.get("relativePath"))
-            if candidate.exists():
-                extend_path = candidate
+        if not path.is_file():
+            raise GenerationStartError(f"reference asset file is missing: {asset_id}")
+        reference_paths.append(path)
 
     # H3's own frame-count grid (see frames.h3_frame_count) - fixed to the
     # model itself, not the project's configurable frameRule/fps (that's a
@@ -228,7 +223,6 @@ async def start_generation_job(data: dict, directory: Path, shot: dict, body: di
             await jobs.emit(job, {"status": "running", "phase": "uploading", "message": "Uploading references"})
             async with httpx.AsyncClient(timeout=60) as client:
                 uploaded = [await _upload_input_file(client, base_url, p) for p in reference_paths]
-                extend_filename = await _upload_input_file(client, base_url, extend_path) if extend_path else None
                 lip_sync_filename = await _upload_input_file(client, base_url, lip_sync_path)
 
             workflow = build_workflow_payload(
@@ -237,9 +231,6 @@ async def start_generation_job(data: dict, directory: Path, shot: dict, body: di
                 resolved_seed,
                 frame_count=frame_count,
                 fps=fps_value,
-                extend_filename=extend_filename,
-                extend_start_frame=extend_start_frame,
-                extend_frame_count=extend_frame_count,
                 lip_sync_filename=lip_sync_filename,
                 lip_sync_duration=h3_duration,
             )
@@ -277,7 +268,7 @@ async def start_generation_job(data: dict, directory: Path, shot: dict, body: di
             await jobs.close(job)
 
     asyncio.create_task(run())
-    return {"jobId": job.id, "takeId": take_id}
+    return {"jobId": job.id, "takeId": take_id, "preflight": preflight}
 
 
 @router.post("/api/projects/{project_id}/shots/{shot_id}/generate")

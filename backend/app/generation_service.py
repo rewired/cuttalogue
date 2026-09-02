@@ -2,6 +2,7 @@
 from typing import Any
 
 from .comfy import start_generation_job
+from .h3_preflight import error_message, inspect_generation
 from .project_repository import ProjectRepository, RevisionConflictError
 from .write_services import ShotNotFoundError, WriteValidationError
 
@@ -61,6 +62,9 @@ class GenerationService:
             "extendStartFrame": (extend or {}).get("startFrame") or 0,
             "extendFrameCount": (extend or {}).get("frameCount"),
         }
+        preflight = inspect_generation(project, shot, body)
+        if not preflight["ok"]:
+            raise WriteValidationError(error_message(preflight))
         directory = self.repository.directory(project_id)
         result = await start_generation_job(project, directory, shot, body)
         return {
