@@ -32,7 +32,8 @@ MCP exposes the same domain operations used by the browser UI. It must never bec
 - Phase 3 is substantially implemented: PLY/SPLAT/GLB ingestion, reusable scene persistence, backwards-compatible normalization, per-shot scene assignment, scene-default camera and motion calibration, named anchors, per-shot target bindings, concrete unresolved-target diagnostics, and initial geometry rendering are implemented. SPLAT currently uses a point-sprite preview; a full anisotropic Gaussian rasterizer and direct viewport manipulation of calibration points remain open.
 - Phase 4 has started: preview compilation and deterministic, versioned Camera JSON export now share one application-service boundary. Broader authoring synchronization remains open.
 - Phase 5 has started: canonical project reads now pass through a path-confined repository and transport-neutral Project/Shot/Direction read services with content revisions and stable diagnostics. Write services and camera-service parity on the backend remain open.
-- Phases 6 through 8 remain planned.
+- Phase 6 has started: an official MCP-v2 STDIO server exposes the first seven read-only Project/Shot/Direction tools through the shared services and is tested with the SDK's in-memory client. Backend camera evaluation and the remaining read-only tools remain open.
+- Phases 7 and 8 remain planned.
 
 ## 2. Guiding principles
 
