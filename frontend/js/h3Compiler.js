@@ -1,8 +1,10 @@
 // Phase C of docs/h3-shot-direction-roadmap.md: a pure, deterministic
 // function that serializes a shot's cast roles + camera/subject direction
-// tracks into MiniMax H3's official reference-generation prompt format
+// tracks into MiniMax H3's prompt dialects: six-section reference generation
 // (subject_definitions / summary / retention_analysis / detailed_description /
-// overall_soundscape / non_diegetic_music). No LLM call in this version -
+// overall_soundscape / non_diegetic_music) or three-section base generation
+// (integrated_multimodal_description / overall_soundscape /
+// non_diegetic_music). No LLM call in this version -
 // that's a deferred second "access" per the roadmap doc; this one only
 // serializes what was explicitly authored, never inventing detail.
 //
@@ -34,7 +36,17 @@
   // see section 34 of the Phase 5 spec). Not persisted anywhere yet; no
   // take/generation record currently stores a compiler version, and adding
   // one is out of scope for a compiler-internals-only phase.
-  const H3_COMPILER_VERSION = '2.0';
+  const H3_COMPILER_VERSION = '2.1';
+
+  const H3_PROMPT_MODES = {
+    REFERENCE: 'reference',
+    BASE: 'base',
+  };
+
+  const VOCAL_REFERENCE_SOUNDSCAPE = [
+    'Use the supplied vocal reference as the exact vocal performance and timing source.',
+    'Preserve its audible words, delivery, and synchronization; do not replace or paraphrase the vocal.',
+  ].join(' ');
 
   const ROLE_PRESERVE = {
     primary_character: 'identity, face, hair, wardrobe, and body proportions',
@@ -733,8 +745,15 @@
   // detailedDescription on its own to send for LLM expansion, then
   // reassembles the final prompt via assembleH3Prompt with only that one
   // field swapped out. The other five sections never go through the LLM.
-  function compileH3Sections(shot) {
+  function compileH3Sections(shot, options = {}) {
     const subjects = orderedSubjects(shot);
+    const mode = options.mode || H3_PROMPT_MODES.REFERENCE;
+    if (!Object.values(H3_PROMPT_MODES).includes(mode)) {
+      throw new Error(`Unsupported H3 prompt mode: ${mode}`);
+    }
+    if (mode === H3_PROMPT_MODES.BASE && subjects.length > 0) {
+      throw new Error('Base H3 prompts cannot contain picture-bound subjects');
+    }
 
     // Once the shot has its own authored Lighting Direction, generic
     // environment-retention wording must stop insisting lighting stays the
@@ -773,26 +792,43 @@
       .map((s) => `<${s.label}> (appears throughout ${scopeLabel}): fully_preserved - preserve ${rolePreserveText(s.role, hasLightingDirection)}.`)
       .join('\n');
 
+    const generationLabel = mode === H3_PROMPT_MODES.BASE ? '[base generation]' : '[reference generation]';
     const characterLabels = subjects.filter((s) => isActingRole(s.role)).map((s) => `<${s.label}>`);
     const summary = hasCuts
       ? characterLabels.length > 0
-        ? `[reference generation] A hard-cut sequence of ${shotCount} shots featuring ${characterLabels.join(' and ')}.`
-        : `[reference generation] A hard-cut sequence of ${shotCount} shots.`
+        ? `${generationLabel} A hard-cut sequence of ${shotCount} shots featuring ${characterLabels.join(' and ')}.`
+        : `${generationLabel} A hard-cut sequence of ${shotCount} shots.`
       : characterLabels.length > 0
-      ? `[reference generation] A single continuous shot featuring ${characterLabels.join(' and ')}.`
-      : '[reference generation] A single continuous shot.';
+      ? `${generationLabel} A single continuous shot featuring ${characterLabels.join(' and ')}.`
+      : `${generationLabel} A single continuous shot.`;
+
+    const detailedDescription = buildDetailedDescription(beatParagraphs, buildLimits(shot, subjects, hasCuts).join(' '));
+    const hasVocalReference = options.hasVocalReference !== undefined
+      ? Boolean(options.hasVocalReference)
+      : mode === H3_PROMPT_MODES.REFERENCE;
 
     return {
+      mode,
       subjectDefinitions: subjects.length > 0 ? subjectDefinitions : '',
       summary,
       retentionAnalysis: subjects.length > 0 ? retentionAnalysis : '',
-      detailedDescription: buildDetailedDescription(beatParagraphs, buildLimits(shot, subjects, hasCuts).join(' ')),
-      overallSoundscape: 'N/A',
+      detailedDescription,
+      integratedMultimodalDescription: `${summary}\n\n${detailedDescription}`,
+      overallSoundscape: hasVocalReference ? VOCAL_REFERENCE_SOUNDSCAPE : 'N/A',
       nonDiegeticMusic: 'N/A',
     };
   }
 
   function assembleH3Prompt(sections) {
+    if (sections.mode === H3_PROMPT_MODES.BASE) {
+      const integratedDescription = [sections.summary, sections.detailedDescription].filter(Boolean).join('\n\n');
+      return [
+        `integrated_multimodal_description:\n${integratedDescription}`,
+        `overall_soundscape: ${sections.overallSoundscape}`,
+        `non_diegetic_music: ${sections.nonDiegeticMusic}`,
+      ].join('\n\n');
+    }
+
     return [
       sections.subjectDefinitions ? `subject_definitions:\n${sections.subjectDefinitions}` : null,
       `summary:\n${sections.summary}`,
@@ -805,12 +841,13 @@
       .join('\n\n');
   }
 
-  function compileH3Prompt(shot) {
-    return assembleH3Prompt(compileH3Sections(shot));
+  function compileH3Prompt(shot, options = {}) {
+    return assembleH3Prompt(compileH3Sections(shot, options));
   }
 
   MSE.h3Compiler = {
     H3_COMPILER_VERSION,
+    H3_PROMPT_MODES,
     compileH3Prompt,
     compileH3Sections,
     assembleH3Prompt,

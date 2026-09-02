@@ -1335,6 +1335,14 @@
   }
 
   const H3_RECOMMENDED_MIN_WORDS = 350;
+
+  // CUTTAlogue's current generation adapter always uses R2V and supplies the
+  // stored vocal stem as ref_audio_0. Keep compilation explicit about that
+  // runtime contract instead of inferring mode from image count alone.
+  const H3_GENERATION_COMPILER_OPTIONS = Object.freeze({
+    mode: 'reference',
+    hasVocalReference: true,
+  });
   // H3's own hard API limit (see the "getting close" warning below, which
   // fires ahead of this at 6000). A prompt over this is guaranteed to be
   // rejected by the provider - never write one into shot.prompt, whether it
@@ -1406,7 +1414,7 @@
     el.compileBtn.addEventListener('click', () => {
       const shot = findShot(currentShotId);
       if (!shot) return;
-      const sections = MSE.h3Compiler.compileH3Sections(shot);
+      const sections = MSE.h3Compiler.compileH3Sections(shot, H3_GENERATION_COMPILER_OPTIONS);
       const text = MSE.h3Compiler.assembleH3Prompt(sections);
       applyCompiledPrompt(shot, text, sections.detailedDescription);
     });
@@ -1420,7 +1428,7 @@
     el.expandAiBtn.addEventListener('click', async () => {
       const shot = findShot(currentShotId);
       if (!shot) return;
-      const sections = MSE.h3Compiler.compileH3Sections(shot);
+      const sections = MSE.h3Compiler.compileH3Sections(shot, H3_GENERATION_COMPILER_OPTIONS);
       el.expandAiBtn.disabled = true;
       el.compileBtn.disabled = true;
       el.expandCancelBtn.hidden = false;
