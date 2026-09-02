@@ -58,6 +58,14 @@ async def main() -> None:
     snapshot["result"]["nested"]["value"] = 2
     check(snapshot_job.result["nested"]["value"] == 1, "job snapshot cannot mutate the registry result")
 
+    cancellable = jobs.create_job()
+    cancellable.status = "running"
+    cancellation = jobs.cancel_job_request(cancellable.id)
+    check(cancellation["cancelRequested"] is True and cancellable.cancel_requested, "shared cancellation service marks a running job")
+    cancellable.status = "done"
+    terminal_cancellation = jobs.cancel_job_request(cancellable.id)
+    check(terminal_cancellation["cancelRequested"] is False, "shared cancellation service does not rewrite terminal job state")
+
     # --- Case A: reconnecting to an already-'done' job must not hang -------
     job_done = jobs.create_job()
     job_done.status = "done"

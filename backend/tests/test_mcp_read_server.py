@@ -53,6 +53,7 @@ async def main() -> None:
                 "add_camera_segment", "update_camera_segment", "remove_camera_segment",
                 "assign_scene", "set_scene_anchor", "bind_camera_target",
                 "assign_asset", "add_constraint", "compile_and_save_prompt",
+                "cancel_job",
             }
             check(names == expected, "MCP exposes exactly the planned read and Direction write tools")
             tools_by_name = {tool.name: tool for tool in tools.tools}
@@ -62,6 +63,7 @@ async def main() -> None:
             check(read_annotations["readOnlyHint"] is True, "MCP metadata marks reads as read-only")
             check(write_annotations["readOnlyHint"] is False and write_annotations["destructiveHint"] is False, "MCP metadata marks controlled writes as non-destructive mutations")
             check(delete_annotations["destructiveHint"] is True, "MCP metadata marks camera removal as destructive")
+            check(tools_by_name["cancel_job"].annotations.model_dump(by_alias=True)["destructiveHint"] is True, "MCP metadata marks job cancellation as destructive")
 
             projects = await client.call_tool("list_projects", {})
             check(not projects.is_error and projects.structured_content["projects"][0]["id"] == "mcp-project", "list_projects returns structured service data")
@@ -75,6 +77,13 @@ async def main() -> None:
             job.status, job.result = "done", {"artifact": "preview.mp4"}
             status = await client.call_tool("get_job_status", {"job_id": job.id})
             check(not status.is_error and status.structured_content["result"]["artifact"] == "preview.mp4", "MCP reads a non-consuming job snapshot")
+            cancelled_terminal = await client.call_tool("cancel_job", {"job_id": job.id})
+            check(not cancelled_terminal.is_error and cancelled_terminal.structured_content["cancelRequested"] is False, "MCP cancellation leaves terminal jobs unchanged")
+            running_job = jobs.create_job()
+            running_job.status = "running"
+            cancelled = await client.call_tool("cancel_job", {"job_id": running_job.id})
+            check(not cancelled.is_error and cancelled.structured_content["cancelRequested"] is True and running_job.cancel_requested, "MCP explicitly requests running-job cancellation")
+            jobs._jobs.pop(running_job.id, None)
             jobs._jobs.pop(job.id, None)
             original_revision = projects.structured_content["projects"][0]["revision"]
             created = await client.call_tool("create_shot", {

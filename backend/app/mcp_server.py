@@ -9,7 +9,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 from mcp_types import CallToolResult, TextContent, ToolAnnotations
 
 from .camera_service import CameraEvaluationError
-from .jobs import JobNotFoundError, read_job_status
+from .jobs import JobNotFoundError, cancel_job_request, read_job_status
 from .project_repository import InvalidProjectError, ProjectNotFoundError, ProjectRepository, RevisionConflictError
 from .projects import DATA_DIR
 from .prompt_service import PromptCompilationError
@@ -276,6 +276,11 @@ def create_mcp_server(data_dir: Path | None = None) -> MCPServer:
             write_service.compile_and_save_prompt, project_id, shot_id,
             expected_revision,
         )
+
+    @server.tool(annotations=CONTROLLED_DELETE)
+    def cancel_job(job_id: str) -> dict[str, Any]:
+        """Explicitly request cancellation of one queued or running CUTTAlogue job."""
+        return _read(cancel_job_request, job_id)
 
     return server
 
