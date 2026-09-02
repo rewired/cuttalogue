@@ -49,13 +49,16 @@ async def main() -> None:
                 "evaluate_camera_path", "compile_shot_prompt", "get_project_warnings",
                 "get_job_status",
                 "create_shot", "update_shot_timing", "rename_shot",
+                "add_camera_segment", "update_camera_segment", "remove_camera_segment",
             }
-            check(names == expected, "MCP exposes exactly the planned read and initial write tools")
+            check(names == expected, "MCP exposes exactly the planned read and Direction write tools")
             tools_by_name = {tool.name: tool for tool in tools.tools}
             read_annotations = tools_by_name["get_project"].annotations.model_dump(by_alias=True)
             write_annotations = tools_by_name["create_shot"].annotations.model_dump(by_alias=True)
+            delete_annotations = tools_by_name["remove_camera_segment"].annotations.model_dump(by_alias=True)
             check(read_annotations["readOnlyHint"] is True, "MCP metadata marks reads as read-only")
             check(write_annotations["readOnlyHint"] is False and write_annotations["destructiveHint"] is False, "MCP metadata marks controlled writes as non-destructive mutations")
+            check(delete_annotations["destructiveHint"] is True, "MCP metadata marks camera removal as destructive")
 
             projects = await client.call_tool("list_projects", {})
             check(not projects.is_error and projects.structured_content["projects"][0]["id"] == "mcp-project", "list_projects returns structured service data")
@@ -87,13 +90,41 @@ async def main() -> None:
                 "expected_revision": created_revision, "name": "Renamed safely",
             })
             check(not renamed.is_error and renamed.structured_content["shot"]["name"] == "Renamed safely", "MCP write succeeds with the fresh revision")
+            camera_added = await client.call_tool("add_camera_segment", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": renamed.structured_content["revision"],
+                "start_seconds": 0, "end_seconds": 0.4, "movement": "push_in",
+            })
+            check(not camera_added.is_error and camera_added.structured_content["segmentIndex"] == 0, "MCP adds a validated Direction camera segment")
+            camera_updated = await client.call_tool("update_camera_segment", {
+                "project_id": "mcp-project", "shot_id": 2, "segment_index": 0,
+                "expected_revision": camera_added.structured_content["revision"],
+                "movement": "truck", "direction": "right", "amplitude": "small",
+            })
+            check(not camera_updated.is_error and camera_updated.structured_content["segment"]["movement"] == "truck", "MCP patches a Direction camera segment")
+            overlap = await client.call_tool("add_camera_segment", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": camera_updated.structured_content["revision"],
+                "start_seconds": 0.2, "end_seconds": 0.6, "movement": "pan",
+            })
+            check(overlap.is_error and overlap.structured_content["code"] == "validation_error", "MCP rejects overlapping active camera segments")
+            camera_removed = await client.call_tool("remove_camera_segment", {
+                "project_id": "mcp-project", "shot_id": 2, "segment_index": 0,
+                "expected_revision": camera_updated.structured_content["revision"],
+            })
+            check(not camera_removed.is_error and camera_removed.structured_content["removedSegment"]["movement"] == "truck", "MCP removes one addressed camera segment")
+            missing_segment = await client.call_tool("remove_camera_segment", {
+                "project_id": "mcp-project", "shot_id": 2, "segment_index": 0,
+                "expected_revision": camera_removed.structured_content["revision"],
+            })
+            check(missing_segment.is_error and missing_segment.structured_content["code"] == "camera_segment_not_found", "MCP returns a structured missing-camera-segment error")
             invalid = await client.call_tool("create_shot", {
-                "project_id": "mcp-project", "expected_revision": renamed.structured_content["revision"],
+                "project_id": "mcp-project", "expected_revision": camera_removed.structured_content["revision"],
                 "start_seconds": 0, "end_seconds": 1, "name": "overlap",
             })
             check(invalid.is_error and invalid.structured_content["code"] == "validation_error", "MCP validation failures are structured write errors")
             after_invalid = await client.call_tool("get_project", {"project_id": "mcp-project"})
-            check(after_invalid.structured_content["revision"] == renamed.structured_content["revision"], "invalid MCP write leaves the revision unchanged")
+            check(after_invalid.structured_content["revision"] == camera_removed.structured_content["revision"], "invalid MCP write leaves the revision unchanged")
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")

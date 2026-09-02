@@ -33,7 +33,7 @@ MCP exposes the same domain operations used by the browser UI. It must never bec
 - Phase 4 has started: preview compilation and deterministic, versioned Camera JSON export now share one application-service boundary. Broader authoring synchronization remains open.
 - Phase 5 is substantially implemented: canonical reads and atomic, revision-guarded writes pass through path-confined repositories and transport-neutral services. Camera evaluation and canonical H3 prompt compilation have shared backend/HTTP coverage; migrating the legacy whole-project browser save remains open.
 - Phase 6's read-only milestone is complete: an official MCP-v2 STDIO server exposes all eleven planned Project/Shot/Direction/camera/prompt/job tools through shared services and is tested with the SDK's in-memory client. Controlled writes remain deferred to Phase 7.
-- Phase 7 has started with typed `create_shot`, `update_shot_timing`, and `rename_shot` services over atomic persistence, mandatory expected revisions, structured conflicts, HTTP parity, and MCP mutation metadata. The remaining controlled-write tools are planned.
+- Phase 7 now provides typed Shot writes plus `add_camera_segment`, `update_camera_segment`, and `remove_camera_segment` over atomic persistence, mandatory expected revisions, structured conflicts, HTTP parity, and MCP mutation metadata. Camera Direction is writable without raw JSON access; scene, asset, constraint, prompt-save, and generation controls remain planned.
 - Phase 8 remains planned.
 
 ## 2. Guiding principles
