@@ -95,6 +95,8 @@
     if (type === 'audio') return 'AUDIO';
     if (type === 'video') return 'VIDEO';
     if (type === 'other') return 'FILE';
+    if (type === 'pointcloud') return 'SPLAT';
+    if (type === 'model3d') return 'GLB';
     return 'IMAGE';
   }
 

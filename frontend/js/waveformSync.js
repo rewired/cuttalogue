@@ -555,6 +555,23 @@
     return ws ? ws.getCurrentTime() : 0;
   }
 
+  // Public seek contract for other native CUTTAlogue workspaces (camera
+  // preview first). Keeping this here preserves one project playback clock;
+  // consumers must not seek individual WaveSurfer instances themselves.
+  function seekTo(seconds) {
+    if (!gridWs && !activeWs()) return false;
+    const duration = Math.max(0, state.audio.mix.durationSeconds || 0);
+    const target = Math.max(0, Math.min(duration || Number.POSITIVE_INFINITY, Number(seconds) || 0));
+    isSyncingTime = true;
+    lastRealSync = performance.now();
+    forEachInstance((ws) => ws.setTime(target));
+    isSyncingTime = false;
+    updatePlayheadReadout(target);
+    updatePlayheadPosition();
+    emit('playhead-seeked', { timeSeconds: target });
+    return true;
+  }
+
   async function setPlaybackTrack(track) {
     if (track === state.audio.playbackTrack) return;
     const wasPlaying = activeWs() && activeWs().isPlaying();
@@ -1315,6 +1332,7 @@
     setPlaybackTrack,
     zoomTo,
     getCurrentTime,
+    seekTo,
     onPlayheadTick,
     getPxPerSecond: () => pxPerSecond,
     isTimelineReady: () => !!gridWs,

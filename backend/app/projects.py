@@ -11,6 +11,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
 from . import jobs
+from .project_repository import InvalidProjectError, PROJECT_ID_PATTERN, ProjectNotFoundError, ProjectRepository
+from .read_services import ProjectReadService
 
 router = APIRouter()
 
@@ -18,6 +20,8 @@ DATA_DIR = Path(__file__).resolve().parents[1] / "data" / "projects"
 
 
 def project_dir(project_id: str) -> Path:
+    if not isinstance(project_id, str) or not PROJECT_ID_PATTERN.fullmatch(project_id):
+        raise HTTPException(status_code=400, detail="invalid project id")
     return DATA_DIR / project_id
 
 
@@ -36,37 +40,17 @@ async def create_project(payload: dict):
 
 @router.get("/api/projects")
 async def list_projects():
-    if not DATA_DIR.exists():
-        return {"projects": []}
-    results = []
-    for entry in DATA_DIR.iterdir():
-        if not entry.is_dir():
-            continue
-        file = entry / "project.json"
-        if not file.exists():
-            continue
-        try:
-            data = json.loads(file.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError):
-            continue
-        results.append(
-            {
-                "id": entry.name,
-                "name": data.get("name") or "",
-                "shotCount": len(data.get("shots") or []),
-                "updatedAt": file.stat().st_mtime,
-            }
-        )
-    results.sort(key=lambda p: p["updatedAt"], reverse=True)
-    return {"projects": results}
+    return {"projects": ProjectReadService(ProjectRepository(DATA_DIR)).list_projects()}
 
 
 @router.get("/api/projects/{project_id}")
 async def read_project(project_id: str):
-    file = project_file(project_id)
-    if not file.exists():
-        raise HTTPException(status_code=404, detail="project not found")
-    return json.loads(file.read_text(encoding="utf-8"))
+    try:
+        return ProjectReadService(ProjectRepository(DATA_DIR)).get_project(project_id)["project"]
+    except ProjectNotFoundError as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except InvalidProjectError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
 
 
 @router.put("/api/projects/{project_id}")

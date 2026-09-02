@@ -15,15 +15,37 @@ from .projects import project_dir
 router = APIRouter()
 
 
+def _safe_upload_filename(filename: str | None) -> str:
+    """Accept browser-style basenames only; never let an upload choose a path."""
+    if not filename:
+        raise HTTPException(status_code=400, detail="asset filename is required")
+    safe_name = Path(filename).name
+    if safe_name != filename or safe_name in ("", ".", ".."):
+        raise HTTPException(status_code=400, detail="asset filename must not contain a path")
+    return safe_name
+
+
+def _default_kind(asset_type: str) -> str | None:
+    if asset_type == "pointcloud":
+        return "scene_splat"
+    if asset_type == "model3d":
+        return "scene_blockout"
+    return None
+
+
 async def _describe_asset_file(asset_dir: Path, asset_id: str, dest: Path, filename: str) -> dict:
     # Probes+thumbnails a file already sitting at its final `dest` path and
     # builds the descriptor the frontend merges into state.assets.
     asset_type = media.guess_asset_type(filename)
-    try:
-        probe_data = await media.probe(dest)
-        metadata = media.extract_metadata(probe_data)
-    except Exception:
-        metadata = dict(media.EMPTY_METADATA)
+    metadata = dict(media.EMPTY_METADATA)
+    if asset_type in ("image", "video", "audio"):
+        try:
+            probe_data = await media.probe(dest)
+            metadata = media.extract_metadata(probe_data)
+        except Exception:
+            pass
+    metadata["format"] = dest.suffix.lower().lstrip(".") or None
+    metadata["sizeBytes"] = dest.stat().st_size
 
     thumbnail_path = None
     if asset_type in ("image", "video"):
@@ -64,15 +86,16 @@ async def import_assets(project_id: str, files: list[UploadFile] = File(...)):
 
     created = []
     for upload in files:
+        filename = _safe_upload_filename(upload.filename)
         asset_id = uuid.uuid4().hex[:8]
         asset_dir = directory / "assets" / asset_id
         asset_dir.mkdir(parents=True, exist_ok=True)
-        dest = asset_dir / upload.filename
+        dest = asset_dir / filename
         with dest.open("wb") as out:
             shutil.copyfileobj(upload.file, out)
 
-        descriptor = await _describe_asset_file(asset_dir, asset_id, dest, upload.filename)
-        created.append({**descriptor, "tags": [], "description": "", "kind": None})
+        descriptor = await _describe_asset_file(asset_dir, asset_id, dest, filename)
+        created.append({**descriptor, "tags": [], "description": "", "kind": _default_kind(descriptor["type"])})
 
     return {"assets": created}
 
@@ -114,12 +137,18 @@ async def replace_asset(project_id: str, asset_id: str, file: UploadFile = File(
     if not asset_dir.exists():
         raise HTTPException(status_code=404, detail="asset not found")
 
+    filename = _safe_upload_filename(file.filename)
+    staged = asset_dir / ".uploading"
+    with staged.open("wb") as out:
+        shutil.copyfileobj(file.file, out)
+
     for existing in asset_dir.iterdir():
+        if existing == staged:
+            continue
         if existing.is_file():
             existing.unlink()
 
-    dest = asset_dir / file.filename
-    with dest.open("wb") as out:
-        shutil.copyfileobj(file.file, out)
+    dest = asset_dir / filename
+    staged.replace(dest)
 
-    return await _describe_asset_file(asset_dir, asset_id, dest, file.filename)
+    return await _describe_asset_file(asset_dir, asset_id, dest, filename)

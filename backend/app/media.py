@@ -23,6 +23,8 @@ from fastapi.concurrency import run_in_threadpool
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp"}
 VIDEO_EXTS = {".mp4", ".mov", ".mkv", ".webm", ".avi", ".m4v"}
 AUDIO_EXTS = {".wav", ".mp3", ".flac", ".ogg", ".m4a", ".aac"}
+POINTCLOUD_EXTS = {".ply", ".splat"}
+MODEL3D_EXTS = {".glb"}
 
 # Shared "shot lip-sync audio" definition - export.py's lip_sync.flac and
 # comfy.py's Generate-time H3 reference audio both need the exact same
@@ -80,6 +82,10 @@ def guess_asset_type(filename: str) -> str:
         return "video"
     if ext in AUDIO_EXTS:
         return "audio"
+    if ext in POINTCLOUD_EXTS:
+        return "pointcloud"
+    if ext in MODEL3D_EXTS:
+        return "model3d"
     return "other"
 
 
