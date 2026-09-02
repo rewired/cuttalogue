@@ -61,10 +61,14 @@
     const sineYaw = Math.sin(camera.yaw);
     const cosinePitch = Math.cos(camera.pitch);
     const sinePitch = Math.sin(camera.pitch);
+    const baseRight = [cosineYaw, 0, sineYaw];
+    const baseUp = [-sineYaw * sinePitch, cosinePitch, cosineYaw * sinePitch];
+    const cosineRoll = Math.cos(camera.roll || 0);
+    const sineRoll = Math.sin(camera.roll || 0);
     return {
       forward: [sineYaw * cosinePitch, sinePitch, -cosineYaw * cosinePitch],
-      right: [cosineYaw, 0, sineYaw],
-      up: [-sineYaw * sinePitch, cosinePitch, cosineYaw * sinePitch],
+      right: baseRight.map((value, index) => value * cosineRoll + baseUp[index] * sineRoll),
+      up: baseUp.map((value, index) => value * cosineRoll - baseRight[index] * sineRoll),
     };
   }
 
