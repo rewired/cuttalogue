@@ -127,14 +127,19 @@ try:
     check(tail_db < -40, f"Case C: trailing overhang is silence (mean_volume {tail_db:.1f} dB), not a loop of the source")
 
     # --- Case E: workflow substitution -----------------------------------------
+    expected_workflow_duration = 175 / frames.H3_FPS
     workflow = comfy_workflow_template.build_workflow_payload(
-        "test prompt", [], 12345, lip_sync_filename="generated-shot.flac", lip_sync_duration=7.5
+        "test prompt", [], 12345,
+        frame_count=175,
+        fps=frames.H3_FPS,
+        lip_sync_filename="generated-shot.flac",
+        lip_sync_duration=expected_workflow_duration,
     )
     audio_inputs = workflow[comfy_workflow_template.AUDIO_NODE_ID]["inputs"]
     check(audio_inputs["audio"] == "generated-shot.flac", "Case E: workflow audio loader points at the generated filename")
     check(audio_inputs["start_time"] == 0.0, "Case E: start_time reset to 0.0 (no stale re-slice offset)")
-    check(audio_inputs["end_time"] == 7.5, "Case E: end_time matches the generated file's own H3 duration")
-    check(audio_inputs["duration"] == 7.5, "Case E: duration matches the generated file's own H3 duration")
+    check(audio_inputs["end_time"] == expected_workflow_duration, "Case E: end_time matches the generated file's own H3 duration")
+    check(audio_inputs["duration"] == expected_workflow_duration, "Case E: duration matches the generated file's own H3 duration")
     check(
         audio_inputs["audio"] != "airtone-dnb-banger-08-video-vocal-slicer-04-voxonly.wav",
         "Case E: the old manual-test workflow audio filename is gone",
