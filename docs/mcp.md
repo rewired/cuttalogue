@@ -53,6 +53,7 @@ Every project result includes a SHA-256 content revision where applicable. Proje
 - add_constraint
 - compile_and_save_prompt
 - cancel_job
+- start_generation
 
 Every write requires `expected_revision` from a fresh read. Write failures return MCP errors with structured `code` and `message` fields; revision conflicts additionally contain `expectedRevision` and `currentRevision`. Failed writes do not change the project. Writes hold a project-local inter-process lock across revision verification and use same-directory temporary files plus atomic replacement.
 
@@ -62,7 +63,9 @@ Scene writes only reference existing scenes. Anchors require finite 3D coordinat
 
 Asset assignment only accepts existing project assets and the canonical optional roles `primary_character`, `supporting_character`, `environment`, and `prop`. Constraints are appended as trimmed authored text. `compile_and_save_prompt` runs the same deterministic H3 compiler as the browser, then persists that exact result under the same expected-revision guard.
 
-`cancel_job` is an explicit destructive control. It requests cancellation only for queued or running jobs and reports `cancelRequested: false` for jobs that are already terminal.
+`cancel_job` is an explicit destructive control. It requests cancellation only for queued or running jobs and reports `cancelRequested: false` for jobs that are already terminal. ComfyUI generation checks cancellation between preparation stages and on every polling cycle, then transitions the job to `cancelled`.
+
+`start_generation` is the only MCP operation that starts external work. It is marked destructive and open-world, requires a fresh project revision, and derives the prompt, role-ordered references, stored seed, and optional extend-video configuration from persisted shot state. Read, validation, and prompt-compilation tools never start generation.
 
 ## Testing
 

@@ -8,7 +8,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from mcp import Client  # noqa: E402
-from app import jobs  # noqa: E402
+from app import generation_service as generation_module, jobs  # noqa: E402
 from app.mcp_server import create_mcp_server  # noqa: E402
 
 failures = 0
@@ -40,6 +40,15 @@ async def main() -> None:
             }],
         }), encoding="utf-8")
 
+        generation_calls = []
+
+        async def fake_generation_start(project, project_directory, shot, body):
+            generation_calls.append(body)
+            job = jobs.create_job()
+            return {"jobId": job.id, "takeId": "take-test"}
+
+        original_generation_start = generation_module.start_generation_job
+        generation_module.start_generation_job = fake_generation_start
         server = create_mcp_server(root)
         async with Client(server) as client:
             tools = await client.list_tools()
@@ -53,7 +62,7 @@ async def main() -> None:
                 "add_camera_segment", "update_camera_segment", "remove_camera_segment",
                 "assign_scene", "set_scene_anchor", "bind_camera_target",
                 "assign_asset", "add_constraint", "compile_and_save_prompt",
-                "cancel_job",
+                "cancel_job", "start_generation",
             }
             check(names == expected, "MCP exposes exactly the planned read and Direction write tools")
             tools_by_name = {tool.name: tool for tool in tools.tools}
@@ -64,6 +73,8 @@ async def main() -> None:
             check(write_annotations["readOnlyHint"] is False and write_annotations["destructiveHint"] is False, "MCP metadata marks controlled writes as non-destructive mutations")
             check(delete_annotations["destructiveHint"] is True, "MCP metadata marks camera removal as destructive")
             check(tools_by_name["cancel_job"].annotations.model_dump(by_alias=True)["destructiveHint"] is True, "MCP metadata marks job cancellation as destructive")
+            start_annotations = tools_by_name["start_generation"].annotations.model_dump(by_alias=True)
+            check(start_annotations["destructiveHint"] is True and start_annotations["openWorldHint"] is True, "MCP metadata marks generation as an external destructive action")
 
             projects = await client.call_tool("list_projects", {})
             check(not projects.is_error and projects.structured_content["projects"][0]["id"] == "mcp-project", "list_projects returns structured service data")
@@ -164,6 +175,14 @@ async def main() -> None:
                 "expected_revision": constraint_added.structured_content["revision"],
             })
             check(not prompt_saved.is_error and "No visible text." in prompt_saved.structured_content["prompt"], "MCP compiles and atomically saves the canonical H3 prompt")
+            generation_started = await client.call_tool("start_generation", {
+                "project_id": "mcp-project", "shot_id": 2,
+                "expected_revision": prompt_saved.structured_content["revision"],
+                "seed": 42,
+            })
+            check(not generation_started.is_error and generation_started.structured_content["takeId"] == "take-test", "MCP explicitly starts generation from persisted shot state")
+            check(generation_calls[0]["referenceAssetIds"] == ["lead"] and generation_calls[0]["seed"] == 42, "MCP generation preserves canonical references and explicit seed")
+            jobs._jobs.pop(generation_started.structured_content["jobId"], None)
             invalid = await client.call_tool("create_shot", {
                 "project_id": "mcp-project", "expected_revision": prompt_saved.structured_content["revision"],
                 "start_seconds": 0, "end_seconds": 1, "name": "overlap",
@@ -174,6 +193,7 @@ async def main() -> None:
             missing = await client.call_tool("get_shot", {"project_id": "mcp-project", "shot_id": 99})
             check(missing.is_error, "domain errors become MCP tool errors")
             check(client.protocol_version is not None, "in-memory client negotiates an MCP protocol version")
+        generation_module.start_generation_job = original_generation_start
 
 
 asyncio.run(main())

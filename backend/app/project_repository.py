@@ -83,6 +83,10 @@ class ProjectRepository:
             raise InvalidProjectError("project path escapes repository")
         return candidate
 
+    def directory(self, project_id: str) -> Path:
+        """Return the confined project directory for service-owned artifacts."""
+        return self._file(project_id).parent
+
     def read(self, project_id: str) -> dict:
         file = self._file(project_id)
         if not file.exists():
