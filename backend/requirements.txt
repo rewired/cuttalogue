@@ -3,6 +3,7 @@ uvicorn[standard]>=0.32
 python-multipart>=0.0.12
 httpx>=0.27
 truststore>=0.9
+mcp>=2,<3
 
 # Phase 3a: local lyrics-to-vocal forced alignment (see app/alignment.py).
 # CPU-only wheels install by default on Windows/pip; a CUDA-enabled torch
