@@ -29,7 +29,7 @@ MCP exposes the same domain operations used by the browser UI. It must never bec
 - Phase 0 is complete: the fork, baseline tag, integration branch, and this roadmap exist.
 - Phase 1 is complete for the initial deterministic camera vocabulary and regression coverage.
 - Phase 2 has an initial native CUTTAlogue WebGL workspace with shared transport and explicit resource disposal.
-- Phase 3 is in progress: PLY/SPLAT/GLB ingestion, reusable scene persistence, backwards-compatible normalization, per-shot scene assignment, scene-default camera calibration, and initial geometry rendering are implemented. SPLAT currently uses a point-sprite preview; a full anisotropic Gaussian rasterizer, calibration controls, anchors, and target bindings remain open.
+- Phase 3 is substantially implemented: PLY/SPLAT/GLB ingestion, reusable scene persistence, backwards-compatible normalization, per-shot scene assignment, scene-default camera and motion calibration, named anchors, per-shot target bindings, concrete unresolved-target diagnostics, and initial geometry rendering are implemented. SPLAT currently uses a point-sprite preview; a full anisotropic Gaussian rasterizer and direct viewport manipulation of calibration points remain open.
 - Phases 4 through 8 remain planned.
 
 ## 2. Guiding principles

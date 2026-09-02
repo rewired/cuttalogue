@@ -206,19 +206,30 @@
         interpreterProfile: 'cinematic-v1',
         ...(s.preview || {}),
       };
+      if (!s.preview.targetBindings || typeof s.preview.targetBindings !== 'object') s.preview.targetBindings = {};
       normalizeDirectionSegments(s.direction);
     });
     normalized.assets = (normalized.assets || []).map((a) => ({ tags: [], description: '', ...a }));
-    normalized.scenes = (normalized.scenes || []).map((scene) => ({
-      name: '',
-      splatAssetId: null,
-      blockoutAssetId: null,
-      unitsPerMeter: 1,
-      defaultCamera: { position: [0, 1.6, 4], target: [0, 1.5, 0], focalLengthMm: 35 },
-      anchors: {},
-      motionProfile: {},
-      ...scene,
-    }));
+    normalized.scenes = (normalized.scenes || []).map((scene) => {
+      const source = scene && typeof scene === 'object' ? scene : {};
+      return {
+        name: '',
+        splatAssetId: null,
+        blockoutAssetId: null,
+        unitsPerMeter: 1,
+        anchors: {},
+        motionProfile: {},
+        ...source,
+        defaultCamera: {
+          position: [0, 1.6, 4],
+          target: [0, 1.5, 0],
+          focalLengthMm: 35,
+          ...(source.defaultCamera || {}),
+        },
+        anchors: source.anchors && typeof source.anchors === 'object' ? source.anchors : {},
+        motionProfile: source.motionProfile && typeof source.motionProfile === 'object' ? source.motionProfile : {},
+      };
+    });
     // Older projects predate vocalCues entirely -> []. Always re-sorted
     // ascending by timeSeconds here (not just wherever a cue is mutated) so a
     // hand-edited or foreign project.json can't load with a stale order.

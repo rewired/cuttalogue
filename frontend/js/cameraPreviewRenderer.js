@@ -140,6 +140,8 @@
       this.gridVertexCount = gridVertices.length / 3;
       this.pathBuffer = this.gl.createBuffer();
       this.pathVertexCount = 0;
+      this.anchorBuffer = this.gl.createBuffer();
+      this.anchorVertexCount = 0;
       this.pointCloud = null;
       this.blockoutBuffer = null;
       this.blockoutVertexCount = 0;
@@ -165,6 +167,23 @@
       this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.pathBuffer);
       this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(vertices), this.gl.DYNAMIC_DRAW);
       this.pathVertexCount = vertices.length / 3;
+    }
+
+    setAnchors(anchors) {
+      if (this.disposed) return;
+      const vertices = [];
+      const radius = 0.15;
+      Object.values(anchors || {}).forEach((anchor) => {
+        if (!anchor || !Array.isArray(anchor.position) || anchor.position.length !== 3) return;
+        const [x, y, z] = anchor.position.map(Number);
+        if (![x, y, z].every(Number.isFinite)) return;
+        vertices.push(x - radius, y, z, x + radius, y, z);
+        vertices.push(x, y - radius, z, x, y + radius, z);
+        vertices.push(x, y, z - radius, x, y, z + radius);
+      });
+      this.gl.bindBuffer(this.gl.ARRAY_BUFFER, this.anchorBuffer);
+      this.gl.bufferData(this.gl.ARRAY_BUFFER, new Float32Array(vertices), this.gl.DYNAMIC_DRAW);
+      this.anchorVertexCount = vertices.length / 3;
     }
 
     clearScene() {
@@ -260,6 +279,9 @@
       this.drawBuffer(this.gridBuffer, this.gridVertexCount, [0.173, 0.196, 0.22, 1], gl.LINES);
       this.drawBuffer(this.blockoutBuffer, this.blockoutVertexCount, [0.36, 0.42, 0.47, 0.65], gl.LINES);
       this.drawPointCloud(viewProjection);
+      this.gl.useProgram(this.program);
+      this.gl.uniformMatrix4fv(this.matrixLocation, false, viewProjection);
+      this.drawBuffer(this.anchorBuffer, this.anchorVertexCount, [0.298, 0.553, 1, 1], gl.LINES);
       if (viewMode === 'free') {
         gl.useProgram(this.program);
         gl.uniformMatrix4fv(this.matrixLocation, false, viewProjection);
@@ -273,6 +295,7 @@
       this.clearScene();
       this.gl.deleteBuffer(this.gridBuffer);
       this.gl.deleteBuffer(this.pathBuffer);
+      this.gl.deleteBuffer(this.anchorBuffer);
       this.gl.deleteProgram(this.program);
       this.gl.deleteProgram(this.pointProgram);
       this.disposed = true;
