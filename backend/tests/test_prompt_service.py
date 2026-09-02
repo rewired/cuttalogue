@@ -34,7 +34,7 @@ shot = {
 first = compile_shot_prompt(shot)
 second = compile_shot_prompt(shot)
 check(first == second, "identical Direction compiles byte-deterministically")
-check(first["compilerVersion"] == "2.0", "result identifies the canonical browser compiler version")
+check(first["compilerVersion"] == "2.1", "result identifies the canonical browser compiler version")
 check(first["authoritativeSource"] == "shot.direction", "result identifies Direction as authoritative")
 check(first["referenceAssetIds"] == ["lead", "support"], "reference ordering matches the canonical role binding")
 check(first["prompt"].index("<Subject 1>") < first["prompt"].index("<Subject 2>"), "subject labels follow canonical ordering")
