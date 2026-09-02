@@ -12,6 +12,7 @@ const controller = fs.readFileSync(path.join(FRONTEND, 'js', 'cameraPreview.js')
 const renderer = fs.readFileSync(path.join(FRONTEND, 'js', 'cameraPreviewRenderer.js'), 'utf8');
 const sceneGeometry = fs.readFileSync(path.join(FRONTEND, 'js', 'sceneGeometry.js'), 'utf8');
 const calibrationPanel = fs.readFileSync(path.join(FRONTEND, 'js', 'sceneCalibrationPanel.js'), 'utf8');
+const cameraService = fs.readFileSync(path.join(FRONTEND, 'js', 'cameraService.js'), 'utf8');
 let failures = 0;
 
 function assert(condition, label) {
@@ -32,6 +33,7 @@ const requiredIds = [
   'camera-preview-scene-select',
   'camera-preview-calibrate-btn',
   'scene-calibration-panel',
+  'camera-preview-export-btn',
 ];
 requiredIds.forEach((id) => assert(html.includes(`id="${id}"`), `preview markup contains #${id}`));
 
@@ -58,7 +60,9 @@ assert(css.includes('border-color: var(--accent)'), 'preview active control uses
 });
 
 assert(controller.includes('renderer.dispose()'), 'preview controller explicitly disposes WebGL resources');
-assert(controller.includes('MSE.cameraPath.compile'), 'preview derives animation from CUTTAlogue Camera segments');
+assert(controller.includes('MSE.cameraService.compileShot'), 'preview compiles through the shared camera service');
+assert(cameraService.includes('MSE.cameraPath.compile'), 'shared service derives animation from CUTTAlogue Camera segments');
+assert(cameraService.includes("authoritativeSource: 'shot.direction.camera'"), 'camera export declares Direction as authoritative');
 assert(renderer.includes("MSE.cameraPath.evaluate"), 'renderer samples the canonical camera path contract');
 assert(renderer.includes('setSceneGeometry'), 'renderer accepts parsed scene geometry');
 assert(renderer.includes('gl.POINTS'), 'renderer draws point-cloud scene previews');

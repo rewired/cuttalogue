@@ -30,7 +30,8 @@ MCP exposes the same domain operations used by the browser UI. It must never bec
 - Phase 1 is complete for the initial deterministic camera vocabulary and regression coverage.
 - Phase 2 has an initial native CUTTAlogue WebGL workspace with shared transport and explicit resource disposal.
 - Phase 3 is substantially implemented: PLY/SPLAT/GLB ingestion, reusable scene persistence, backwards-compatible normalization, per-shot scene assignment, scene-default camera and motion calibration, named anchors, per-shot target bindings, concrete unresolved-target diagnostics, and initial geometry rendering are implemented. SPLAT currently uses a point-sprite preview; a full anisotropic Gaussian rasterizer and direct viewport manipulation of calibration points remain open.
-- Phases 4 through 8 remain planned.
+- Phase 4 has started: preview compilation and deterministic, versioned Camera JSON export now share one application-service boundary. Broader authoring synchronization remains open.
+- Phases 5 through 8 remain planned.
 
 ## 2. Guiding principles
 
@@ -186,6 +187,8 @@ Preview modes are Shot Camera, Free View, Path Overlay, and Diagnostics. Free Vi
 ## 8. Export
 
 The first camera export is versioned JSON containing frame samples at a declared FPS, output framing, interpreter profile, source segment references, and warnings. Whole-project export may add `camera.json`, optional `camera-preview.webm`, and `camera-warnings.json` to each shot package.
+
+The implemented version-1 export identifies `shot.direction.camera` as its authoritative source. A non-frame-aligned shot endpoint is included as an explicit `endpoint` sample with `frame: null`, rather than being mislabeled as a regular sample at the declared FPS.
 
 The H3 prompt compiler remains independent. Camera export supplements the prompt and never silently changes prompt wording.
 
